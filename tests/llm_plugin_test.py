@@ -2885,6 +2885,158 @@ def test_emb_recommend_lines():
     assert "huihui-ai/Huihui-MoE-1B-A0.6B" in cline
     assert "6GB" in cline and "compression" in cline
 test("Embeddings: recommend lines name the models", test_emb_recommend_lines)
+# ── undo stack (plugins/llm/undo.py) ──
+
+def test_undo_modified_file():
+    from plugins.llm import undo
+    undo.clear()
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "a.txt")
+        with open(p, "w") as f:
+            f.write("one\n")
+        undo.begin_turn(td, ["a.txt"])
+        with open(p, "w") as f:
+            f.write("two\n")
+        assert undo.end_turn(td) is not None, "changed turn must be kept"
+        assert undo.depth() == 1 and undo.can_undo()
+        results, count = undo.undo(td)
+        assert count == 1
+        assert ("a.txt", "restored") in results
+        with open(p) as f:
+            assert f.read() == "one\n"
+        assert not undo.can_undo() and undo.depth() == 0
+test("Undo: modified file restores snapshot content", test_undo_modified_file)
+
+
+def test_undo_deleted_file_restored():
+    from plugins.llm import undo
+    undo.clear()
+    with tempfile.TemporaryDirectory() as td:
+        undo.begin_turn(td, ["new.txt"])
+        with open(os.path.join(td, "new.txt"), "w") as f:
+            f.write("x\n")
+        undo.end_turn(td)
+        results, count = undo.undo(td)
+        assert count == 1
+        assert ("new.txt", "deleted") in results
+        assert not os.path.exists(os.path.join(td, "new.txt"))
+test("Undo: file absent at snapshot is deleted on undo", test_undo_deleted_file_restored)
+
+
+def test_undo_lifo_order():
+    from plugins.llm import undo
+    undo.clear()
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "f.txt")
+        with open(p, "w") as f:
+            f.write("v1\n")
+        for v in ("v2\n", "v3\n"):
+            undo.begin_turn(td, ["f.txt"])
+            with open(p, "w") as f:
+                f.write(v)
+            undo.end_turn(td)
+        undo.undo(td)
+        with open(p) as f:
+            assert f.read() == "v2\n", "first undo restores previous turn"
+        undo.undo(td)
+        with open(p) as f:
+            assert f.read() == "v1\n", "second undo restores the turn before"
+        assert not undo.can_undo()
+test("Undo: multi-turn restores LIFO order", test_undo_lifo_order)
+
+
+def test_undo_n2():
+    from plugins.llm import undo
+    undo.clear()
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "f.txt")
+        with open(p, "w") as f:
+            f.write("v1\n")
+        for v in ("v2\n", "v3\n"):
+            undo.begin_turn(td, ["f.txt"])
+            with open(p, "w") as f:
+                f.write(v)
+            undo.end_turn(td)
+        results, count = undo.undo(td, 2)
+        assert count == 2 and len(results) == 2
+        with open(p) as f:
+            assert f.read() == "v1\n"
+        assert not undo.can_undo()
+test("Undo: undo(n=2) rewinds two turns", test_undo_n2)
+
+
+def test_undo_depth_empty_and_overflow():
+    from plugins.llm import undo
+    undo.clear()
+    assert undo.depth() == 0 and not undo.can_undo()
+    results, count = undo.undo(os.getcwd())
+    assert results == [] and count == 0, "undo on empty stack is a no-op"
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "f.txt")
+        with open(p, "w") as f:
+            f.write("a\n")
+        undo.begin_turn(td, ["f.txt"])
+        with open(p, "w") as f:
+            f.write("b\n")
+        undo.end_turn(td)
+        assert undo.depth() == 1 and undo.can_undo()
+        results, count = undo.undo(td, 99)
+        assert count == 1, "n beyond depth undoes everything present"
+        undo.clear()
+        assert undo.depth() == 0 and not undo.can_undo()
+test("Undo: depth/can_undo, no-op when empty, clear, n overflow",
+     test_undo_depth_empty_and_overflow)
+
+
+def test_undo_end_turn_drops_noop():
+    from plugins.llm import undo
+    undo.clear()
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "f.txt")
+        with open(p, "w") as f:
+            f.write("same\n")
+        undo.begin_turn(td, ["f.txt"])
+        assert undo.end_turn(td) is None, "unchanged turn must be dropped"
+        assert undo.depth() == 0 and not undo.can_undo()
+test("Undo: unchanged turn is dropped at end_turn", test_undo_end_turn_drops_noop)
+
+
+def test_undo_rejects_unsafe_paths():
+    from plugins.llm import undo
+    undo.clear()
+    with tempfile.TemporaryDirectory() as td:
+        for bad in ("../escape.txt", "/etc/passwd"):
+            try:
+                undo.begin_turn(td, [bad])
+                raise AssertionError(f"path must be rejected: {bad}")
+            except ValueError:
+                pass
+test("Undo: absolute/escaping paths are rejected", test_undo_rejects_unsafe_paths)
+
+
+def test_undo_diffstat():
+    from plugins.llm import undo
+    assert undo.diffstat("x\n", "x\ny\nz\n") == (2, 0)
+    assert undo.diffstat("a\nb\n", "a\n") == (0, 1)
+    assert undo.diffstat("a\nb\n", "c\nd\n") == (2, 2)
+    assert undo.diffstat(None, "new\n") == (1, 0)
+    assert undo.diffstat("", "") == (0, 0)
+test("Undo: diffstat added/removed counts", test_undo_diffstat)
+
+
+def test_undo_format_stat_colors():
+    import unittest.mock as mock
+    from plugins.llm import undo, diffview as dv
+    plain = undo.format_stat("a.py", 12, 3)
+    assert plain == "a.py +12 -3", plain
+    assert "\033[" not in plain, "colors stripped off-TTY"
+    with mock.patch.object(dv, "_tty", return_value=True):
+        colored = undo.format_stat("a.py", 12, 3)
+        assert dv.GREEN in colored and dv.RED in colored
+        assert "+12" in colored and "-3" in colored
+        assert "\033[0m" in colored, "colors are reset"
+test("Undo: format_stat green/red on TTY, plain off-TTY",
+     test_undo_format_stat_colors)
 
 
 print(f"\n{'='*50}")
