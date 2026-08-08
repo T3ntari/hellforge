@@ -418,6 +418,20 @@ def cmd_ai(args):
     return 0
 
 
+def cmd_bridge(args):
+    """run.py ai bridge — stdio bridge for the TypeScript TUI (JSON lines)."""
+    from ep_core import _plugin_api
+    try:
+        from plugins.llm import bridge as b
+        import plugins.llm as llm
+        state = llm._get_state(_plugin_api)
+        return b.run(_plugin_api, state)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -434,6 +448,8 @@ def main():
         return cmd_shell(args)
     if mode in ("ai", "llm"):
         return cmd_ai(args)
+    if mode in ("bridge", "tui-bridge"):
+        return cmd_bridge(args)
     if mode in ("stats",):
         return cmd_stats(args)
     if mode in ("tracks",):
