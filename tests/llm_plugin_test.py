@@ -577,6 +577,27 @@ def test_state_persists_toggles():
     assert state2["setup_done"] is True
 test("Settings: agents/index/setup persist forever", test_state_persists_toggles)
 
+
+
+# ── regression: real-world index crash (register(api) has no group) ──
+
+def test_indexer_plugin_register_line():
+    from plugins.llm import indexer
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, "plugins", "demo"))
+    with open(os.path.join(d, "plugins", "demo", "__init__.py"), "w") as f:
+        f.write("def register(api):\n    api.add_command('demo', demo_cmd)\n"
+                "def demo_cmd(a):\n    pass\n")
+    with open(os.path.join(d, "hook.py"), "w") as f:
+        f.write("register(api)\n")  # bare call line — group-less pattern
+    idx = indexer.build_index(d)  # must not raise IndexError
+    assert idx["file_count"] == 2
+    syms = [s["name"] for s in idx["files"]["plugins/demo/__init__.py"]["symbols"]]
+    assert "register" in syms and "demo_cmd" in syms, syms
+    hook_syms = [s["name"] for s in idx["files"]["hook.py"]["symbols"]]
+    assert "register(api)" in hook_syms, hook_syms
+test("Index: register(api) lines no longer crash", test_indexer_plugin_register_line)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:

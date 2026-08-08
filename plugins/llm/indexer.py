@@ -70,7 +70,8 @@ def build_index(project_dir, cache_dir=None):
         syms = []
         for pattern, kind in SYMBOL_RES.get(p.suffix.lower(), []):
             for m in re.finditer(pattern, text, re.MULTILINE):
-                syms.append({"kind": kind, "name": m.group(1),
+                name = m.group(1) if m.groups() else m.group(0)
+                syms.append({"kind": kind, "name": name,
                              "line": text[:m.start()].count("\n") + 1})
         directives = sorted({m.group(1) for m in
                              DIRECTIVE_RE.finditer(text)})[:20]
