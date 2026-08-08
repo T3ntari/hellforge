@@ -52,6 +52,13 @@ def parse_machine_line(line, ll_state):
         "master_vol": ll_state.get("master_vol"),
         "gain_db": ll_state.get("gain_db"),
     }
+    if g.get("art"):
+        try:
+            from .mode_v5_performance import apply_articulation
+            event["art"] = g["art"]
+            apply_articulation(event, g["art"])
+        except Exception:
+            pass
     return event
 
 
