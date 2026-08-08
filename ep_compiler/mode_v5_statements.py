@@ -166,6 +166,8 @@ def process_v5_lines(lines, bpm=120, ll_state=None, fns=None):
                 nm = _note_name(payload)
                 if nm:
                     printed.append(nm)
+                elif payload.lower() in ("midi", "events"):
+                    printed.append(("__stats__", payload.lower()))
                 else:
                     printed.append(payload)
             continue
@@ -186,7 +188,7 @@ def process_v5_lines(lines, bpm=120, ll_state=None, fns=None):
 
         m = PROG_RE.match(line)
         if m:
-            for chord in m.group(1).split(","):
+            for chord in re.split(r"[,\s]+", m.group(1).strip()):
                 chord = chord.strip()
                 if not chord:
                     continue

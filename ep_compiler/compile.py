@@ -500,6 +500,7 @@ def compile_v1(text, bpm, ll_state, scope=None, strict=False, v5_fns=None):
     # Loop unrolling + math preprocessing on clean lines
     # Inherit variables from compile_source's preprocess_math (if passed)
     loop_scope = scope if scope else Scope()
+    _v5_stats_marker = False
     try:
         new_lines = detect_and_unroll_loops(clean_lines, lambda v: loop_scope.get(v))
         new_lines = preprocess_math(new_lines, loop_scope)
@@ -509,7 +510,10 @@ def compile_v1(text, bpm, ll_state, scope=None, strict=False, v5_fns=None):
         try:
             from .mode_v5_statements import process_v5_lines
             new_lines, printed = process_v5_lines(new_lines, bpm, ll_state, v5_fns)
+            _v5_stats_marker = any(isinstance(m, tuple) and m[0] == "__stats__" for m in printed)
             for _msg in printed:
+                if isinstance(_msg, tuple) and _msg[0] == "__stats__":
+                    continue  # emitted after parsing, with real event stats
                 print(f"  [v5] {_msg}")
             new_lines = preprocess_math(new_lines, loop_scope)
         except ImportError:
@@ -628,6 +632,15 @@ def compile_v1(text, bpm, ll_state, scope=None, strict=False, v5_fns=None):
 
     events = sort_events(events)
     events, _ = validate_events(events)
+    if _v5_stats_marker:
+        notes = [e for e in events if not e.get("pedal")]
+        if notes:
+            lo = min(n["midi"] for n in notes)
+            hi = max(n["midi"] for n in notes)
+            from .events import midi_to_name
+            total = max((e["timestamp"] + e["duration"] for e in events), default=0)
+            print(f"  [v5] {len(notes)} notes, {midi_to_name(lo)}-{midi_to_name(hi)}, "
+                  f"{total/1000:.1f}s")
     trace("COMPILE", f"Compilation complete: {len(events)} events")
     return events, bpm
 
