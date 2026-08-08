@@ -131,3 +131,79 @@ def diff_header(path, adds, dels):
 def wrap(text, prefix="  "):
     """Indent a multi-line string with the prefix (for model replies)."""
     return "\n".join(prefix + ln for ln in (text or "").split("\n"))
+
+
+# ── Claude-Code-style status bar + tool headers (T10) ──
+
+MODE_BADGE_COLORS = {"plan": YELLOW, "auto": GREEN, "ask": CYAN}
+
+
+def mode_badge(mode):
+    """Mode badge for the prompt: (plan) yellow, (auto) green, (ask) cyan."""
+    ansi = MODE_BADGE_COLORS.get(mode, DIM)
+    return color(f"({mode})", ansi)
+
+
+def _fmt_tokens(n):
+    try:
+        n = int(n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return f"{n / 1000.0:.1f}k" if n >= 1000 else f"{n}"
+
+
+def status_bar(state, stats):
+    """Dim one-line session status (Claude Code style):
+    'model: gemma3:4b · mode: auto · tokens: 12.4k · cost: $0.0012 · context: 8%'
+    stats: {tokens, cost, context} — context as a 0..1 fraction or percent."""
+    stats = stats or {}
+    parts = [
+        f"model: {state.get('model') or '?'}",
+        f"mode: {state.get('mode') or 'auto'}",
+        f"tokens: {_fmt_tokens(stats.get('tokens', 0))}",
+        f"cost: ${float(stats.get('cost', 0.0) or 0.0):.4f}",
+    ]
+    ctx = stats.get("context")
+    if isinstance(ctx, (int, float)):
+        pct = ctx * 100 if ctx <= 1.0 else ctx
+        parts.append(f"context: {pct:.0f}%")
+    else:
+        parts.append("context: ?")
+    return dim(" · ".join(parts))
+
+
+_TOOL_SYMBOLS = {"plan": "✻", "edit": "●", "write": "✎", "read": "▤",
+                 "test": "✓", "run": "▶", "todo": "✓", "done": "✓"}
+
+
+def tool_call(title, kind=""):
+    """Print a Claude Code tool header: '✻ plan · eshell.py' or '● edit'.
+    The caller prints the tool body on the following lines."""
+    symbol = _TOOL_SYMBOLS.get(title, "●")
+    head = f" {symbol} {bold(title)}"
+    if kind:
+        head += f" {dim('· ' + str(kind))}"
+    print(head)
+
+
+def result_block(text):
+    """Print a ──-ruled block: dim rule, indented text, closing rule."""
+    rule = dim("─" * 60)
+    print(rule)
+    print(wrap(text or "", prefix="  "))
+    print(rule)
+
+
+def error_line(text):
+    """Colored red single-line error."""
+    print(red(text))
+
+
+def warn_line(text):
+    """Colored yellow single-line warning."""
+    print(yellow(text))
+
+
+def elapsed(seconds):
+    """Dim turn-timing tag, e.g. '(0.8s)'."""
+    return dim(f"({seconds:.1f}s)")
