@@ -166,6 +166,10 @@ def main():
         try:
             compile_file(args.input, args.output, volume=args.volume, bpm_override=args.bpm,
                          strict=args.strict)
+        except (AssertionError, ValueError, FileNotFoundError) as e:
+            # User-level errors (assert failed, unknown perc, missing include)
+            print(f"  [ERROR] {e}", file=sys.stderr)
+            sys.exit(1)
         except Exception as e:
             if args.strict:
                 print(f"  [STRICT FAIL] {e}", file=sys.stderr)

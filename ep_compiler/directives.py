@@ -20,8 +20,8 @@ DEFAULT_LL_STATE = {
     'stereo_width': 100, 'neural': False,
     'master_vol': None, 'gain_db': None,
     'mem': None,
+    'seed': None,
     'key': None, 'scale': None, 'gc_strategy': 'off',
-    'octave': 0, 'sustain_state': 0, 'articulation': None,
 }
 
 # Key signature → semitone map for roman numeral chords
@@ -99,6 +99,7 @@ def parse_directives(text, state=None):
         r'@neural\s+(on|off|true|false)': lambda m: state.update({'neural': m.group(1).lower() in ('on', 'true')}),
         r'@mem\s*:\s*(\d+)(k|m|g)?': lambda m: state.update({'mem': _mem_events(m)}),
         r'@mem\s+(\d+)(k|m|g)?': lambda m: state.update({'mem': _mem_events(m)}),
+        r'@seed\s*:?\s*(\d+)': lambda m: state.update({'seed': int(m.group(1))}),
         r'@gc\s*:\s*(\w+)': lambda m: state.update({'gc_strategy': m.group(1)}),
         r'@scale\s+(\w+(?:_(?:Major|minor))?)': lambda m: state.update({'scale': m.group(1)}),
         r'@scale\s+off': lambda m: state.update({'scale': None}),

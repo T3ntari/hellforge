@@ -89,6 +89,15 @@ def evaluate_expression(expr_str, scope=None):
       - parse/truncation errors from build_ast
       - division by zero / math domain errors during evaluation
       - unknown function / no evaluator available"""
+    # pick(A B C) with space-separated choices (note names etc.) is handled
+    # at the string level — the math tokenizer cannot represent it.
+    pm = re.match(r'^\s*pick\s*\(\s*([^)]+?)\s*\)\s*$', expr_str, re.I)
+    if pm and "," not in pm.group(1) and any(c.isspace() for c in pm.group(1)):
+        try:
+            from plugins.lure.math_python import pick_choice
+            return pick_choice(pm.group(1)), None
+        except Exception:
+            pass
     ast, err = build_ast(expr_str)
     if err:
         return None, err

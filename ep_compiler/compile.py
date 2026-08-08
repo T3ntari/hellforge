@@ -103,6 +103,19 @@ def preprocess_math(lines, scope=None):
 _DEPRECATION_WARNED = set()
 
 
+_V5_STATEMENT_RE = re.compile(
+    r'^\s*(?:print|assert|include)\b|^\s*prog\s*\(|^\s*perc\s*\(|^!fn\s+'
+    r'|\bpick\s*\(|\brand\s*\(|\bscale\s*\(|\brun\s*\('
+    r'|for\s+\$[a-zA-Z_]\w*\s+in\s+\[|\.\.\s|^\s*(?:break|continue)\s*$',
+    re.I | re.MULTILINE)
+
+
+def _has_v5_statement(text):
+    """True when the source uses v5-only statements that earlier pipelines
+    (and the LURE fast path) cannot handle."""
+    return bool(_V5_STATEMENT_RE.search(text or ""))
+
+
 def _warn_deprecated(version):
     """Print the deprecation banner once per version per process.
     v5 is the canonical syntax; v1-v4 compile for back-compat only."""
@@ -127,6 +140,14 @@ def detect_syntax_version(text):
         r'@art\s*:',                    # articulations
         r'@tie\b',                      # ties (prop)
         r'[A-Ga-g]#?b?\d\s*~',          # ties (tilde shorthand)
+        r'^\s*(?:print|assert|include)\b',  # io statements
+        r'^\s*prog\s*\(',               # chord progressions
+        r'^\s*perc\s*\(',               # percussion
+        r'^!fn\s+',                     # parameterized macros
+        r'\bpick\s*\(|\brand\s*\(',     # deterministic randomness
+        r'\bscale\s*\(|\brun\s*\(',     # scale/chromatic iteration
+        r'for\s+\$[a-zA-Z_]\w*\s+in\s+\[|\.\.\s*\d',  # list/range loops
+        r'^\s*(?:break|continue)\s*$',  # loop control
     ]
     for p in v5_patterns:
         if re.search(p, text, re.I | re.MULTILINE):
@@ -234,7 +255,7 @@ def apply_performance_post_passes(events, text, bpm, ll_state):
         return events
 
 
-def compile_source(text, bpm=None, strict=False):
+def compile_source(text, bpm=None, strict=False, base_dir=None):
     """Compile source text to (events, bpm).
     strict=True raises CompileError listing all diagnostics (fail-fast).
     The '@strict on' directive in source forces strict; '@strict off' relaxes."""
@@ -260,24 +281,46 @@ def compile_source(text, bpm=None, strict=False):
 
     text = strip_comments(text)
 
-    # LURE fast path: if lupa + LuaJIT available, try Lua compilation first
-    try:
-        from plugins.lure import get_engine
-        engine = get_engine()
-        if engine and engine.available:
-            result = engine.compile_text(text, bpm or 120)
-            if result:
-                events, bp = result
-                trace("COMPILE", f"LURE compiled: {len(events)} events, {bp} BPM")
-                try:
-                    import ep_core
-                    ep_core._last_compiled_events[:] = events
-                    ep_core._compilation_count += 1
-                except ImportError:
-                    pass
-                return events, bp
-    except Exception:
-        pass
+    # v5 includes: inline `include "file.e"` (before version detection so
+    # included content participates fully). base_dir comes from compile_file.
+    if _has_v5_statement(text):
+        try:
+            from .mode_v5_statements import resolve_includes
+            text = resolve_includes(text, base_dir=base_dir)
+        except (ValueError, FileNotFoundError) as e:
+            raise CompileError(str(e))
+        except Exception:
+            pass
+
+    # v5 !fn macros (text-level definition collection).
+    _v5_fns = {}
+    if _has_v5_statement(text):
+        try:
+            from .mode_v5_statements import process_v5_pre
+            text, _v5_fns = process_v5_pre(text)
+        except Exception:
+            pass
+
+    # LURE fast path: if lupa + LuaJIT available, try Lua compilation first.
+    # Skipped when v5-only statements are present — LURE cannot parse them.
+    if not _has_v5_statement(text):
+        try:
+            from plugins.lure import get_engine
+            engine = get_engine()
+            if engine and engine.available:
+                result = engine.compile_text(text, bpm or 120)
+                if result:
+                    events, bp = result
+                    trace("COMPILE", f"LURE compiled: {len(events)} events, {bp} BPM")
+                    try:
+                        import ep_core
+                        ep_core._last_compiled_events[:] = events
+                        ep_core._compilation_count += 1
+                    except ImportError:
+                        pass
+                    return events, bp
+        except Exception:
+            pass
 
     try:
         from ep_core import (
@@ -295,6 +338,12 @@ def compile_source(text, bpm=None, strict=False):
     config = parse_config_strip(text)
     ll_state = dict(DEFAULT_LL_STATE)
     ll_state = parse_directives(text, ll_state)
+    if ll_state.get("seed") is not None:
+        try:
+            from plugins.lure.math_python import set_seed
+            set_seed(ll_state["seed"])
+        except Exception:
+            pass
     auto_bpm = ll_state.get('bpm', 120)
     if bpm is None:
         bpm = auto_bpm
@@ -335,7 +384,7 @@ def compile_source(text, bpm=None, strict=False):
                 text = process_performance_pre(text, bpm)
             except Exception:
                 pass
-        events, bp = compile_v1(text, bpm, ll_state, scope=_math_scope, strict=strict)
+        events, bp = compile_v1(text, bpm, ll_state, scope=_math_scope, strict=strict, v5_fns=_v5_fns)
         events = apply_scale_quantization(events, ll_state)
         events = apply_ll_controllers(events, ll_state)
         events = apply_performance_post_passes(events, text, bpm, ll_state)
@@ -359,7 +408,7 @@ def compile_source(text, bpm=None, strict=False):
         except ImportError:
             pass
 
-    events, bp = compile_v1(text, bpm, ll_state, scope=_math_scope, strict=strict)
+    events, bp = compile_v1(text, bpm, ll_state, scope=_math_scope, strict=strict, v5_fns=_v5_fns)
     events = apply_scale_quantization(events, ll_state)
     events = apply_ll_controllers(events, ll_state)
     events = apply_performance_post_passes(events, text, bpm, ll_state)
@@ -410,7 +459,7 @@ def _raise_strict_if_problems():
         raise CompileError(f"Strict compile failed with {len(probs)} problem(s):\n{lines}")
 
 
-def compile_v1(text, bpm, ll_state, scope=None, strict=False):
+def compile_v1(text, bpm, ll_state, scope=None, strict=False, v5_fns=None):
     """Compile v1 (#MACHINE or #HUMAN) text to events.
     scope: optional Scope with variables from compile_source's preprocess_math."""
     from .mode_v1_human import parse_human_line as parse_human
@@ -454,7 +503,30 @@ def compile_v1(text, bpm, ll_state, scope=None, strict=False):
     try:
         new_lines = detect_and_unroll_loops(clean_lines, lambda v: loop_scope.get(v))
         new_lines = preprocess_math(new_lines, loop_scope)
+        # v5 statement pass: print / assert / prog / perc / !fn uses
+        # (post-unroll so loop variables and $vars are resolved; print fires
+        # per iteration). Math is re-run so !fn body expressions resolve.
+        try:
+            from .mode_v5_statements import process_v5_lines
+            new_lines, printed = process_v5_lines(new_lines, bpm, ll_state, v5_fns)
+            for _msg in printed:
+                print(f"  [v5] {_msg}")
+            new_lines = preprocess_math(new_lines, loop_scope)
+        except ImportError:
+            pass
+        except (AssertionError, ValueError, FileNotFoundError) as _e:
+            # Explicit user errors (assert failed, unknown perc, missing
+            # include) are hard failures — never silently swallowed.
+            raise
+        except Exception as _e:
+            if strict:
+                raise
+            print(f"  [v5 ERROR] {_e}", flush=True)
         clean_lines = new_lines
+    except (AssertionError, ValueError, FileNotFoundError):
+        # Explicit user errors (assert failed, unknown perc, missing include,
+        # bad loop form) are hard failures — never silently swallowed.
+        raise
     except Exception as _e:
         # Surface loop/parse errors as diagnostics (lenient compile continues)
         try:
@@ -603,7 +675,7 @@ def compile_file(path, bpm_override=None, strict=False):
         elif ext in (".e", ".eic"):
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 text = f.read()
-            return compile_source(text, bpm_override, strict=strict)
+            return compile_source(text, bpm_override, strict=strict, base_dir=os.path.dirname(path))
         else:
             return [], 120
     except CircularReferenceError as e:

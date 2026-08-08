@@ -131,7 +131,7 @@ def parse_args(tokens, pos):
 
 
 _KNOWN_FUNCS = {"sin", "cos", "sqrt", "pow", "round", "floor", "abs",
-                "min", "max", "quadratic", "solve_linear"}
+                "min", "max", "quadratic", "solve_linear", "pick", "rand"}
 
 
 def _validate_ast(node):

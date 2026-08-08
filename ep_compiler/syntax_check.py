@@ -45,10 +45,12 @@ DIRECTIVE_NAMES = {"bpm", "tempo", "key", "scale", "vol", "volume", "gc", "dur",
                     "pedal", "art", "oct", "tie"}
 MACHINE_TOKENS = {"T", "N", "D", "V", "CH", "TRK", "P", "S", "F", "E", "Z"}
 MATH_FUNCS = {"sin", "cos", "sqrt", "pow", "round", "floor", "abs", "min",
-              "max", "quadratic", "solve_linear"}
-LOOP_KEYWORDS = {"for", "repeat", "while", "to", "step", "do", "if", "else"}
+              "max", "quadratic", "solve_linear", "pick", "rand"}
+LOOP_KEYWORDS = {"for", "repeat", "while", "to", "step", "do", "if", "else",
+                 "in", "break", "continue"}
 PROJECT_KEYWORDS = {"inherit", "track", "title", "composer", "artist", "album",
-                    "genre", "project", "include", "section", "play", "tempo"}
+                    "genre", "project", "include", "section", "play", "tempo",
+                    "print", "assert", "prog", "perc", "pedal", "rest"}
 NOTE_RE = re.compile(r"^[A-Ga-g]#?b?\d+$")
 NOTE_NAME_RE = re.compile(r"^[A-Ga-g]#?b?$")
 

@@ -50,7 +50,9 @@ def _find_block_end(lines, start_idx):
 
 def _parse_block_header(line):
     """Parse the header of a loop block. Returns (kind, args, body_lines).
-    Supports single-line bodies: 'for $i = 0 to 3 { T{$i*100} N60 D100 }'."""
+    Supports single-line bodies: 'for $i = 0 to 3 { T{$i*100} N60 D100 }'.
+    v5 forms: 'for $x in [C4 E4 G4]', 'for $i in 1..8', 
+    'for $n in scale(C major, 4, 2)', 'for $n in run(C4, C5)'."""
     s = line.strip()
     m = re.match(r"^repeat\s+(\d+|\$[a-zA-Z_]\w*)\s*(?:\{.*)?$", s)
     if m:
@@ -58,6 +60,19 @@ def _parse_block_header(line):
     m = re.match(r"^for\s+\$([a-zA-Z_]\w*)\s*=\s*(-?\$?[\w.]+)\s+to\s+(-?\$?[\w.]+)(?:\s+step\s+(-?\$?[\w.]+))?\s*(?:\{.*)?$", s)
     if m:
         return ("for", [m.group(1), m.group(2), m.group(3), m.group(4)], None)
+    m = re.match(r"^for\s+\$([a-zA-Z_]\w*)\s+in\s+\[([^\]]*)\]\s*(?:\{.*)?$", s)
+    if m:
+        elems = [e.strip() for e in m.group(2).split() if e.strip()]
+        return ("forlist", [m.group(1), elems], None)
+    m = re.match(r"^for\s+\$([a-zA-Z_]\w*)\s+in\s+(-?\d+)\.\.(-?\d+)(?:\s+step\s+(-?\d+))?\s*(?:\{.*)?$", s)
+    if m:
+        return ("forrange", [m.group(1), m.group(2), m.group(3), m.group(4)], None)
+    m = re.match(r"^for\s+\$([a-zA-Z_]\w*)\s+in\s+scale\(([^,()]+?)(?:\s*,\s*(\d+))?(?:\s*,\s*(\d+))?\)\s*(?:\{.*)?$", s)
+    if m:
+        return ("forscale", [m.group(1), m.group(2).strip(), m.group(3), m.group(4)], None)
+    m = re.match(r"^for\s+\$([a-zA-Z_]\w*)\s+in\s+run\(([^,()]+?)\s*,\s*([^,()]+?)\)\s*(?:\{.*)?$", s)
+    if m:
+        return ("forrun", [m.group(1), m.group(2).strip(), m.group(3).strip()], None)
     m = re.match(r"^while\s+(.+?)\s*(?:\{.*)?$", s)
     if m:
         return ("while", [m.group(1)], None)
@@ -97,6 +112,78 @@ def _extract_block_body(lines, idx):
     return body_lines, block_end
 
 
+def _scale_notes(scale_name, octave, octaves):
+    """Note names for scale(NAME, octave, octaves). Returns list like
+    ['C4','D4','E4',...]. Tonic octave is the first octave of the run.
+    NAME forms: 'C major', 'A minor', 'C# major', 'major' (default tonic C)."""
+    from .events import midi_to_name
+    parts = scale_name.split()
+    if len(parts) >= 2 and parts[1].lower() in _SCALES:
+        tonic = parts[0]
+        scale_type = parts[1].lower()
+    elif len(parts) >= 1 and parts[0].lower() in _SCALES:
+        tonic = "C"
+        scale_type = parts[0].lower()
+    else:
+        raise LoopError(f"Unknown scale: {scale_name}")
+    intervals = _SCALES[scale_type]
+    tonic_semi = _TONIC_SEMI.get(tonic, 0)
+    out = []
+    for i in range(len(intervals) * max(1, octaves)):
+        semi = intervals[i % len(intervals)] + 12 * (i // len(intervals))
+        midi = tonic_semi + (octave + 1) * 12 + semi
+        out.append(midi_to_name(midi))
+    return out
+
+
+def _run_notes(start, end):
+    """Chromatically ascending note names from start to end (inclusive)."""
+    from .events import name_to_midi, midi_to_name
+    lo, hi = name_to_midi(start), name_to_midi(end)
+    if lo > hi:
+        lo, hi = hi, lo
+    return [midi_to_name(m) for m in range(lo, hi + 1)]
+
+
+_SCALES = {
+    "major": [0, 2, 4, 5, 7, 9, 11],
+    "minor": [0, 2, 3, 5, 7, 8, 10],
+    "harmonicminor": [0, 2, 3, 5, 7, 8, 11],
+    "melodicminor": [0, 2, 3, 5, 7, 9, 11],
+    "pentatonic": [0, 2, 4, 7, 9],
+    "blues": [0, 3, 5, 6, 7, 10],
+    "dorian": [0, 2, 3, 5, 7, 9, 10],
+    "phrygian": [0, 1, 3, 5, 7, 8, 10],
+    "lydian": [0, 2, 4, 6, 7, 9, 11],
+    "mixolydian": [0, 2, 4, 5, 7, 9, 10],
+    "locrian": [0, 1, 3, 5, 6, 8, 10],
+    "chromatic": list(range(12)),
+    "wholehalf": [0, 2, 3, 5, 6, 8, 9, 11],
+    "halfwhole": [0, 1, 3, 4, 6, 7, 9, 10],
+}
+
+_TONIC_SEMI = {
+    "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "F": 5,
+    "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8, "A": 9, "A#": 10,
+    "Bb": 10, "B": 11,
+}
+
+
+def _emit_body(body_lines, var_name, value, result, cap, desc):
+    """Emit one iteration's body with $var replaced. Handles break/continue.
+    Returns True if the loop should stop entirely (break hit)."""
+    for bl in body_lines:
+        bs = bl.strip()
+        if bs == "break":
+            return True
+        if bs == "continue":
+            break
+        resolved = bl.replace(f"${var_name}", str(value))
+        result.append(resolved)
+        _check_cap(result, desc, cap)
+    return False
+
+
 def _unroll_once(lines, var_resolver, scope):
     """Single pass unroll: process lines, expand loops, return new lines.
     Returns (new_lines, any_unrolled) where any_unrolled indicates whether any loop was expanded."""
@@ -128,10 +215,19 @@ def _unroll_once(lines, var_resolver, scope):
                 else:
                     count = int(count_str)
                 for n in range(count):
+                    stopped = False
                     for bl in body_lines:
+                        bs = bl.strip()
+                        if bs == "break":
+                            stopped = True
+                            break
+                        if bs == "continue":
+                            break
                         resolved = bl.replace("$i", str(n)).replace("$counter", str(n))
                         result.append(resolved)
-                    _check_cap(result, f"repeat {count_str}", _MAX_UNROLL_LINES)
+                        _check_cap(result, f"repeat {count_str}", _MAX_UNROLL_LINES)
+                    if stopped:
+                        break
 
             elif kind == "for":
                 var_name, start_s, end_s, step_s = args
@@ -145,11 +241,44 @@ def _unroll_once(lines, var_resolver, scope):
                 step = _r(step_s) if step_s else 1
                 n = start
                 while (step > 0 and n <= end) or (step < 0 and n >= end):
-                    for bl in body_lines:
-                        resolved = bl.replace(f"${var_name}", str(n))
-                        result.append(resolved)
-                    _check_cap(result, f"for ${var_name} = {start_s} to {end_s}", _MAX_UNROLL_LINES)
+                    if _emit_body(body_lines, var_name, n, result, _MAX_UNROLL_LINES,
+                                  f"for ${var_name} = {start_s} to {end_s}"):
+                        break
                     n += step
+
+            elif kind == "forlist":
+                var_name, elems = args
+                for elem in elems:
+                    if _emit_body(body_lines, var_name, elem, result, _MAX_UNROLL_LINES,
+                                  f"for ${var_name} in {elems}"):
+                        break
+
+            elif kind == "forrange":
+                var_name, start_s, end_s, step_s = args
+                start, end = int(start_s), int(end_s)
+                step = int(step_s) if step_s else 1
+                n = start
+                while (step > 0 and n <= end) or (step < 0 and n >= end):
+                    if _emit_body(body_lines, var_name, n, result, _MAX_UNROLL_LINES,
+                                  f"for ${var_name} in {start_s}..{end_s}"):
+                        break
+                    n += step
+
+            elif kind == "forscale":
+                var_name, scale_name, octave_s, octaves_s = args
+                notes = _scale_notes(scale_name, int(octave_s or 4), int(octaves_s or 1))
+                for note in notes:
+                    if _emit_body(body_lines, var_name, note, result, _MAX_UNROLL_LINES,
+                                  f"for ${var_name} in scale({scale_name})"):
+                        break
+
+            elif kind == "forrun":
+                var_name, start_note, end_note = args
+                notes = _run_notes(start_note, end_note)
+                for note in notes:
+                    if _emit_body(body_lines, var_name, note, result, _MAX_UNROLL_LINES,
+                                  f"for ${var_name} in run({start_note},{end_note})"):
+                        break
 
             elif kind == "while":
                 cond_str = args[0]
@@ -170,8 +299,16 @@ def _unroll_once(lines, var_resolver, scope):
                     if not cv:
                         break
                     for bl in body_lines:
+                        bs = bl.strip()
+                        if bs == "break":
+                            iterations = 100000  # exit outer loop
+                            break
+                        if bs == "continue":
+                            break
                         result.append(bl)
-                    _check_cap(result, f"while {cond_str}", _MAX_UNROLL_LINES)
+                        _check_cap(result, f"while {cond_str}", _MAX_UNROLL_LINES)
+                    if iterations >= 100000:
+                        break
                     # Process var defs in body to update local scope
                     for bl in body_lines:
                         m = VAR_DEF_RE.match(bl)

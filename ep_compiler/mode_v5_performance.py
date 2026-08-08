@@ -13,8 +13,8 @@ PEDAL_ON_RE = re.compile(r'^pedal\s+on\s*$', re.I)
 PEDAL_OFF_RE = re.compile(r'^pedal\s+off\s*$', re.I)
 REST_RE = re.compile(r'^[Rr]est\s+(\S+)\s*$')
 REST_SHORT_RE = re.compile(r'^R\s+(\S+)\s*$')
-TUPLET_3_RE = re.compile(r'^t(?:rip)?3?\s*\(\s*([A-Ga-g]#?b?\d+(?:\s+[A-Ga-g]#?b?\d+)*)\s*\)\s*$', re.I)
-TUP_RE = re.compile(r'^tup\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*([A-Ga-g]#?b?\d+(?:\s*,\s*[A-Ga-g]#?b?\d+)*)\s*\)\s*$', re.I)
+TUPLET_3_RE = re.compile(r'^t(?:rip)?3?\s*\(\s*([A-Ga-g]#?b?\d+(?:\s+[A-Ga-g]#?b?\d+)*)\s*\)\s*(@.+)?$', re.I)
+TUP_RE = re.compile(r'^tup\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*([A-Ga-g]#?b?\d+(?:\s*,\s*[A-Ga-g]#?b?\d+)*)\s*\)\s*(@.+)?$', re.I)
 CURVE_VEL_RE = re.compile(r'@curve\s+vel\s+(\d+)\s+(\d+)(?:\s+over\s+(\d+(?:\.\d+)?)(ms|q|h|w|e|s|t))?', re.I)
 TIE_SHORTHAND_RE = re.compile(r'^([A-Ga-g]#?b?\d+)~\s+(\S.*?)\s*$', re.I)
 
@@ -85,16 +85,76 @@ def parse_performance_line(line, cursor, bpm, ll_state):
         div = int(m.group(2))
         notes_str = m.group(3)
         notes = re.findall(r'[A-Ga-g]#?b?\d+', notes_str)
+        props = _parse_tup_props(m.group(4))
         if notes:
-            return _expand_triplet(notes, cursor, bpm, n, div)
+            events, new_cursor = _expand_triplet(notes, cursor, bpm, n, div)
+            return _apply_tup_props(events, props, ll_state), new_cursor
 
     m = TUPLET_3_RE.match(s)
     if m:
         notes = re.findall(r'[A-Ga-g]#?b?\d+', m.group(1))
+        props = _parse_tup_props(m.group(2))
         if notes:
-            return _expand_triplet(notes, cursor, bpm, len(notes), 2)
+            events, new_cursor = _expand_triplet(notes, cursor, bpm, len(notes), 2)
+            return _apply_tup_props(events, props, ll_state), new_cursor
 
     return None, cursor
+
+
+def _parse_tup_props(prop_str):
+    """Parse trailing @props on tuplet statements. Returns dict with
+    velocity/pan/channel/articulation/octave or empty dict."""
+    out = {}
+    if not prop_str:
+        return out
+    for m in re.finditer(r'@(\w+)\s*:\s*([^\s@]+)', prop_str):
+        key, val = m.group(1).lower(), m.group(2)
+        if key in ("vel", "velocity"):
+            try:
+                out["velocity"] = int(float(val) * 127) if float(val) <= 1.0 else int(float(val))
+            except ValueError:
+                from .syntax_check import resolve_velocity
+                v = resolve_velocity(val)
+                if v is not None:
+                    out["velocity"] = v
+        elif key == "pan":
+            try:
+                out["pan"] = float(val)
+            except ValueError:
+                pass
+        elif key in ("ch", "channel"):
+            try:
+                out["channel"] = int(val)
+            except ValueError:
+                pass
+        elif key in ("art", "articulation"):
+            out["art"] = val
+        elif key == "oct":
+            try:
+                out["octave"] = int(val)
+            except ValueError:
+                pass
+    return out
+
+
+def _apply_tup_props(events, props, ll_state):
+    """Apply parsed @props (velocity/pan/channel/articulation/octave) to
+    tuplet events. Global @oct from ll_state applies when no per-line @oct."""
+    if not props:
+        return events
+    octave = props.get("octave", ll_state.get("octave") or 0)
+    for e in events:
+        if "velocity" in props:
+            e["velocity"] = max(0, min(127, props["velocity"]))
+        if "pan" in props:
+            e["pan"] = max(-1.0, min(1.0, props["pan"]))
+        if "channel" in props:
+            e["channel"] = props["channel"]
+        if octave:
+            e["midi"] = max(0, min(127, e["midi"] + 12 * octave))
+        if "art" in props:
+            apply_articulation(e, props["art"])
+    return events
 
 
 def apply_articulation(event, art):
