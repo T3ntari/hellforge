@@ -2181,6 +2181,248 @@ def test_scale_override():
 test("Scale: override forces profile, auto clears", test_scale_override)
 
 
+# ── compact.py: context windows, metering, chunked compression (T17) ──
+
+from plugins.llm import compact as compact_mod
+
+
+def test_compact_ollama_windows():
+    c = compact_mod.context_window
+    assert c("ollama", "llama3:8b") == 8192
+    assert c("ollama", "llama3.1:8b") == 8192
+    assert c("ollama", "llama3.2:3b") == 8192
+    assert c("ollama", "qwen2.5:7b") == 32768
+    assert c("ollama", "qwen2.5-coder:0.5b") == 32768
+    assert c("ollama", "deepseek-r1:14b") == 65536
+    assert c("ollama", "deepseek-r1-64k") == 65536, "Nk in name overrides"
+    assert c("ollama", "gemma3:1b") == 32768
+    assert c("ollama", "gemma3:4b") == 32768
+    assert c("ollama", "gemma3:27b") == 131072
+    assert c("ollama", "mistral:7b") == 32768
+    assert c("ollama", "phi3:3.8b") == 8192
+    assert c("ollama", "some-future-model:x") == 8192, "ollama default"
+test("Compact: ollama window regex (k-override, llama3/qwen/r1/gemma3/mistral/phi)",
+     test_compact_ollama_windows)
+
+
+def test_compact_provider_windows():
+    c = compact_mod.context_window
+    assert c("openai", "gpt-4o") == 128000
+    assert c("openai", "gpt-4o-mini") == 128000
+    assert c("openai", "gpt-4.1") == 1047576
+    assert c("openai", "o3-mini") == 200000
+    assert c("openai", "gpt-4") == 8192
+    assert c("openai", "some-future") == 128000, "openai default"
+    assert c("claude", "claude-sonnet-4-5") == 200000
+    assert c("claude", "claude-haiku-3-5") == 200000
+    assert c("claude", "claude-opus-4-1") == 200000
+    assert c("deepseek", "deepseek-chat") == 65536
+    assert c("deepseek", "deepseek-v4") == 131072
+    assert c("deepseek", "deepseek-reasoner") == 65536
+    assert c("glm", "glm-4") == 128000
+    assert c("glm", "glm-4.5") == 131072
+    assert c("custom", "anything") == 32768
+    assert c("unknown", "m") == 32768
+    assert c("", "") == 32768
+test("Compact: openai/claude/deepseek/glm/custom windows",
+     test_compact_provider_windows)
+
+
+def test_compact_override_map():
+    key = ("ollama", "llama3.1:8b")
+    compact_mod.set_window(*key, 16000)
+    try:
+        assert compact_mod.context_window(*key) == 16000
+        assert compact_mod.get_window(*key) == 16000, "get_window reflects override"
+        assert compact_mod.context_window("ollama", "llama3.2:3b") == 8192, \
+            "other models untouched"
+        compact_mod.set_window("OLLAMA", "Llama3.1:8b", 9999)
+        assert compact_mod.context_window("ollama", "llama3.1:8b") == 9999, \
+            "keys normalized"
+    finally:
+        del compact_mod.OVERRIDES[key]
+test("Compact: set_window/get_window override map", test_compact_override_map)
+
+
+def test_compact_metering():
+    msgs = [{"role": "user", "content": "x" * 400},
+            {"role": "assistant", "content": "y" * 1200}]
+    assert compact_mod.usage_tokens(msgs) == 400, "estimate_tokens summed"
+    assert compact_mod.should_compact(msgs, window=1000) is False
+    assert compact_mod.should_compact(msgs, window=400) is True
+    assert compact_mod.should_compact(msgs, window=0) is False
+test("Compact: usage_tokens + should_compact threshold", test_compact_metering)
+
+
+def test_compact_render_meter():
+    import unittest.mock as mock
+    msgs = [{"role": "user", "content": "z" * 49600}]  # 12400 tokens
+    with mock.patch.object(compact_mod.ui, "is_tty", return_value=False):
+        meter = compact_mod.render_meter(msgs, 128000)
+    assert "tokens: 12.4k/128k" in meter, meter
+    assert "context 10%" in meter, meter
+    assert "\033[" not in meter
+    with mock.patch.object(compact_mod.ui, "is_tty", return_value=True):
+        assert "\033[" in compact_mod.render_meter(msgs, 128000)
+test("Compact: render_meter grey 'tokens: 12.4k/128k · context 10%'",
+     test_compact_render_meter)
+
+
+def test_compact_summary_prompt():
+    p = compact_mod.summary_prompt([{"role": "user", "content": "hello world"},
+                                    {"role": "assistant", "content": "hi"}])
+    assert "Compress these conversation turns" in p
+    assert "user: hello world" in p and "assistant: hi" in p
+    assert "400 tokens" in p and "decisions" in p
+    assert "25%" in compact_mod.SHORT_MEMORY_PROMPT, "short-term memory prompt"
+    assert "decisions" in compact_mod.SHORT_MEMORY_PROMPT
+test("Compact: summary_prompt template + SHORT_MEMORY_PROMPT exposed",
+     test_compact_summary_prompt)
+
+
+def test_compact_noop_under_threshold():
+    msgs = [{"role": "user", "content": "short"}] * 3
+    called = []
+
+    def model_fn(messages):
+        called.append(messages)
+        return "summarized"
+
+    new, stats = compact_mod.compact_history(msgs, model_fn, window=10000)
+    assert new is msgs, "history returned unchanged"
+    assert called == [], "model_fn never called"
+    assert stats["compacted"] is False and stats["chunks"] == 0
+    assert stats["ok"] is True
+    assert stats["tokens_before"] == stats["tokens_after"] == 3
+test("Compact: no-op under threshold returns history untouched",
+     test_compact_noop_under_threshold)
+
+
+def test_compact_chunked_summary():
+    hist = [{"role": "system", "content": "SYSTEM BASE"}]
+    for i in range(20):
+        hist.append({"role": "user", "content": f"turn {i}: " + "w" * 100})
+    calls = []
+
+    def model_fn(messages):
+        calls.append(messages)
+        return "dense summary"
+
+    new, stats = compact_mod.compact_history(hist, model_fn, window=590)
+    assert len(calls) == 3, f"one call per chunk (14 old msgs → 3 chunks): {len(calls)}"
+    for msgs in calls:
+        assert "Compress these conversation turns" in msgs[0]["content"]
+    assert new[0] is hist[0], "system message preserved unchanged"
+    assert new[1]["role"] == "system"
+    assert "dense summary" in new[1]["content"], "summaries in compressed block"
+    assert new[-6:] == hist[-6:], "last keep_recent messages kept verbatim"
+    assert stats["tokens_before"] == compact_mod.usage_tokens(hist)
+    assert stats["tokens_after"] == compact_mod.usage_tokens(new)
+    assert stats["chunks"] == 3
+    assert stats["ratio"] == round(stats["tokens_after"] / stats["tokens_before"], 4)
+    assert stats["ok"] is True and stats["compacted"] is True
+    assert stats["tokens_after"] < stats["tokens_before"], "real compression"
+test("Compact: chunked summarization — call count, system + recent kept, stats",
+     test_compact_chunked_summary)
+
+
+def test_compact_error_fallback():
+    hist = [{"role": "system", "content": "SYS"}]
+    for i in range(14):
+        hist.append({"role": "user", "content": f"msg{i} payload"})
+    calls = []
+
+    def model_fn(messages):
+        calls.append(messages)
+        return (None, "model unavailable")
+
+    new, stats = compact_mod.compact_history(hist, model_fn, window=46,
+                                             target=2.0)
+    assert len(calls) == 2, "both chunks attempted"
+    block = new[1]["content"]
+    assert "msg0 payload" in block, "chunk 1 raw turns kept"
+    assert "msg6 payload" in block, "chunk 2 raw turns kept"
+    assert "summarization failed" in block
+    assert "dense summary" not in block
+    assert "msg12 payload" not in block, "recent kept as messages, not re-rawed"
+    assert new[0] is hist[0] and new[-6:] == hist[-6:]
+    assert stats["chunks"] == 2 and stats["compacted"] is True and stats["ok"]
+test("Compact: chunk error fallback keeps raw turns, never silent loss",
+     test_compact_error_fallback)
+
+
+def test_compact_target_retry():
+    hist = [{"role": "system", "content": "S" * 50}]
+    for i in range(10):
+        hist.append({"role": "user", "content": f"old {i}: " + "a" * 190})
+    for i in range(6):
+        hist.append({"role": "user", "content": f"recent {i}: " + "b" * 2990})
+    calls = []
+
+    def model_fn(messages):
+        calls.append(messages)
+        return "dense summary"
+
+    new, stats = compact_mod.compact_history(hist, model_fn, window=5500)
+    assert len(calls) == 4, f"2 + retry 2 = 4 calls: {len(calls)}"
+    assert "terse" in calls[2][0]["content"], "retry uses tighter summaries"
+    assert len(new) == 6, "system + compressed block + keep_recent=4"
+    assert new[-4:] == hist[-4:], "keep_recent reduced to 4 on retry"
+    assert stats["chunks"] == 2 and stats["compacted"] is True
+    assert stats["ok"] is True and stats["ratio"] < 1
+test("Compact: still-over-target retries once with tighter summaries",
+     test_compact_target_retry)
+
+
+def test_compact_max_chunks():
+    hist = [{"role": "user", "content": "turn " + "p" * 216} for _ in range(22)]
+    calls = []
+
+    def model_fn(messages):
+        calls.append(messages)
+        return "s"
+
+    new, stats = compact_mod.compact_history(hist, model_fn, window=1300,
+                                             keep_recent=2, chunk_size=4,
+                                             max_chunks=3)
+    assert len(calls) == 3, f"merged to max_chunks=3 calls: {len(calls)}"
+    assert stats["chunks"] == 3 and stats["ok"]
+test("Compact: max_chunks merges chunks to cap summarization calls",
+     test_compact_max_chunks)
+
+
+def test_compact_file_notes():
+    hist = [{"role": "system", "content": "SYS"}]
+    for i in range(14):
+        hist.append({"role": "user",
+                     "content": f"edit plugins/llm/costs.py item {i}"})
+    calls = []
+
+    def model_fn(messages):
+        calls.append(messages)
+        return "s"
+
+    new, stats = compact_mod.compact_history(hist, model_fn, window=50, target=3.0)
+    block = new[1]["content"]
+    assert "Files touched: plugins/llm/costs.py" in block, block
+    assert stats["chunks"] == 2 and stats["ok"]
+test("Compact: compressed block carries per-file notes", test_compact_file_notes)
+
+
+def test_compact_recommend():
+    import unittest.mock as mock
+    assert compact_mod.compression_model_recommend() == \
+        "huihui-ai/Huihui-MoE-1B-A0.6B"
+    with mock.patch.object(compact_mod.ui, "is_tty", return_value=False):
+        line = compact_mod.recommend_line()
+    assert "huihui-ai/Huihui-MoE-1B-A0.6B" in line
+    assert "compression" in line and "\033[" not in line
+    with mock.patch.object(compact_mod.ui, "is_tty", return_value=True):
+        assert "\033[93m" in compact_mod.recommend_line(), "yellow on TTY"
+test("Compact: compression model recommendation + yellow line",
+     test_compact_recommend)
+
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
