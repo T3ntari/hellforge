@@ -130,9 +130,9 @@
       "verification_domain": "www.oshonet.in"
     },
     "llm": {
-      "version": "1.8.0",
+      "version": "1.9.0",
       "description": "LLM copilot \u2014 OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation",
-      "verification": "73da3a2363a3254d7bbe0547909e48d430293a47b3f8c41bc4381135e9126fc7"
+      "verification": "8b2620319da99b394399cd4345986f42dbd13e1ba9eb44cbf980148bd6cca20d"
     }
   },
   "_description": "Default package list for E Language by Tentari. All plugins backed up in embedded_plugins/*.json and integrity-verified via SHA-256 verification codes. Remote verification: www.oshonet.in",
