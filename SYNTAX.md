@@ -1,6 +1,6 @@
-# HELLFORGE v1.0.0.0 ALPHA — E Language — Complete Tutorial & Reference
+# HELLFORGE v0.1.0-beta — E Language — Complete Tutorial & Reference
 
-> **CORE-EXPANSION: REGAS | Signed: TENTARI | [GitHub](https://github.com/tentari/hellforge) | [Docs](doc/index.md)**
+> **Open Source (MIT) | [GitHub](https://github.com/tentari/hellforge) | [Docs](doc/index.md)**
 >
 > **For everyone — no piano experience needed, no programming experience needed.**
 > This guide teaches you music + the E language from absolute zero to advanced composer.
@@ -2873,7 +2873,7 @@ Settings are saved to `audio_config.json` and persist across sessions.
 
 ## 45. HELLFORGE Ecosystem & CORE-EXPANSION: REGAS
 
-**HELLFORGE** is the v1.0.0.0 ALPHA release of the E language ecosystem, combining the E compiler with GPU shader math, Tensor Core acceleration, OpenGL/Vulkan graphics APIs, and 3D spatial audio.
+**HELLFORGE** is the v0.1.0-beta release of the E language ecosystem, combining the E compiler with GPU shader math, Tensor Core acceleration, OpenGL/Vulkan graphics APIs, and 3D spatial audio.
 
 ### Trust System
 
