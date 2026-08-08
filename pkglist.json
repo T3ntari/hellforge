@@ -6,7 +6,7 @@
   "plugins": {
     "talisman": {
       "version": "1.0.0",
-      "description": "Audio culling & occlusion engine. Psychoacoustic masking \u00e2\u20ac\u201d removes inaudible notes on compile. Run 'talisman on|off'.",
+      "description": "Audio culling & occlusion engine. Psychoacoustic masking â€” removes inaudible notes on compile. Run 'talisman on|off'.",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,culling,occlusion,masking,privacy",
       "url": "file://plugins/talisman/__init__.py",
@@ -38,7 +38,7 @@
       "dependencies": [
         "lupa"
       ],
-      "verification": "78537252cf72c67a58a90ed04c4bb8cc8d7515221c91a49a230c9377ba48f10a",
+      "verification": "d8f3945ffc4f07badd749be70a518f39b2fb0a3552b4244840491109220a4a43",
       "verification_domain": "www.oshonet.in"
     },
     "portbaby": {
@@ -109,7 +109,7 @@
     },
     "launcher": {
       "version": "1.0.0.0",
-      "description": "New window launching & process management \u2014 open, player, shell, log, ps, kill",
+      "description": "New window launching & process management — open, player, shell, log, ps, kill",
       "author": "REGAS",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,launcher,window,process,detach",
       "url": "file://plugins/launcher/__init__.py",
