@@ -111,3 +111,19 @@ resumable via `ai resume`/`ai sessions`. The `subagents` plan key runs up
 to 4 focused child requests in parallel; daughter-agent verification
 (`ai agents on`, `ai agent-model`) reviews changes read-only before each
 next step.
+## HELL'S CODE TUI
+
+`ai agent` may run as a full-screen curses TUI. The agent logic lives on a
+background thread and talks to the frame loop through a Bridge:
+
+- `stream(text)` — streamed reply chunks (displayed live)
+- `feed(text, color)` — a full line in the feed (colors: accent/accent2/
+  text/dim/ok/err/warn)
+- `box_open(title)` / `box_line(text)` / `box_close(summary)` — bordered
+  sub-window for command output (never spam the main feed)
+- `ask(question, detail, choices)` — gatekeeper modal; BLOCKS the agent
+  thread until the user answers y/n/e
+- `status(text)` / `thinking(on)` — status bar and thinking indicator
+
+When running headless (no TTY), the same flows run through the classic line
+REPL — behavior parity is required, not just the TUI path.

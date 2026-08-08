@@ -206,3 +206,21 @@ Copilot policies you must honor when acting as (or through) this agent:
 5. Update docs (README.md / SYNTAX.md / doc/) if user-visible behavior
    changed. Never fabricate file contents or claim things that don't exist —
    read the actual files.
+
+## The HELL'S CODE TUI (plugins/llm/tui.py)
+
+The copilot can run as a full-screen curses TUI (`ai agent` auto-detects a
+real terminal; `--tui`/`--no-tui` force the choice). Architecture:
+
+- **Screen buffer + frame loop**: the TUI owns the terminal grid; the agent
+  logic runs on a background thread and communicates through a `Bridge`
+  event queue (`stream`, `feed`, `box_open/line/close`, `ask`, `status`).
+- **Raw keys**: typing, arrows, Tab completion, Ctrl+C/V/X clipboard, PgUp/
+  PgDn scrollback, KEY_RESIZE reflow.
+- **Sub-windows**: command output streams into a bordered box, never the
+  main feed. **Gatekeeper**: approvals render as a modal box; the agent
+  thread blocks on `bridge.ask()` until Y/N/E is pressed.
+- **Fallback**: `tui_available()` False (non-TTY, no curses) → the classic
+  line REPL (`_agent_cc`) is used instead. Never regress the fallback.
+- Theme tokens are relative (hellfire|claude palettes) — never hardcode RGB
+  in agent code; use the palette.

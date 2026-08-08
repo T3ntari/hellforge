@@ -146,6 +146,19 @@ warnings. Convert old sources with:
 The repo ships an LLM copilot (`ai.py` / `ai` command — `ai fix`, `ai agent`,
 `ai chat`). AI agent instructions live in **AGENTS.md / RULES.md / TODO.md**.
 
+## HELL'S CODE TUI
+
+`ai agent` runs a full-screen curses TUI (HELL'S CODE branding, fiery red
+theme, `- T3ntari`) when a real terminal is available: a screen buffer with
+instant repaints, a 10fps frame loop, raw-mode key input, live streaming
+replies, bordered sub-windows for command output, a gatekeeper modal for
+approvals (Y/N/E), scrollback with PgUp/PgDn, and terminal-resize awareness.
+
+- Launch: `.venv/bin/python run.py ai agent` (auto-detects), `--tui` to force,
+  `--no-tui` for the classic line REPL
+- Theme: `ai config llm_tui_theme=hellfire|claude`
+- Keys: Ctrl+C copy line · Ctrl+V paste · Ctrl+X cut · Tab complete · PgUp/PgDn scroll · /exit leave
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Contributions welcome; see
