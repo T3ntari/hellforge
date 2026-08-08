@@ -3,6 +3,15 @@
 Thanks for contributing! HELLFORGE is an open-source DSL for piano music
 composition. This file covers how to contribute code, tests, and docs.
 
+## For AI agents
+
+This repo ships AI agent instructions for agents working in the codebase
+(opencode, Claude Code, the built-in `ai` copilot). If you are an AI agent,
+read **AGENTS.md** (authoritative instructions), **RULES.md** (hard rules),
+and **TODO.md** (the agent-managed checklist) before starting. Never rewrite
+existing files whole-file, never delete without confirmation, and always run
+the relevant tests after `.py` changes.
+
 ## Ground rules
 
 - **v5 is canonical.** v5 = v4 + piano performance features + the v5 statement set

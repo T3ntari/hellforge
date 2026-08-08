@@ -862,6 +862,79 @@ def test_agent_repl_multi_turn():
     assert open(os.path.join(d, "x.py")).read() == "v = 2\n"
 test("Agent repl: multi-turn edits then conversation", test_agent_repl_multi_turn)
 
+
+# ── todo.py: agent-managed TODO checklist ──
+
+def test_todo_load_parses():
+    from plugins.llm import todo
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "TODO.md")
+    with open(p, "w") as f:
+        f.write("# TODO\n\n## Milestones\n- [ ] item one\n- [x] item two\n")
+    data = todo.load_todo(p)
+    assert [i["text"] for i in data["items"]] == ["item one", "item two"]
+    assert data["items"][0]["status"] == "open"
+    assert data["items"][1]["status"] == "done"
+    assert data["sections"] == ["Milestones"]
+test("Todo: load parses checkboxes + sections", test_todo_load_parses)
+
+
+def test_todo_load_missing():
+    from plugins.llm import todo
+    data = todo.load_todo(os.path.join(tempfile.mkdtemp(), "nope.md"))
+    assert data == {"items": [], "sections": []}
+test("Todo: missing file loads empty", test_todo_load_missing)
+
+
+def test_todo_apply_add_mark_dedupe():
+    from plugins.llm import todo
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "TODO.md")
+    with open(p, "w") as f:
+        f.write("## Beta\n- [ ] item one\n- [x] item two\n")
+    added, marked = todo.apply_todo([
+        {"item": "item one", "status": "done"},
+        {"item": "brand new", "status": "open"},
+        {"item": "ITEM ONE", "status": "open"},
+        {"item": "done-but-absent", "status": "done"},
+    ], p)
+    assert added == 2 and marked == 1
+    text = open(p).read()
+    assert "- [x] item one" in text
+    assert "- [ ] brand new" in text
+    assert "- [x] done-but-absent" in text
+    assert text.count("item one") == 1, "duplicate item must not be appended"
+    assert "## Beta" in text, "section header must survive"
+    assert text.endswith("\n")
+test("Todo: apply adds/marks/dedupes and persists", test_todo_apply_add_mark_dedupe)
+
+
+def test_todo_render_roundtrip():
+    from plugins.llm import todo
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "TODO.md")
+    todo.apply_todo([{"item": "alpha", "status": "open"},
+                     {"item": "beta", "status": "done"}], p)
+    text = todo.render_todo(p)
+    assert "- [ ] alpha" in text and "- [x] beta" in text
+    p2 = os.path.join(d, "TODO2.md")
+    with open(p2, "w") as f:
+        f.write(text)
+    data = todo.load_todo(p2)
+    assert [i["text"] for i in data["items"]] == ["alpha", "beta"]
+    assert data["items"][1]["status"] == "done"
+    assert todo.render_todo(os.path.join(d, "missing.md")) == ""
+test("Todo: render round-trips through load", test_todo_render_roundtrip)
+
+
+def test_agents_md_present():
+    p = os.path.join(ROOT, "AGENTS.md")
+    assert os.path.exists(p), "AGENTS.md must exist at project root"
+    text = open(p, encoding="utf-8").read()
+    assert "v5" in text and "line-range" in text
+test("Docs: AGENTS.md covers v5 + line-range", test_agents_md_present)
+
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:

@@ -7,6 +7,20 @@ E is a domain-specific language for piano music composition. The system includes
 - **ai.py** — AI agent with Plan/Build modes (Ollama local + Cloud API)
 - **tools/** — MIDI ↔ E converters (midi2e.py, e2midi.py)
 
+## AI Agent Instructions
+
+AI agents (and humans who want the same discipline) MUST read these files at
+the project root before working in the repo:
+
+- **AGENTS.md** — the authoritative, heavy instructions: what HELLFORGE/E is,
+  the v5 language, test conventions, code conventions, copilot behavior,
+  git workflow.
+- **RULES.md** — the condensed hard rules for AI agents (edit-not-rewrite,
+  deletes need confirmation, safe commands, tests after `.py` changes,
+  update TODO.md).
+- **TODO.md** — the live agent-managed checklist; add your task as `- [ ]`
+  items and check them off as you complete them.
+
 ## Quick Start
 
 ```powershell
