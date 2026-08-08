@@ -862,7 +862,6 @@ def test_agent_repl_multi_turn():
     assert open(os.path.join(d, "x.py")).read() == "v = 2\n"
 test("Agent repl: multi-turn edits then conversation", test_agent_repl_multi_turn)
 
-<<<<<<< HEAD
 
 # ── UI rendering (plugins/llm/ui.py) ──
 
