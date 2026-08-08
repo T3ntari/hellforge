@@ -2181,6 +2181,139 @@ def test_scale_override():
 test("Scale: override forces profile, auto clears", test_scale_override)
 
 
+# ── T20: file upload (/$path) + embeddings (upload.py, embeddings.py) ──
+
+import re as _re
+
+from plugins.llm import upload as up
+from plugins.llm import embeddings as emb
+
+
+def _write_upload(d, name, data):
+    p = os.path.join(d, name)
+    with open(p, "wb") as f:
+        f.write(data)
+    return p
+
+
+def test_upload_classify_all_kinds():
+    d = tempfile.mkdtemp()
+    img = _write_upload(d, "pic.PNG", b"\x89PNG\r\n\x1a\nfake")
+    assert up.classify(img) == {"kind": "image", "mime": "image/png", "size": 12}
+    jpg = _write_upload(d, "a.jpeg", b"jpeg")
+    assert up.classify(jpg)["kind"] == "image" and up.classify(jpg)["mime"] == "image/jpeg"
+    py = _write_upload(d, "m.py", b"x = 1\n")
+    assert up.classify(py) == {"kind": "code", "mime": "text/plain", "size": 6}
+    md = _write_upload(d, "r.md", b"# hi\n")
+    assert up.classify(md)["kind"] == "code"
+    txt = _write_upload(d, "n.txt", b"hello\n")
+    assert up.classify(txt) == {"kind": "text", "mime": "text/plain", "size": 6}
+    csv = _write_upload(d, "t.csv", b"a,b\n")
+    assert up.classify(csv)["kind"] == "text"
+    blob = _write_upload(d, "data.bin", b"\x01\x02\x03")
+    assert up.classify(blob) == {"kind": "binary", "mime": "application/octet-stream", "size": 3}
+    noext = _write_upload(d, "unknown.kind", b"zzz")
+    assert up.classify(noext)["kind"] == "binary"
+test("Upload: classify image/text/code/binary by extension", test_upload_classify_all_kinds)
+
+
+def test_upload_null_byte_binary():
+    d = tempfile.mkdtemp()
+    sneaky = _write_upload(d, "evil.py", b"print('x')\n\x00\x00hidden")
+    assert up.classify(sneaky)["kind"] == "binary", "null byte must override .py"
+    assert up.load_upload(sneaky)["binary_note"] == "file is binary — not viewable"
+    clean = _write_upload(d, "ok.py", b"print('x')\n")
+    assert up.classify(clean)["kind"] == "code"
+test("Upload: null bytes force binary classification", test_upload_null_byte_binary)
+
+
+def test_upload_image_note():
+    d = tempfile.mkdtemp()
+    img = _write_upload(d, "shot.png", b"\x89PNG\r\n\x1a\nbytes")
+    u = up.load_upload(img)
+    assert u["content"] == ""
+    assert "image attached (vision model can view)" in u["binary_note"]
+    assert u["path"] in u["binary_note"]
+    assert u["kind"] == "image" and u["size"] == 13
+test("Upload: image loads empty content + vision note", test_upload_image_note)
+
+
+def test_upload_code_content():
+    d = tempfile.mkdtemp()
+    p = _write_upload(d, "m.py", b"def f():\n    return 1\n")
+    u = up.load_upload(p)
+    assert u["content"] == "def f():\n    return 1\n"
+    assert u["binary_note"] is None
+    assert u["kind"] == "code"
+test("Upload: code content loads full text", test_upload_code_content)
+
+
+def test_upload_cap_truncation():
+    d = tempfile.mkdtemp()
+    p = _write_upload(d, "big.log", ("line of text\n" * 5000).encode())
+    u = up.load_upload(p, cap=100)
+    assert len(u["content"]) == 100
+    assert "truncated to 100 chars" in u["binary_note"]
+    assert up.load_upload(p, cap=10**9)["binary_note"] is None, "no truncation under cap"
+test("Upload: content capped at cap chars with truncation note", test_upload_cap_truncation)
+
+
+def test_upload_format_block():
+    d = tempfile.mkdtemp()
+    p = _write_upload(d, "m.py", b"x = 1\n")
+    block = up.format_for_context(up.load_upload(p))
+    assert block.startswith(f"--- uploaded {p} (code, 6) ---")
+    assert "x = 1" in block
+    img = _write_upload(d, "i.png", b"\x89PNG\r\n\x1a\nxx")
+    block2 = up.format_for_context(up.load_upload(img))
+    assert "vision model can view" in block2 and "image" in block2.split("\n")[0]
+test("Upload: format_for_context bounded block", test_upload_format_block)
+
+
+def test_upload_regex():
+    m = _re.match(up.UPLOAD_RE, "/$samples/v5-current/demo.e")
+    assert m and m.group(1) == "samples/v5-current/demo.e"
+    assert _re.match(up.UPLOAD_RE, "$/samples/demo.e") is None
+    assert _re.match(up.UPLOAD_RE, "samples/demo.e") is None
+    assert _re.match(up.UPLOAD_RE, "/$") is None, "needs 1+ path chars"
+test("Upload: UPLOAD_RE matches /$path lines", test_upload_regex)
+
+
+def test_emb_models_fallback_list():
+    models = emb.embedding_models()
+    assert models == ["nomic-embed-text", "all-minilm", "mxbai-embed-large", "bge-m3"]
+    assert len(models) == 4
+    assert emb.embedding_models() is not emb.EMBEDDING_MODELS, "caller gets a copy"
+test("Embeddings: fallback list has the 4 named models", test_emb_models_fallback_list)
+
+
+def test_emb_cosine():
+    assert emb.cosine([1.0, 0.0], [1.0, 0.0]) == 1.0
+    assert abs(emb.cosine([1.0, 0.0], [0.0, 1.0])) < 1e-12
+    assert emb.cosine([0.0, 0.0], [1.0, 0.0]) == 0.0, "zero vector scores 0"
+    assert abs(emb.cosine([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]) -
+               (32.0 / (14.0 ** 0.5 * 77.0 ** 0.5))) < 1e-12
+test("Embeddings: cosine identical=1, orthogonal=0, zero-safe", test_emb_cosine)
+
+
+def test_emb_ollama_error_path():
+    vec, err = emb.ollama_embed("hello", base="http://127.0.0.1:1", timeout=1)
+    assert vec is None and err, "unreachable server must error"
+    assert emb.embed_available("http://127.0.0.1:1", timeout=1) is False
+test("Embeddings: unreachable server errors, embed_available False",
+     test_emb_ollama_error_path)
+
+
+def test_emb_recommend_lines():
+    line = emb.recommend_embed_line()
+    assert "nomic-embed-text" in line and "bge-m3" in line
+    assert "ollama pull nomic-embed-text" in line
+    cline = emb.recommend_compression_line()
+    assert "huihui-ai/Huihui-MoE-1B-A0.6B" in cline
+    assert "6GB" in cline and "compression" in cline
+test("Embeddings: recommend lines name the models", test_emb_recommend_lines)
+
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
