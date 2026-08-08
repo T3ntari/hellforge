@@ -39,7 +39,12 @@ def conv2d(image, kernel, engine=None):
             pass
     if _HAS_NUMPY:
         from scipy import signal
-        return signal.convolve2d(np.array(image), np.array(kernel), mode='same').tolist()
+        img_a = np.asarray(image, dtype=float)
+        ker_a = np.asarray(kernel, dtype=float)
+        ph, pw = ker_a.shape[0] // 2, ker_a.shape[1] // 2
+        padded = np.pad(img_a, ((ph, ph), (pw, pw)))
+        full = signal.correlate2d(padded, ker_a, mode="valid")
+        return full[:img_a.shape[0], :img_a.shape[1]].tolist()
     return _cpu_conv2d(image, kernel)
 
 
@@ -103,9 +108,9 @@ def _gpu_matmul(A, B, engine):
 _MATMUL_GLSL = """#version 430 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(std430, binding = 0) buffer A { float a[]; };
-layout(std430, binding = 1) buffer B { float b[]; };
-layout(std430, binding = 2) buffer C { float c[]; };
+layout(std430, binding = 0) buffer A {{ float a[]; }};
+layout(std430, binding = 1) buffer B {{ float b[]; }};
+layout(std430, binding = 2) buffer C {{ float c[]; }};
 
 void main() {{
     uint row = gl_GlobalInvocationID.x;
@@ -120,9 +125,83 @@ void main() {{
 """
 
 
+_CONV2D_GLSL = """#version 430 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, binding = 0) buffer Img {{ float img[]; }};
+layout(std430, binding = 1) buffer Ker {{ float ker[]; }};
+layout(std430, binding = 2) buffer Out {{ float out[]; }};
+
+void main() {{
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    if (x >= {W} || y >= {H}) return;
+    float s = 0.0;
+    for (uint ki = 0; ki < {KH}; ki++) {{
+        int ii = int(y) + int(ki) - {PH};
+        for (uint kj = 0; kj < {KW}; kj++) {{
+            int jj = int(x) + int(kj) - {PW};
+            if (ii >= 0 && ii < {H} && jj >= 0 && jj < {W}) {{
+                s += img[ii * {W} + jj] * ker[ki * {KW} + kj];
+            }}
+        }}
+    }}
+    out[y * {W} + x] = s;
+}}
+"""
+
+
 def _gpu_conv2d(image, kernel, engine):
-    """GPU 2D convolution placeholder — uses CPU fallback."""
-    return _cpu_conv2d(image, kernel)
+    """GPU 2D convolution via compute shader (same-shape zero-padded)."""
+    import ctypes
+    from OpenGL.GL import (
+        glUseProgram, glGenBuffers, glBindBuffer, glBufferData,
+        glGetBufferSubData, glDispatchCompute, glMemoryBarrier,
+        glFinish, glBindBufferBase, glDeleteBuffers,
+        GL_SHADER_STORAGE_BUFFER, GL_ALL_BARRIER_BITS,
+    )
+
+    image = np.array(image, dtype=np.float32)
+    kernel = np.array(kernel, dtype=np.float32)
+    H, W = image.shape
+    KH, KW = kernel.shape
+    pad_h, pad_w = KH // 2, KW // 2
+
+    source = _CONV2D_GLSL.format(H=H, W=W, KH=KH, KW=KW, PH=pad_h, PW=pad_w)
+    from .shader_compiler import compile_glsl
+    program, err = compile_glsl(source)
+    if program is None:
+        return _cpu_conv2d(image.tolist(), kernel.tolist())
+
+    glUseProgram(program)
+
+    buf_img = glGenBuffers(1)
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buf_img)
+    glBufferData(GL_SHADER_STORAGE_BUFFER, image.nbytes, image.ctypes.data, GL_MAP_READ_BIT)
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, buf_img)
+
+    buf_ker = glGenBuffers(1)
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buf_ker)
+    glBufferData(GL_SHADER_STORAGE_BUFFER, kernel.nbytes, kernel.ctypes.data, GL_MAP_READ_BIT)
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buf_ker)
+
+    out = np.zeros((H, W), dtype=np.float32)
+    buf_out = glGenBuffers(1)
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buf_out)
+    glBufferData(GL_SHADER_STORAGE_BUFFER, out.nbytes, None, GL_MAP_READ_BIT)
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, buf_out)
+
+    glDispatchCompute((W + 7) // 8, (H + 7) // 8, 1)
+    glMemoryBarrier(GL_ALL_BARRIER_BITS)
+    glFinish()
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buf_out)
+    glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, out.nbytes, out.ctypes.data)
+
+    for b in (buf_img, buf_ker, buf_out):
+        glDeleteBuffers(1, [b])
+
+    return out.tolist()
 
 
 def _cpu_matmul(A, B):

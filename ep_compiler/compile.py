@@ -100,6 +100,17 @@ def preprocess_math(lines, scope=None):
     return result
 
 
+_DEPRECATION_WARNED = set()
+
+
+def _warn_deprecated(version):
+    """Print the v1/v2 deprecation banner once per version per process."""
+    if version in _DEPRECATION_WARNED:
+        return
+    _DEPRECATION_WARNED.add(version)
+    print(f"WARNING: {version} syntax is deprecated — use v4 (convert with 'run.py compile --to v4')")
+
+
 def detect_syntax_version(text):
     text = strip_comments(text)
     if re.search(r'#compiler\s+\w+\s*:', text, re.I):
@@ -138,11 +149,16 @@ def detect_syntax_version(text):
     v2_patterns = [r'\[Section:', r'Key:\s*\w+_\w+', r'play\(', r'arpeggio\(', r'chromatic_run\(']
     for p in v2_patterns:
         if re.search(p, text, re.I):
+            _warn_deprecated('v2')
             return 'v2'
     if re.search(r'^T\d+\s+N\d+', text, re.MULTILINE):
+        _warn_deprecated('v1')
         return 'v1_machine'
     if re.search(r'play\s+(note|chord)', text, re.I):
+        _warn_deprecated('v1')
         return 'v1_human'
+    if text.strip():
+        _warn_deprecated('v1')
     return 'v1'
 
 

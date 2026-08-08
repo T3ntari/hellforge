@@ -7,7 +7,7 @@ Core primitives:
 - Pipeline: compute/graphics pipelines, shader modules, descriptor sets, push constants
 - Buffer: device-local, host-visible, staging, buffer barriers
 - Command: command pools, command buffers, submit, sync (semaphores, fences)
-- RayTrace: VK_KHR_ray_tracing pipelines, BLAS/TLAS, SBT
+- RayTrace: VK_KHR_ray_tracing capability detection
 - Upscale: custom temporal upscaling via compute shaders + Tensor Cores
 
 Third-party modders build game engines ON TOP of this API.
@@ -98,7 +98,7 @@ def _cmd(args):
         print(f"    - PipelineAPI: compute/graphics pipelines, descriptors")
         print(f"    - BufferAPI: device buffers, staging, barriers")
         print(f"    - CommandAPI: pools, buffers, submit, sync")
-        print(f"    - RayTraceAPI: VK_KHR_ray_tracing, BLAS/TLAS, SBT")
+        print(f"    - RayTraceAPI: VK_KHR_ray_tracing capability probe")
         print(f"    - UpscaleAPI: temporal upscaling via compute + Tensor Cores")
         if _api and _api.available:
             print(f"  API status: active — build your engine on top!")

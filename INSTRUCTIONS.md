@@ -134,7 +134,6 @@ piano-dsl/
 │   ├── e2midi.py         E to MIDI
 │   └── dl_fluidsynth.py  SoundFont setup
 ├── examples/             Example .e files
-├── ai_generated/         AI output directory
 └── projects/             Multi-file projects
 ```
 

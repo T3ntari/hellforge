@@ -66,7 +66,6 @@ HELLFORGE v1.0.0.0 ALPHA/
 ├── ep_core.py               ← Core system (signing, REGAS, encryption, GC, plugins)
 ├── ep_audio.py              ← Audio driver system
 ├── ep_pkg.py                ← Package manager (mods, plugins, registry)
-├── ep_v3.py                 ← Legacy v3 preprocessor
 ├── ai.py                    ← AI composition assistant
 ├── SYNTAX.md                ← This document
 ├── doc/                     ← Full HELLFORGE wiki (60+ pages)
@@ -4773,9 +4772,6 @@ py -3 tools/midi2e.py song.mid -o song.e
 
 #### `py -3 tools/dl_fluidsynth.py`
 Download and install FluidSynth soundfont for higher-quality audio rendering.
-
-#### `py -3 tools/v2compiler.py <file>`
-Legacy v2 compiler for old semantic syntax files. Included for backward compatibility.
 
 ---
 
