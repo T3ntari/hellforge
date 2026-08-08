@@ -3192,6 +3192,52 @@ def test_stream_command_blocked():
         "rm x", tempfile.mkdtemp(), lambda ln: got.append(ln))
     assert res["blocked"] and got == []
 test("Stream: blocked command never emits lines", test_stream_command_blocked)
+# ── Anthropic theme ──
+
+def test_theme_plain_off_tty():
+    from plugins.llm import theme
+    for fn in (theme.cream, theme.violet, theme.sage, theme.terra,
+               theme.amber, theme.dim):
+        assert "\033[" not in fn("x")
+    b = theme.box("hi")
+    assert "+" in b or "┌" in b
+test("Theme: plain text off-TTY", test_theme_plain_off_tty)
+
+
+def test_theme_colors_on_tty():
+    import unittest.mock as mock
+    from plugins.llm import theme
+    with mock.patch.object(theme, "_tty", return_value=True), \
+         mock.patch.object(theme, "_truecolor", return_value=True):
+        assert "\033[" in theme.violet("x")
+        assert "\033[" in theme.sage("x")
+        assert "\033[" in theme.terra("x")
+test("Theme: 24-bit ANSI on truecolor TTY", test_theme_colors_on_tty)
+
+
+def test_theme_splash():
+    from plugins.llm import theme
+    s = theme.splash("0.1.10-beta", "main", "Tools: Active", "gemma3:4b")
+    assert "0.1.10-beta" in s and "Git: main" in s
+    assert "model: gemma3:4b" in s
+    assert "ready" in s
+    assert len(theme.HELLFORGE_ART.strip().splitlines()) >= 5
+test("Theme: splash has header/subtitle/ready", test_theme_splash)
+
+
+def test_theme_footer():
+    from plugins.llm import theme
+    f = theme.footer()
+    assert "Ctrl+C" in f and "Ctrl+V" in f and "/exit" in f
+test("Theme: footer shortcut bar", test_theme_footer)
+
+
+def test_theme_permission_box():
+    from plugins.llm import theme
+    pb = theme.permission_box("approve file modification to x.py?", "3 lines changed")
+    assert "[Y]es" in pb and "[N]o" in pb and "[E]dit block" in pb
+    assert "approve file modification" in pb
+test("Theme: permission boundary box with choice array", test_theme_permission_box)
 
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
