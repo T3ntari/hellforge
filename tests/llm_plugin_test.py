@@ -236,6 +236,170 @@ def test_agentic_flow_mocked():
 test("Agentic: mocked model reply applies", test_agentic_flow_mocked)
 
 
+
+
+# ── diffview rendering ──
+
+def test_diffview_markers():
+    from plugins.llm import diffview as dv
+    out = dv.render_unified("a = 1\nb = 2\n", "a = 1\nb = 3\nc = 4\n")
+    text = "\n".join(out)
+    assert any("+ b = 3" in ln or "+" in ln for ln in out), out
+    assert any("- b = 2" in ln or "-" in ln for ln in out), out
+    assert any("+ c = 4" in ln for ln in out)
+    # colors stripped off-TTY
+    assert "\033[" not in text
+test("Diff: unified shows +/- lines, no ANSI off-TTY", test_diffview_markers)
+
+
+def test_diffview_stat():
+    from plugins.llm import diffview as dv
+    adds, dels = dv.diff_stat("x\n", "x\ny\nz\n")
+    assert adds == 2 and dels == 0
+    adds, dels = dv.diff_stat("a\nb\n", "a\n")
+    assert adds == 0 and dels == 1
+test("Diff: +adds/-dels stat counts", test_diffview_stat)
+
+
+def test_diffview_read_range():
+    from plugins.llm import diffview as dv
+    lines = [f"line {i}" for i in range(10)]
+    out = dv.render_read(lines, 3, 5)
+    assert len(out) == 3 and "line 2" in out[0] and "line 4" in out[-1]
+test("Diff: read range renders line numbers", test_diffview_read_range)
+
+
+# ── interactive apply (mocked input) ──
+
+class _FakeTTYStdin:
+    def __init__(self, answers):
+        self._answers = list(answers)
+    def isatty(self):
+        return True
+    def readline(self):
+        return ""
+    def __iter__(self):
+        return iter(self._answers)
+    def __next__(self):
+        if not self._answers:
+            raise StopIteration
+        return self._answers.pop(0)
+
+
+def _patch_stdin(answers):
+    import unittest.mock as mock
+    import builtins
+    return mock.patch("builtins.input", side_effect=lambda *a: _FakeTTYStdin(answers).__next__()), \
+           mock.patch.object(sys, "stdin", _FakeTTYStdin(answers))
+
+
+def _tty_ctx():
+    import unittest.mock as mock
+    from plugins.llm import agent as ag
+    return mock.patch.object(ag, "_is_tty", return_value=True)
+
+
+def test_interactive_yes_applies():
+    import unittest.mock as mock
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    plan = {"summary": "add", "files": [
+        {"path": "x.py", "action": "write", "content": "print(1)\n"}]}
+    with _tty_ctx(), mock.patch("builtins.input", return_value="y"):
+        applied, skipped, msgs = ag.interactive_apply(plan, d)
+    assert applied == 1 and not skipped
+    assert open(os.path.join(d, "x.py")).read() == "print(1)\n"
+test("Interactive: y applies write", test_interactive_yes_applies)
+
+
+def test_interactive_no_skips():
+    import unittest.mock as mock
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    plan = {"summary": "add", "files": [
+        {"path": "x.py", "action": "write", "content": "x"}]}
+    with _tty_ctx(), mock.patch("builtins.input", return_value="n"):
+        applied, skipped, _ = ag.interactive_apply(plan, d)
+    assert applied == 0 and skipped and "declined" in skipped[0][1]
+    assert not os.path.exists(os.path.join(d, "x.py"))
+test("Interactive: n skips write", test_interactive_no_skips)
+
+
+def test_interactive_read_no_change():
+    import unittest.mock as mock
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("a\nb\nc\n")
+    plan = {"summary": "read", "files": [{"path": "x.py", "action": "read"}]}
+    with mock.patch("builtins.input", return_value="y"):
+        applied, skipped, msgs = ag.interactive_apply(plan, d)
+    assert applied == 0 and not skipped
+    assert any("read" in m for m in msgs)
+test("Interactive: read displays without changes", test_interactive_read_no_change)
+
+
+def test_interactive_delete_asks_even_after_all():
+    import unittest.mock as mock
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    keep = os.path.join(d, "keep.py")
+    open(keep, "w").write("x")
+    plan = {"summary": "multi", "files": [
+        {"path": "w.py", "action": "write", "content": "new"},
+        {"path": "keep.py", "action": "delete"}]}
+    # 'a' accepts the write, but delete must STILL be individually asked
+    with _tty_ctx(), mock.patch("builtins.input", side_effect=["a", "n"]):
+        applied, skipped, _ = ag.interactive_apply(plan, d)
+    assert applied == 1  # write applied via 'a'
+    assert skipped and "delete declined" in skipped[0][1]
+    assert os.path.exists(keep)
+    assert os.path.exists(os.path.join(d, "w.py"))
+test("Interactive: 'a' never auto-confirms deletes", test_interactive_delete_asks_even_after_all)
+
+
+def test_interactive_quit():
+    import unittest.mock as mock
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    plan = {"summary": "two", "files": [
+        {"path": "a.py", "action": "write", "content": "1"},
+        {"path": "b.py", "action": "write", "content": "2"}]}
+    with _tty_ctx(), mock.patch("builtins.input", side_effect=["y", "q"]):
+        applied, skipped, _ = ag.interactive_apply(plan, d)
+    assert applied == 1
+    assert os.path.exists(os.path.join(d, "a.py"))
+    assert not os.path.exists(os.path.join(d, "b.py"))
+test("Interactive: q quits after current file", test_interactive_quit)
+
+
+def test_interactive_edit_diff_applies():
+    import unittest.mock as mock
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("v = 1\n")
+    plan = {"summary": "edit", "files": [
+        {"path": "x.py", "action": "edit",
+         "edits": [{"search": "v = 1", "replace": "v = 2"}]}]}
+    with _tty_ctx(), mock.patch("builtins.input", return_value="y"):
+        applied, _, msgs = ag.interactive_apply(plan, d)
+    assert applied == 1
+    assert "v = 2" in open(os.path.join(d, "x.py")).read()
+    assert any("+1" in m and "-1" in m for m in msgs)
+test("Interactive: edit shows diff stat and applies", test_interactive_edit_diff_applies)
+
+
+def test_context_builds():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "notes.txt"), "w") as f:
+        f.write("hello world\n" * 3)
+    ctx = llm._build_context(d, "fix notes.txt")
+    assert "notes.txt" in ctx and "hello world" in ctx
+test("Context: named file included in prompt context", test_context_builds)
+
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:

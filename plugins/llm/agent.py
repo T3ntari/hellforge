@@ -33,6 +33,7 @@ When the user asks you to MAKE CHANGES, respond with ONLY a JSON object
 
 Rules:
 - paths are ALWAYS relative to the project root, use forward slashes.
+- "read" displays a file's content to the user (no changes are made).
 - "edit" uses exact search/replace pairs; each search must match exactly once
   in the file as it currently exists; keep pairs small and precise.
 - "write" replaces the entire file; include the complete content.
@@ -89,6 +90,179 @@ def parse_plan(text):
         if isinstance(plan, dict) and "files" in plan:
             return plan
     return None
+
+
+def interactive_apply(plan, project_dir, confirm_write=True):
+    """Review-and-apply loop used by `ai fix` / `ai plugin`.
+    For every proposed change, renders a colored unified diff (or line-
+    numbered read) and prompts:
+        y = apply this change     n = skip
+        v = show the whole file   a = apply all remaining writes/edits
+        q = quit applying
+    Deletes are ALWAYS confirmed individually (never via 'a', refused off-TTY).
+    Returns (applied, skipped, messages)."""
+    from . import diffview as dv
+
+    project_dir = Path(project_dir).resolve()
+    files = plan.get("files") or []
+    applied, skipped, msgs = 0, [], []
+    auto_accept = False
+
+    def _confirm(prompt):
+        if not _is_tty():
+            return False, False, False, False  # (yes, view, quit, all)
+        try:
+            ans = input(f"  {prompt} ").strip().lower()
+        except EOFError:
+            return False, False, True, False
+        if ans in ("y", "yes"):
+            return True, False, False, False
+        if ans in ("v", "view"):
+            return False, True, False, False
+        if ans in ("a", "all"):
+            return True, False, False, True
+        if ans in ("q", "quit"):
+            return False, False, True, False
+        return False, False, False, False
+
+    for f in files:
+        rel = f.get("path", "")
+        action = f.get("action", "edit")
+        try:
+            target = safe_path(project_dir, rel)
+        except ValueError as e:
+            skipped.append((rel, str(e)))
+            continue
+
+        # ── read: display only ──
+        if action == "read":
+            if not target.exists():
+                skipped.append((rel, "file does not exist"))
+                continue
+            lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+            lo = max(1, int(f.get("start", 1)))
+            hi = int(f.get("end", len(lines))) if f.get("end") else len(lines)
+            print(f"  {dv.yellow(rel)}  {dv.dim(f'Read ({lo}-{min(hi, len(lines))})')} "
+                  f"{dv.dim(f'[{len(lines)} lines]')}")
+            for line in dv.render_read(lines, lo, hi):
+                print(f"  {line}")
+            msgs.append(f"  read {rel} (shown, no changes)")
+            continue
+
+        # ── delete: always individually confirmed ──
+        if action == "delete":
+            if not target.exists():
+                skipped.append((rel, "file does not exist"))
+                continue
+            head = target.read_text(encoding="utf-8", errors="replace").splitlines()[:12]
+            print(f"  {dv.red(f'DELETE {rel}')}")
+            for line in dv.render_read(head):
+                print(f"  {dv.red(line)}")
+            if not _is_tty():
+                skipped.append((rel, "delete declined (not a terminal)"))
+                continue
+            try:
+                ans = input(f"  Delete {rel}? [y/N] ").strip().lower()
+            except EOFError:
+                ans = "n"
+            if ans != "y":
+                skipped.append((rel, "delete declined"))
+                continue
+            if target.is_dir():
+                import shutil
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+            applied += 1
+            msgs.append(f"  deleted {rel}")
+            continue
+
+        # ── write / edit: diff preview + confirm ──
+        if action == "write":
+            new_text = f.get("content", "")
+            old_text = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+            dv.print_diff(old_text, new_text, rel)
+            if auto_accept:
+                ok = True
+            elif not confirm_write:
+                ok = True
+            else:
+                ok, view, quit_, all_ = _confirm(f"Apply {action.upper()} {rel}? [y/n/v/a/q]")
+                if all_:
+                    auto_accept = True
+                if quit_:
+                    skipped.append((rel, "quit"))
+                    break
+                if view:
+                    full = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+                    for line in dv.render_read(new_text.splitlines() if not full else full.splitlines()):
+                        print(f"  {line}")
+                    ok, _, quit_, _ = _confirm(f"Apply {action.upper()} {rel}? [y/n/a/q]")
+                    if quit_:
+                        skipped.append((rel, "quit"))
+                        break
+            if not ok:
+                skipped.append((rel, "declined"))
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(new_text, encoding="utf-8")
+            applied += 1
+            msgs.append(f"  wrote {rel}")
+            continue
+
+        # edit
+        if not target.exists():
+            skipped.append((rel, "file does not exist"))
+            continue
+        old_text = target.read_text(encoding="utf-8", errors="replace")
+        new_text = old_text
+        edits = f.get("edits") or []
+        if not edits:
+            skipped.append((rel, "no edits provided"))
+            continue
+        failed = False
+        for pair in edits:
+            search, replace = pair.get("search", ""), pair.get("replace", "")
+            if not search:
+                skipped.append((rel, "empty search block"))
+                failed = True
+                break
+            if new_text.count(search) != 1:
+                skipped.append((rel, f"search block not unique/missing "
+                                     f"({new_text.count(search)} matches)"))
+                failed = True
+                break
+            new_text = new_text.replace(search, replace)
+        if failed:
+            continue
+        dv.print_diff(old_text, new_text, rel)
+        if auto_accept:
+            ok = True
+        elif not confirm_write:
+            ok = True
+        else:
+            ok, view, quit_, all_ = _confirm(f"Apply EDIT {rel}? [y/n/v/a/q]")
+            if all_:
+                auto_accept = True
+            if quit_:
+                skipped.append((rel, "quit"))
+                break
+            if view:
+                for line in dv.render_read(new_text.splitlines()):
+                    print(f"  {line}")
+                ok, _, quit_, _ = _confirm(f"Apply EDIT {rel}? [y/n/a/q]")
+                if quit_:
+                    skipped.append((rel, "quit"))
+                    break
+        if not ok:
+            skipped.append((rel, "declined"))
+            continue
+        target.write_text(new_text, encoding="utf-8")
+        applied += 1
+        adds, dels = dv.diff_stat(old_text, new_text)
+        msgs.append(f"  edited {rel} {dv.green(f'+{adds}')} {dv.red(f'-{dels}')}")
+
+    return applied, skipped, msgs
 
 
 def apply_plan(plan, project_dir, confirm_write=True):

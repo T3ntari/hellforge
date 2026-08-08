@@ -161,6 +161,29 @@ def _cmd(args, api):
     elif sub == "chat":
         _chat_repl(state)
 
+    elif sub == "read":
+        if not rest:
+            print("  Usage: ai read <file> [start [end]]")
+            return
+        rel = rest[0]
+        start = int(rest[1]) if len(rest) > 1 else 1
+        end = int(rest[2]) if len(rest) > 2 else None
+        try:
+            from . import agent as ag
+            from . import diffview as dv
+            target = ag.safe_path(api.project_dir, rel)
+        except ValueError as e:
+            print(f"  {e}")
+            return
+        if not target.exists():
+            print(f"  Not found: {rel}")
+            return
+        lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+        end = min(end or len(lines), len(lines))
+        print(f"  {dv.yellow(rel)}  {dv.dim(f'Read ({start}-{end}) [{len(lines)} lines]')}")
+        for line in dv.render_read(lines, start, end):
+            print(f"  {line}")
+
     elif sub in ("fix", "edit", "agent"):
         issue = " ".join([a for a in rest if a != "--yes"])
         auto_apply = "--yes" in rest
@@ -283,8 +306,10 @@ def _chat_repl(state):
 
 
 def _agentic(api, state, request, plugin=False, confirm_write=True):
-    """Agentic mode: ask the model for a JSON plan, confirm, apply."""
+    """Agentic mode: ask the model for a JSON plan, review the colored diff
+    per file (y/n/v/a/q), apply. Deletes always confirmed individually."""
     project_dir = api.project_dir
+    context = _build_context(project_dir, request)
     if plugin:
         prompt = (
             f"Create a HELLFORGE plugin that: {request}\n\n"
@@ -296,8 +321,9 @@ def _agentic(api, state, request, plugin=False, confirm_write=True):
     else:
         prompt = (
             f"The user reports this issue / wants this change: {request}\n\n"
+            f"Project context:\n{context}\n\n"
             "Inspect the project and propose the minimal set of changes. "
-            "Respond with the JSON plan format."
+            "Respond with the JSON plan format (read/write/edit/delete)."
         )
     messages = [
         {"role": "system", "content": llm_agent.SYSTEM_PROMPT},
@@ -316,13 +342,51 @@ def _agentic(api, state, request, plugin=False, confirm_write=True):
     print(f"  Plan: {plan.get('summary', 'no summary')}")
     for f in plan.get("files", []):
         print(f"    {f.get('action', '?'):6s} {f.get('path', '?')}")
-    applied, skipped, msgs = llm_agent.apply_plan(plan, project_dir,
-                                                  confirm_write=confirm_write)
+    from . import diffview as dv
+    applied, skipped, msgs = llm_agent.interactive_apply(
+        plan, project_dir, confirm_write=confirm_write)
     for m in msgs:
         print(m)
     for rel, why in skipped:
-        print(f"  skipped {rel}: {why}")
+        print(f"  {dv.dim('skipped')} {rel}: {why}")
     print(f"  Applied {applied} change(s).")
+
+
+def _build_context(project_dir, request, max_files=3, max_lines=200, budget=60000):
+    """Compact project context for agentic prompts: a top-level tree plus the
+    contents of files the request explicitly names (up to budget bytes)."""
+    import re
+    from pathlib import Path
+    root = Path(project_dir)
+    parts = []
+    try:
+        entries = sorted(
+            p.name + ("/" if p.is_dir() else "") for p in root.iterdir()
+            if not p.name.startswith(".") and p.name not in (".venv", "node_modules")
+        )
+        parts.append("Project root: " + ", ".join(entries[:60]))
+    except Exception:
+        pass
+    named = re.findall(r"[\w./\\-]+\.\w+", request)
+    used = 0
+    for rel in named[:max_files]:
+        rel = rel.replace("\\", "/").lstrip("./")
+        try:
+            target = (root / rel).resolve()
+            if not str(target).startswith(str(root)) or not target.is_file():
+                continue
+            text = target.read_text(encoding="utf-8", errors="replace")
+            if len(text) > budget:
+                text = text[:budget] + "\n... (truncated)"
+            lines = text.splitlines()[:max_lines]
+            parts.append(f"--- {rel} ({target.stat().st_size} bytes) ---\n"
+                         + "\n".join(lines))
+            used += len(text)
+            if used > budget:
+                break
+        except Exception:
+            continue
+    return "\n".join(parts) or "(empty)"
 
 
 def register(api):
