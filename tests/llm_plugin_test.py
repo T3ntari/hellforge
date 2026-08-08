@@ -862,6 +862,73 @@ def test_agent_repl_multi_turn():
     assert open(os.path.join(d, "x.py")).read() == "v = 2\n"
 test("Agent repl: multi-turn edits then conversation", test_agent_repl_multi_turn)
 
+
+# ── UI rendering (plugins/llm/ui.py) ──
+
+def test_ui_colors_stripped_off_tty():
+    from plugins.llm import ui
+    state = {"model": "gemma3:4b", "provider": "ollama (local)", "multi_agent": "on"}
+    for s in (ui.banner(state), ui.prompt("you"), ui.prompt("agent"),
+              ui.prompt("app"), ui.chip("plan", "plan"),
+              ui.result_line("ok", "ok"), ui.diff_header("x.py", 1, 2),
+              ui.wrap("a\nb\nc")):
+        assert "\033[" not in s, repr(s)
+test("UI: colors stripped off-TTY", test_ui_colors_stripped_off_tty)
+
+
+def test_ui_banner_contains_model():
+    from plugins.llm import ui
+    b = ui.banner({"model": "gemma3:4b", "provider": "ollama (local)",
+                   "multi_agent": "on"})
+    assert "gemma3:4b" in b
+    assert "ollama (local)" in b
+    assert "multi-agent: on" in b
+    assert "HELLFORGE COPILOT" in b
+test("UI: banner contains model/provider/multi-agent", test_ui_banner_contains_model)
+
+
+def test_ui_chip_plan():
+    from plugins.llm import ui
+    assert "[plan]" in ui.chip("plan", "plan")
+    assert " [edit] " in ui.chip("edit", "edit")
+    assert " [error] " in ui.chip("error", "error")
+test("UI: chip renders [plan]/[edit]/[error]", test_ui_chip_plan)
+
+
+def test_ui_wrap_indents():
+    from plugins.llm import ui
+    assert ui.wrap("a\nb\nc", "  ") == "  a\n  b\n  c"
+    assert ui.wrap("single") == "  single"
+test("UI: wrap indents every line", test_ui_wrap_indents)
+
+
+def test_ui_section_line():
+    import io
+    import contextlib
+    from plugins.llm import ui
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        ui.section("Plan")
+    line = buf.getvalue().strip()
+    assert len(line) >= 30, line
+    assert "\033[" not in line, "section must be plain off-TTY"
+test("UI: section prints a line ≥ 30 chars", test_ui_section_line)
+
+
+def test_ui_prompt_colored_on_tty():
+    import unittest.mock as mock
+    from plugins.llm import ui
+    with mock.patch.object(ui, "is_tty", return_value=True):
+        you = ui.prompt("you")
+        agent = ui.prompt("agent")
+        app = ui.prompt("app")
+    assert "you> " in you and "\033[" in you, you
+    assert "agent> " in agent and "\033[" in agent, agent
+    assert "app> " in app and "\033[" in app, app
+    assert "\033[0m" in you, "prompt must reset color"
+test("UI: prompt returns 'you> ' colored on fake-TTY", test_ui_prompt_colored_on_tty)
+
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
