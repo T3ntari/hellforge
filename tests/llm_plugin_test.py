@@ -1171,6 +1171,397 @@ def test_plan_tests_key_flow():
     assert tr.plan_test_targets(plan3) is None
 test("Integration: plan tests key targets", test_plan_tests_key_flow)
 
+
+# ── T10: Claude-Code REPL frontend (ui.py extensions + plugins/llm/repl.py) ──
+
+def test_ui_status_bar_off_tty():
+    import unittest.mock as mock
+    from plugins.llm import ui
+    state = {"model": "gemma3:4b", "mode": "auto"}
+    stats = {"tokens": 12400, "cost": 0.0012, "context": 0.08}
+    with mock.patch.object(ui, "is_tty", return_value=False):
+        bar = ui.status_bar(state, stats)
+    assert "\033[" not in bar, repr(bar)
+    assert "model: gemma3:4b" in bar
+    assert "mode: auto" in bar
+    assert "tokens: 12.4k" in bar
+    assert "cost: $0.0012" in bar
+    assert "context: 8%" in bar
+test("UI: status_bar renders model/mode/tokens/cost/context off-TTY", test_ui_status_bar_off_tty)
+
+
+def test_ui_status_bar_fallback():
+    import unittest.mock as mock
+    from plugins.llm import ui
+    with mock.patch.object(ui, "is_tty", return_value=False):
+        bar = ui.status_bar({"model": None}, {})
+    assert "model: ?" in bar
+    assert "tokens: 0" in bar
+    assert "cost: $0.0000" in bar
+    assert "context: ?" in bar
+    assert "\033[" not in bar
+test("UI: status_bar falls back to ?/zeros when stats missing", test_ui_status_bar_fallback)
+
+
+def test_ui_status_bar_tty():
+    import unittest.mock as mock
+    from plugins.llm import ui
+    with mock.patch.object(ui, "is_tty", return_value=True):
+        bar = ui.status_bar({"model": "m", "mode": "plan"}, {"tokens": 500})
+    assert "\033[" in bar and "tokens: 500" in bar and "mode: plan" in bar
+test("UI: status bar colored on fake-TTY", test_ui_status_bar_tty)
+
+
+def test_ui_mode_badge():
+    import unittest.mock as mock
+    from plugins.llm import ui
+    with mock.patch.object(ui, "is_tty", return_value=True):
+        plan, auto, ask = ui.mode_badge("plan"), ui.mode_badge("auto"), ui.mode_badge("ask")
+    assert "(plan)" in plan and "\033[93m" in plan, plan      # yellow
+    assert "(auto)" in auto and "\033[92m" in auto, auto      # green
+    assert "(ask)" in ask and "\033[96m" in ask, ask          # cyan
+    with mock.patch.object(ui, "is_tty", return_value=False):
+        assert ui.mode_badge("plan") == "(plan)"
+        assert ui.mode_badge("auto") == "(auto)"
+        assert ui.mode_badge("ask") == "(ask)"
+test("UI: mode_badge colors (plan=Y / auto=G / ask=C), plain off-TTY", test_ui_mode_badge)
+
+
+def test_ui_tool_call():
+    import io
+    import contextlib
+    import unittest.mock as mock
+    from plugins.llm import ui
+    buf = io.StringIO()
+    with mock.patch.object(ui, "is_tty", return_value=False), \
+         contextlib.redirect_stdout(buf):
+        ui.tool_call("plan", "eshell.py")
+        ui.tool_call("edit")
+    text = buf.getvalue()
+    assert "\u273b" in text and "plan" in text and "eshell.py" in text, text
+    assert "\u25cf" in text and "edit" in text, text
+    assert "\033[" not in text
+    buf = io.StringIO()
+    with mock.patch.object(ui, "is_tty", return_value=True), \
+         contextlib.redirect_stdout(buf):
+        ui.tool_call("plan", "eshell.py")
+    assert "\033[" in buf.getvalue()
+test("UI: tool_call prints '✻ plan · eshell.py' / '● edit'", test_ui_tool_call)
+
+
+def test_ui_result_block():
+    import io
+    import contextlib
+    import unittest.mock as mock
+    from plugins.llm import ui
+    buf = io.StringIO()
+    with mock.patch.object(ui, "is_tty", return_value=False), \
+         contextlib.redirect_stdout(buf):
+        ui.result_block("line one\nline two")
+    text = buf.getvalue()
+    assert "line one" in text and "  line two" in text, text
+    assert "\u2500" in text, "opening + closing rule must be printed"
+    assert text.count("\u2500") >= 2
+test("ui.result_block prints rule, indented body, closing rule", test_ui_result_block)
+
+
+def test_ui_error_warn_lines():
+    import io
+    import contextlib
+    import unittest.mock as mock
+    from plugins.llm import ui
+    buf = io.StringIO()
+    with mock.patch.object(ui, "is_tty", return_value=False), \
+         contextlib.redirect_stdout(buf):
+        ui.error_line("boom")
+        ui.warn_line("careful")
+    text = buf.getvalue()
+    assert "boom" in text and "careful" in text and "\033[" not in text
+    buf = io.StringIO()
+    with mock.patch.object(ui, "is_tty", return_value=True), \
+         contextlib.redirect_stdout(buf):
+        ui.error_line("boom")
+        ui.warn_line("careful")
+    text = buf.getvalue()
+    assert "\033[91m" in text and "\033[93m" in text
+test("ui.error_line red / warn_line yellow, plain off-TTY", test_ui_error_warn_lines)
+
+
+def test_ui_elapsed():
+    import unittest.mock as mock
+    from plugins.llm import ui
+    with mock.patch.object(ui, "is_tty", return_value=False):
+        assert ui.elapsed(0.84) == "(0.8s)"
+        assert ui.elapsed(3) == "(3.0s)"
+    with mock.patch.object(ui, "is_tty", return_value=True):
+        tag = ui.elapsed(0.8)
+    assert "(0.8s)" in tag and "\033[" in tag
+test("ui.elapsed dim '(0.8s)' tag", test_ui_elapsed)
+
+
+class _ReplAPI:
+    """Minimal fake API for REPL tests."""
+    def __init__(self, project_dir):
+        self.project_dir = project_dir
+
+
+class _ReplHarness:
+    """Drives plugins/llm/repl.py: TTY stdin + scripted input lines."""
+    def __init__(self, lines):
+        self._lines = iter(lines)
+        self.prompts = []
+
+    class _TTYStdin:
+        def isatty(self):
+            return True
+
+    def fake_input(self, prompt=""):
+        self.prompts.append(prompt)
+        try:
+            return next(self._lines)
+        except StopIteration:
+            raise EOFError
+
+    def __enter__(self):
+        import unittest.mock as mock
+        self._stdin_patch = mock.patch.object(sys, "stdin", self._TTYStdin())
+        self._input_patch = mock.patch("builtins.input", side_effect=self.fake_input)
+        self._stdin_patch.start()
+        self._input_patch.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._input_patch.stop()
+        self._stdin_patch.stop()
+        return False
+
+
+def test_repl_help_and_unknown():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    buf = io.StringIO()
+    with _ReplHarness(["/help", "/bogus", "/exit"]), contextlib.redirect_stdout(buf):
+        mode = repl.run_repl(_ReplAPI(d), {"model": "m"}, lambda m: ("ok", None),
+                             lambda *a, **k: (0, [], []))
+    out = buf.getvalue()
+    assert "/mode" in out and "/compact" in out and "/memory" in out
+    assert "unknown command /bogus" in out
+    assert mode == "ask", "default mode is ask"
+test("Repl: /help lists commands, /bogus warns", test_repl_help_and_unknown)
+
+
+def test_repl_mode_switch():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    buf = io.StringIO()
+    state = {"model": "m"}
+    with _ReplHarness(["/mode auto", "/mode nope", "/mode", "/exit"]), \
+         contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), state, lambda m: ("ok", None),
+                      lambda *a, **k: (0, [], []))
+    assert state["mode"] == "auto"
+    out = buf.getvalue()
+    assert "mode \u2192 auto" in out
+    assert "unknown mode 'nope'" in out
+    assert "mode is auto" in out
+test("Repl: /mode switches + validates, persists in state", test_repl_mode_switch)
+
+
+def test_repl_prompt_badges():
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    state = {"model": "m"}
+    harness = _ReplHarness(["/mode plan", "hello", "/mode auto", "hi", "/exit"])
+    with harness:
+        repl.run_repl(_ReplAPI(d), state, lambda m: ("ok", None),
+                      lambda *a, **k: (0, [], []))
+    assert "(ask)" in harness.prompts[0] and "you> " in harness.prompts[0]
+    assert "(plan)" in harness.prompts[1], "badge must update after /mode plan"
+    assert "(auto)" in harness.prompts[3]
+test("Repl: prompt badge switches with /mode", test_repl_prompt_badges)
+
+
+def test_repl_clear_resets_history():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    calls = []
+
+    def get_request(messages):
+        calls.append(list(messages))
+        return ("plain ok", None)
+
+    buf = io.StringIO()
+    with _ReplHarness(["/clear", "first", "/clear", "world", "/exit"]), \
+         contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "ask"}, get_request,
+                      lambda *a, **k: (0, [], []), system_prompt="sys")
+    assert len(calls) == 2
+    assert len(calls[0]) == 2 and calls[0][0]["content"] == "sys"
+    assert len(calls[0]) == 2 and calls[0][0]["content"] == "sys"
+    assert calls[0][1]["content"] == "first"
+    assert len(calls[1]) == 2
+    assert calls[1][1]["content"] == "world"
+    assert all("first" not in m.get("content", "") for m in calls[1])
+test("Repl: /clear drops prior turns, keeps system prompt", test_repl_clear_resets_history)
+
+
+def test_repl_plan_mode_blocks_apply():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    plan = _json.dumps({"summary": "add file", "files": [
+        {"path": "gen.txt", "action": "write", "content": "preview\n"}]})
+    apply_calls = []
+
+    def apply_fn(*a, **k):
+        apply_calls.append(1)
+        return (0, [], [])
+
+    buf = io.StringIO()
+    with _ReplHarness(["make a file", "/exit"]), contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "plan"}, lambda m: (plan, None),
+                      apply_fn, system_prompt="sys")
+    out = buf.getvalue()
+    assert apply_calls == [], "plan mode must never call apply_plan_fn"
+    assert not os.path.exists(os.path.join(d, "gen.txt"))
+    assert "gen.txt" in out and "mode is plan" in out
+test("Repl: plan mode previews diff, never applies", test_repl_plan_mode_blocks_apply)
+
+
+def test_repl_auto_mode_applies():
+    import io
+    import contextlib
+    from plugins.llm import agent as llm_agent
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    plan = _json.dumps({"summary": "add file", "files": [
+        {"path": "auto.txt", "action": "write", "content": "auto\n"}]})
+    seen = []
+
+    def apply_fn(plan, project_dir, confirm_write=True):
+        seen.append(confirm_write)
+        return llm_agent.apply_plan(plan, project_dir, confirm_write=confirm_write)
+
+    buf = io.StringIO()
+    with _ReplHarness(["make it", "/exit"]), contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "auto"}, lambda m: (plan, None),
+                      apply_fn, system_prompt="sys")
+    assert seen == [False], "auto mode must pass confirm_write=False"
+    assert open(os.path.join(d, "auto.txt")).read() == "auto\n"
+test("Repl: auto mode applies without prompting (confirm_write=False)",
+     test_repl_auto_mode_applies)
+
+
+def test_repl_ask_mode_confirm_true():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    plan = _json.dumps({"files": [{"path": "x.txt", "action": "write", "content": "x"}]})
+    seen = []
+    dummy_apply = lambda plan, pd, confirm_write=True: \
+        (seen.append(confirm_write) or (0, [], []))
+    buf = io.StringIO()
+    with _ReplHarness(["do it", "/exit"]), contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "ask"}, lambda m: (plan, None),
+                      dummy_apply, system_prompt="sys")
+    assert seen == [True], seen
+test("Repl: ask mode passes confirm_write=True", test_repl_ask_mode_confirm_true)
+
+
+def test_repl_status_bar_after_turns():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    buf = io.StringIO()
+    with _ReplHarness(["hello", "/status", "/exit"]), contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "ask", "model": "gemma3:4b"},
+                      lambda m: ("greetings", None), lambda *a, **k: (0, [], []),
+                      system_prompt="sys")
+    out = buf.getvalue()
+    assert "model: gemma3:4b" in out
+    assert "mode: ask" in out
+    assert "tokens:" in out and "cost: $" in out and "context:" in out
+test("Repl: status bar printed after a turn + /status", test_repl_status_bar_after_turns)
+
+
+def test_repl_compact_summarizes():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    big = "x" * 65000
+    calls = []
+
+    def get_request(messages):
+        calls.append(list(messages))
+        if any(m.get("content", "").startswith("Compress the conversation")
+               for m in messages):
+            return ("COMPACTED SUMMARY TEXT", None)
+        return ("plain ok", None)
+
+    buf = io.StringIO()
+    with _ReplHarness([big, "/compact", "after compact", "/exit"]), \
+         contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "ask"}, get_request,
+                      lambda *a, **k: (0, [], []), system_prompt="sys",
+                      context_builder=lambda r: "")
+    out = buf.getvalue()
+    assert "compacted" in out and "summary" in out, out
+    assert len(calls) == 3
+    assert any("COMPACTED SUMMARY TEXT" in m.get("content", "") for m in calls[2])
+    assert not any(len(m.get("content", "")) > 100000 for m in calls[2]), \
+        "the giant turn must be replaced by the summary + recent turns"
+test("Repl: /compact summarizes long history via the model", test_repl_compact_summarizes)
+
+
+def test_repl_memory_command():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "AGENTS.md"), "w") as f:
+        f.write("# AGENTS\nv5 canonical\n")
+    with open(os.path.join(d, "TODO.md"), "w") as f:
+        f.write("# TODO\n- [ ] wire tests\n")
+    buf = io.StringIO()
+    with _ReplHarness(["/memory", "/exit"]), contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "ask"}, lambda m: ("ok", None),
+                      lambda *a, **k: (0, [], []))
+    out = buf.getvalue()
+    assert "AGENTS.md" in out and "v5 canonical" in out
+    assert "TODO.md" in out and "wire tests" in out
+    assert "RULES.md" in out and "not present" in out
+test("Repl: /memory prints AGENTS/RULES/TODO heads", test_repl_memory_command)
+
+
+def test_repl_lazy_feature_fallbacks():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    buf = io.StringIO()
+    with _ReplHarness(["/cost", "/review", "/model", "/exit"]), \
+         contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "ask"}, lambda m: ("ok", None),
+                      lambda *a, **k: (0, [], []))
+    out = buf.getvalue()
+    assert out
+    missing = [s for s in ("cost tracking", "review not installed", "model picker")
+               if s not in out]
+    assert not missing, f"fallback hints missing: {missing}; got: {out[:400]}"
+    assert "traceback" not in out.lower()
+    assert "NotImplementedError" not in out
+test("Repl: missing costs/review/select fall back to hints", test_repl_lazy_feature_fallbacks)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
