@@ -82,10 +82,13 @@ def safe_path(project_dir, rel_path):
 
 def parse_plan(text):
     """Parse the model's JSON plan from its reply. Tolerates markdown fences,
-    leading/trailing prose and reasoning text. Returns dict or None."""
+    leading/trailing prose, reasoning text and Python raw-string prefixes
+    (r\"...\") in JSON values. Returns dict or None."""
     s = (text or "").strip()
     s = re.sub(r"^```(?:json)?\s*", "", s, flags=re.I)
     s = re.sub(r"\s*```$", "", s)
+    s = re.sub(r'\br"', '"', s)  # r"..." → "..." (common small-model slip)
+    s = re.sub(r"\br'", "'", s)
     start = s.find("{")
     if start < 0:
         return None

@@ -28,6 +28,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 VERSION = "1.0.0"
 author = "HELLFORGE"
@@ -604,6 +605,67 @@ def _chat_repl(state, api=None):
         pass
 
 
+ENTRY_POINTS = {"eshell", "run", "ep", "player", "eshell.py", "run.py",
+                "ep.py", "player.py"}
+
+
+def _reproduce(project_dir, request, timeout=25):
+    """Reproduce the reported failure: when the request names an entry-point
+    script, run it with the mentioned subcommand (or 'help') and capture the
+    real exit code + output for the model. Returns prompt block or ''."""
+    import re as _re
+    from . import exec as safe_exec
+    files = _re.findall(r"([\w./\\-]+\.py)", request)
+    bare = _re.findall(r"(?<![\w./])([A-Za-z_]\w*)(?![\w.])", request)
+    entry = None
+    is_known_entry = False
+    for f in files:
+        if f.split("/")[-1] in ENTRY_POINTS:
+            entry, is_known_entry = f, True
+            break
+    if entry is None:
+        for b in bare:
+            if b in ENTRY_POINTS:
+                entry, is_known_entry = b + ".py", True
+                break
+    if entry is None and files:
+        # any named .py that looks like a script (has __main__ guard)
+        cand = files[0].replace("\\", "/").lstrip("./")
+        try:
+            target = (Path(project_dir) / cand).resolve()
+            if str(target).startswith(str(Path(project_dir).resolve())) and target.is_file():
+                src = target.read_text(encoding="utf-8", errors="replace")
+                if "__main__" in src:
+                    entry = cand
+        except Exception:
+            pass
+    if entry is None:
+        return ""
+    # subcommand words mentioned in the request
+    sub_words = ["compile", "play", "lint", "check", "help", "stats", "tracks",
+                 "inspect", "transpose", "tempo", "merge", "new", "convert",
+                 "generate", "encrypt", "info"]
+    if is_known_entry:
+        sub = next((w for w in sub_words if _re.search(rf"\b{w}\b", request, _re.I)), "help")
+    else:
+        sub = None
+    cmd = f"{sys.executable} {entry}" + (f" {sub}" if sub else "")
+    res = safe_exec.run_command(cmd, project_dir, timeout=timeout)
+    out = res.get("output", "")
+    if res.get("blocked"):
+        return ""
+    status = f"exit {res.get('exit_code')}" if res.get("exit_code") is not None else "no output"
+    line = f"Reproduction: `{cmd}` → {status} ({res.get('duration_s', 0)}s)"
+    if res.get("ok"):
+        line += " (ran without error)"
+        snippet = out[:800]
+        if snippet:
+            line += f"\nOutput:\n{snippet}"
+    else:
+        line += f"\nERROR OUTPUT:\n{out[:2000]}"
+    return line
+
+
 def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5):
     """Multi-step agentic loop: plan → review → apply → (commands) →
     verify → repeat until the model says done. Deletes always confirmed."""
@@ -634,11 +696,13 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
                 "(action write)."
             )
         else:
+            repro = _reproduce(project_dir, request)
             prompt = (
                 f"The user reports this issue / wants this change: {request}\n\n"
                 f"Project context:\n{_build_context(project_dir, request)}\n\n"
                 f"{indexer.index_to_text(idx, max_files=30)}\n\n"
-                "You may use 'read' to inspect files, 'commands' to run checks "
+                + (f"{repro}\n\n" if repro else "")
+                + "You may use 'read' to inspect files, 'commands' to run checks "
                 "(e.g. python tests/...), and write/edit to change files. "
                 "When the change is complete (or on the final step), reply "
                 '{"done": true, "summary": "..."}. Respond with the JSON plan format.'
@@ -789,10 +853,13 @@ def _daughter_verify(api, state, request, project_dir):
         state["model"] = old_state["model"]
 
 
-def _build_context(project_dir, request, max_files=3, max_lines=200, budget=60000):
+def _build_context(project_dir, request, max_files=3, max_lines=500, budget=60000,
+                   keyword_radius=25):
     """Compact project context for agentic prompts: a top-level tree plus the
     contents of files the request explicitly names (up to budget bytes).
-    Names may include or omit the extension ('eshell' → eshell.py)."""
+    Names may include or omit the extension ('eshell' → eshell.py).
+    KEYWORD-AWARE: for each matched file, lines around request keywords are
+    included (not just the file head) so the model sees the RELEVANT code."""
     import re
     from pathlib import Path
     root = Path(project_dir)
@@ -806,32 +873,86 @@ def _build_context(project_dir, request, max_files=3, max_lines=200, budget=6000
     except Exception:
         pass
     named = re.findall(r"[\w./\\-]+\.\w+", request)
-    # Also match bare names without extension (e.g. 'eshell' → eshell.py)
     bare = re.findall(r"(?<![\w./])([A-Za-z_][\w-]*)(?![\w.])", request)
     bare = [b for b in bare if b.lower() not in ("fix", "bug", "add", "the", "and",
                                                  "with", "that", "this", "run",
-                                                 "file", "code", "issue")]
+                                                 "file", "code", "issue", "why",
+                                                 "find", "still", "it", "on")]
+    # keyword set from the request for in-file search
+    stop = set(("fix", "bug", "add", "the", "and", "with", "that", "this", "run",
+                "file", "code", "issue", "why", "find", "still", "it", "on",
+                "for", "in", "to", "a", "of", "exits", "exit"))
+    keywords = [w.lower() for w in re.findall(r"[A-Za-z_]\w*", request)
+                if w.lower() not in stop and len(w) >= 3]
+
+    def _keyword_windows(text, max_windows=10, per_kw=4):
+        """Windows around keyword matches. Matches per keyword are spread
+        evenly across the file (first/middle/last) so early noise (like the
+        file name appearing in its own header) never starves the tail."""
+        lines = text.splitlines()
+        windows, seen_spans = [], []
+        for kw in keywords:
+            hits = [m for m in re.finditer(re.escape(kw), text, re.IGNORECASE)]
+            if not hits:
+                continue
+            picks = {hits[0]}
+            if len(hits) > 1:
+                picks.add(hits[-1])
+            if len(hits) > 2:
+                picks.add(hits[len(hits) // 2])
+            for m in sorted(picks, key=lambda x: x.start()):
+                ln = text[:m.start()].count("\n")
+                lo, hi = max(0, ln - keyword_radius), min(len(lines), ln + keyword_radius + 1)
+                if any(lo < s[1] and hi > s[0] for s in seen_spans):
+                    continue
+                seen_spans.append((lo, hi))
+                windows.append((lo, hi))
+                if len(windows) >= max_windows:
+                    return windows
+        return windows
+
+    def _include(target, rel):
+        text = target.read_text(encoding="utf-8", errors="replace")
+        size = target.stat().st_size
+        lines = text.splitlines()
+        # Keyword windows (context around matches) — prioritized.
+        windows = _keyword_windows(text)
+        merged = []
+        for lo, hi in sorted(windows):
+            if merged and lo <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+            else:
+                merged.append((lo, hi))
+        if not merged:
+            merged = [(0, min(len(lines), 40))]
+        block_lines = []
+        for lo, hi in merged[:12]:
+            for i in range(lo, hi):
+                block_lines.append(f"{i + 1:5} | {lines[i]}")
+            if hi < len(lines):
+                block_lines.append(f"      | ...")
+        body = "\n".join(block_lines[:max_lines])
+        if len(block_lines) > max_lines:
+            body += f"\n      | ... ({len(block_lines) - max_lines} more context lines)"
+        parts.append(f"--- {rel} ({size} bytes) [lines around: "
+                     f"{', '.join(f'{a + 1}-{b}' for a, b in merged[:4])}] ---\n{body}")
+        return len(body)
+
     used = 0
+    seen_files = set()
     for rel in named[:max_files]:
         rel = rel.replace("\\", "/").lstrip("./")
         try:
             target = (root / rel).resolve()
             if not str(target).startswith(str(root)) or not target.is_file():
                 continue
-            text = target.read_text(encoding="utf-8", errors="replace")
-            if len(text) > budget:
-                text = text[:budget] + "\n... (truncated)"
-            lines = text.splitlines()[:max_lines]
-            parts.append(f"--- {rel} ({target.stat().st_size} bytes) ---\n"
-                         + "\n".join(lines))
-            used += len(text)
+            used += _include(target, rel)
+            seen_files.add(str(target))
             if used > budget:
                 break
         except Exception:
             continue
     if len(bare) > 0 and used < budget:
-        # Resolve bare names against the file tree (first match by stem)
-        import fnmatch
         all_files = []
         for p in root.rglob("*"):
             if p.is_file() and not any(part.startswith(".") or part in
@@ -841,19 +962,12 @@ def _build_context(project_dir, request, max_files=3, max_lines=200, budget=6000
         for name in bare[:max_files]:
             matches = [p for p in all_files
                        if p.stem.lower() == name.lower() or p.name.lower() == name.lower()]
-            if not matches:
+            if not matches or str(matches[0]) in seen_files:
                 continue
             target = matches[0]
             rel = str(target.relative_to(root))
-            text = target.read_text(encoding="utf-8", errors="replace")
-            if len(text) > budget:
-                text = text[:budget] + "\n... (truncated)"
-            lines = text.splitlines()[:max_lines]
-            if f"--- {rel} " in "\n".join(parts):
-                continue
-            parts.append(f"--- {rel} ({target.stat().st_size} bytes) ---\n"
-                         + "\n".join(lines))
-            used += len(text)
+            used += _include(target, rel)
+            seen_files.add(str(target))
             if used > budget:
                 break
     return "\n".join(parts) or "(empty)"

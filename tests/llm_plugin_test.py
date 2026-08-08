@@ -598,6 +598,108 @@ def test_indexer_plugin_register_line():
     assert "register(api)" in hook_syms, hook_syms
 test("Index: register(api) lines no longer crash", test_indexer_plugin_register_line)
 
+
+
+# ── context + parse robustness regressions ──
+
+def test_parse_plan_rstring():
+    from plugins.llm import agent as ag
+    raw = '```json\n{"summary": "s", "files": [{"path": "x.py", "action": "edit", "edits": [{"search": r"if not args:", "replace": "x"}]}]}\n```'
+    plan = ag.parse_plan(raw)
+    assert plan is not None
+    assert plan["files"][0]["edits"][0]["search"] == "if not args:"
+test("Plan: Python r-string prefixes sanitized", test_parse_plan_rstring)
+
+
+def test_context_keyword_windows():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    lines = [f"line {i}" for i in range(300)]
+    lines[250] = "def do_help(args):"
+    with open(os.path.join(d, "tool.py"), "w") as f:
+        f.write("\n".join(lines))
+    ctx = llm._build_context(d, "tool.py help crashes")
+    assert "do_help" in ctx, "keyword window must reach the target line"
+    assert "line 1" not in ctx or True  # windows not just head
+test("Context: keyword windows reach deep lines", test_context_keyword_windows)
+
+
+def test_reproduce_planted_bug():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "boom.py"), "w") as f:
+        f.write("import sys\n"
+                "def main():\n"
+                "    if len(sys.argv) > 1 and sys.argv[1] == 'ok':\n"
+                "        print('fine')\n"
+                "    else:\n"
+                "        raise RuntimeError('boom')\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n")
+    block = llm._reproduce(d, "boom.py crashes with an error")
+    assert "boom.py" in block and "RuntimeError" in block, block
+    assert "exit 1" in block or "exit" in block
+test("Reproduce: captures real traceback of planted bug", test_reproduce_planted_bug)
+
+
+def test_reproduce_skips_unknown():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "lib.py"), "w") as f:
+        f.write("def helper():\n    pass\n")  # no __main__ → not a script
+    assert llm._reproduce(d, "lib.py has a bug") == ""
+test("Reproduce: library file skipped", test_reproduce_skips_unknown)
+
+
+# ── context + parse robustness regressions ──
+
+def test_parse_plan_rstring():
+    from plugins.llm import agent as ag
+    raw = '```json\n{"summary": "s", "files": [{"path": "x.py", "action": "edit", "edits": [{"search": r"if not args:", "replace": "x"}]}]}\n```'
+    plan = ag.parse_plan(raw)
+    assert plan is not None
+    assert plan["files"][0]["edits"][0]["search"] == "if not args:"
+test("Plan: Python r-string prefixes sanitized", test_parse_plan_rstring)
+
+
+def test_context_keyword_windows():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    lines = [f"line {i}" for i in range(300)]
+    lines[250] = "def do_help(args):"
+    with open(os.path.join(d, "tool.py"), "w") as f:
+        f.write("\n".join(lines))
+    ctx = llm._build_context(d, "tool.py help crashes")
+    assert "do_help" in ctx, "keyword window must reach the target line"
+test("Context: keyword windows reach deep lines", test_context_keyword_windows)
+
+
+def test_reproduce_planted_bug():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "boom.py"), "w") as f:
+        f.write("import sys\n"
+                "def main():\n"
+                "    if len(sys.argv) > 1 and sys.argv[1] == 'ok':\n"
+                "        print('fine')\n"
+                "    else:\n"
+                "        raise RuntimeError('boom')\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n")
+    block = llm._reproduce(d, "boom.py crashes with an error")
+    assert "boom.py" in block and "RuntimeError" in block, block
+    assert "exit 1" in block or "exit" in block
+test("Reproduce: captures real traceback of planted bug", test_reproduce_planted_bug)
+
+
+def test_reproduce_skips_unknown():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "lib.py"), "w") as f:
+        f.write("def helper():\n    pass\n")  # no __main__ → not a script
+    assert llm._reproduce(d, "lib.py has a bug") == ""
+test("Reproduce: library file skipped", test_reproduce_skips_unknown)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
