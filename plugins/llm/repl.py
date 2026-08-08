@@ -521,28 +521,51 @@ def _apply_plan_step(api, state, history, plan, text, apply_plan_fn):
     history.append({"role": "user", "content": note})
 
 
-def _turn(api, state, history, request, context_builder, get_request, apply_plan_fn):
-    """One user turn: think → model call → plan/chat → elapsed + status bar."""
+def _turn(api, state, history, request, context_builder, get_request,
+         apply_plan_fn, get_stream=None, theme=None):
+    """One user turn: think → model call → plan/chat → elapsed + status bar.
+    get_stream(messages, on_chunk) streams the reply live when available."""
     from plugins.llm import ui
+    if theme is None:
+        from plugins.llm import theme as theme
     t0 = time.perf_counter()
     context = context_builder(request)
     content = request if not context else f"{request}\n\nProject context:\n{context}"
     ui.thinking("thinking...")
     history.append({"role": "user", "content": content})
-    text, err = get_request(history)
-    if err:
-        print(f"  {ui.chip('error', 'error')} {err}")
-        history.pop()
-        return
+    streamed = False
+    if get_stream is not None:
+        def _chunk(t):
+            print(t, end="", flush=True)
+        text, err, thinking = get_stream(history, _chunk)
+        if err:
+            print()
+            print(f"  {ui.chip('error', 'error')} {err}")
+            history.pop()
+            return
+        streamed = bool(text)
+        if text:
+            print()
+    else:
+        text, err = get_request(history)
+        if err:
+            print(f"  {ui.chip('error', 'error')} {err}")
+            history.pop()
+            return
     plan = _parse_plan(text)
     if plan is not None and (plan.get("files") or plan.get("commands")
                              or plan.get("tests") or plan.get("todo")):
-        _apply_plan_step(api, state, history, plan, text, apply_plan_fn)
+        if not streamed:
+            _apply_plan_step(api, state, history, plan, text, apply_plan_fn)
+        else:
+            _apply_plan_step(api, state, history, plan, text, apply_plan_fn)
     elif plan is not None and plan.get("done"):
         print(f"  {ui.chip('done', 'done')} {plan.get('summary', '')}")
         history.append({"role": "assistant", "content": text})
-    else:
+    elif not streamed:
         print(ui.wrap(text or "", prefix="  agent> "))
+        history.append({"role": "assistant", "content": text})
+    else:
         history.append({"role": "assistant", "content": text})
     print(ui.elapsed(time.perf_counter() - t0))
     print(ui.status_bar(state, _stats(api, state, history)))
@@ -550,7 +573,8 @@ def _turn(api, state, history, request, context_builder, get_request, apply_plan
 
 def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
              system_prompt=None, context_builder=None, pre_request=None,
-             uploads=None, post_turn=None, history=None):
+             uploads=None, post_turn=None, history=None, get_stream=None,
+             splash=None, footer_bar=None):
     """Claude-Code-style REPL loop.
 
     Prompts with a mode badge, dispatches slash commands, runs one model
@@ -564,9 +588,23 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
     meter / explored lines hook).
     """
     from plugins.llm import ui
+    from plugins.llm import theme as theme_mod
 
     project_dir = getattr(api, "project_dir", None)
     state["mode"] = state.get("mode") if state.get("mode") in MODES else "ask"
+    if splash is None and _interactive():
+        try:
+            print("\033[2J\033[H", end="")  # clear screen
+            print(splash if isinstance(splash, str) else
+                  theme_mod.splash(state.get("_version", ""),
+                                   state.get("_branch", ""),
+                                   "Tools: Active",
+                                   state.get("model") or ""))
+            print()
+        except Exception:
+            pass
+    if footer_bar is None:
+        footer_bar = theme_mod.footer()
     if context_builder is None:
         context_builder = lambda _request: ""  # noqa: E731
     sys_prompt = system_prompt if system_prompt is not None \
@@ -668,13 +706,15 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
                 except Exception:
                     pass
             _turn(api, state, history, line, context_builder,
-                  get_request, apply_plan_fn)
+                  get_request, apply_plan_fn, get_stream=get_stream)
             _notify({"type": "turn", "line": line, "mode": state["mode"]})
             if post_turn is not None:
                 try:
                     post_turn(history)
                 except Exception:
                     pass
+            if footer_bar and _interactive():
+                print(footer_bar)
     except KeyboardInterrupt:
         pass
     return state["mode"]

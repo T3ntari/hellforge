@@ -1166,6 +1166,25 @@ def _agent_cc(state, api, rest):
                 turn_counts["edits"] += 1
         return res
 
+    # Streaming responses (live, Claude-Code style)
+    def _get_stream(messages, on_chunk):
+        try:
+            from . import providers as prov
+            provider = state.get("provider") or "custom"
+            base = state.get("base_url") or prov.PROVIDERS.get(provider, {}).get("base_url", "")
+            model = state.get("model")
+            if provider == "ollama":
+                base = prov.OLLAMA_HEAD + "/v1"
+                if not model:
+                    model = "llama3.2"
+            if not model:
+                return None, "no model selected", ""
+            return prov.stream_chat(provider, base, state.get("api_key"),
+                                    model, messages, on_chunk,
+                                    timeout=600 if provider == "ollama" else 300)
+        except Exception as e:
+            return None, str(e), ""
+
     final_mode = repl_mod.run_repl(
         api, state, _get_request_guarded, _apply_plan_undo,
         on_turn=_on_turn,
@@ -1175,6 +1194,8 @@ def _agent_cc(state, api, rest):
         uploads=uploads,
         post_turn=_post_turn,
         history=resume_history,
+        get_stream=_get_stream,
+        splash=None,
     )
     if final_mode:
         api.set_config("llm_mode", final_mode)
