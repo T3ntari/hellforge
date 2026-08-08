@@ -832,21 +832,105 @@ try:
 
     _ED_CRYPTO = True
 except ImportError:
-    # Fallback: SHA-256 hash signing (NOT asymmetric — cannot prove identity)
-    _ED_CRYPTO = False
+    # Fallback: pure-Python Ed25519 (stdlib-only, RFC 8032). Produces the
+    # same keys and signatures as the `cryptography` implementation above,
+    # so identity files are interchangeable.
+    _ED_CRYPTO = True
+    _Q_ = 2 ** 255 - 19
+    _L_ = 2 ** 252 + 27742317777372353535851937790883648493
+    _D_ = (-121665 * pow(121666, _Q_ - 2, _Q_)) % _Q_
+    _I_ = pow(2, (_Q_ - 1) // 4, _Q_)
+
+    def _xrecover(y):
+        xx = (y * y - 1) * pow(_D_ * y * y + 1, _Q_ - 2, _Q_) % _Q_
+        x = pow(xx, (_Q_ + 3) // 8, _Q_)
+        if (x * x - xx) % _Q_ != 0:
+            x = (x * _I_) % _Q_
+        if x % 2 != 0:
+            x = _Q_ - x
+        return x
+
+    _BY_ = (4 * pow(5, _Q_ - 2, _Q_)) % _Q_
+    _BX_ = _xrecover(_BY_)
+    _B_ = (_BX_, _BY_, 1, (_BX_ * _BY_) % _Q_)
+
+    def _point_add(P, Q):
+        x1, y1, z1, t1 = P
+        x2, y2, z2, t2 = Q
+        A = (y1 - x1) * (y2 - x2) % _Q_
+        B = (y1 + x1) * (y2 + x2) % _Q_
+        C = 2 * t1 * t2 * _D_ % _Q_
+        D = 2 * z1 * z2 % _Q_
+        E = B - A
+        F = D - C
+        G = D + C
+        H = B + A
+        return (E * F % _Q_, G * H % _Q_, F * G % _Q_, E * H % _Q_)
+
+    def _point_mul(P, e):
+        if e == 0:
+            return (0, 1, 1, 0)
+        Q = _point_mul(P, e >> 1)
+        Q = _point_add(Q, Q)
+        if e & 1:
+            Q = _point_add(Q, P)
+        return Q
+
+    def _point_encode(P):
+        x, y, z, _t = P
+        zi = pow(z, _Q_ - 2, _Q_)
+        x = (x * zi) % _Q_
+        y = (y * zi) % _Q_
+        n = y | ((x & 1) << 255)
+        return n.to_bytes(32, "little")
+
+    def _point_decode(s):
+        n = int.from_bytes(s, "little")
+        y = n & ((1 << 255) - 1)
+        x = _xrecover(y)
+        if x & 1 != ((n >> 255) & 1):
+            x = _Q_ - x
+        return (x % _Q_, y % _Q_, 1, (x * y) % _Q_)
 
     def ed25519_generate_key(seed=None):
         if seed is None:
             seed = os.urandom(32)
-        pub = hashlib.sha256(seed).hexdigest()
-        return seed.hex(), pub
+        seed = seed[:32]
+        h = hashlib.sha512(seed).digest()
+        a = int.from_bytes(h[:32], "little")
+        a &= (1 << 254) - 8
+        a |= 1 << 254
+        pub = _point_encode(_point_mul(_B_, a))
+        return seed.hex(), pub.hex()
 
     def ed25519_sign(message, seed_hex):
-        return hmac.new(bytes.fromhex(seed_hex), message, hashlib.sha256).hexdigest()
+        seed = bytes.fromhex(seed_hex)[:32]
+        h = hashlib.sha512(seed).digest()
+        a = int.from_bytes(h[:32], "little")
+        a &= (1 << 254) - 8
+        a |= 1 << 254
+        r = int.from_bytes(hashlib.sha512(h[32:] + message).digest(), "little") % _L_
+        R = _point_encode(_point_mul(_B_, r))
+        A = _point_encode(_point_mul(_B_, a))
+        k = int.from_bytes(hashlib.sha512(R + A + message).digest(), "little") % _L_
+        s = (r + k * a) % _L_
+        return (R + s.to_bytes(32, "little")).hex()
 
     def ed25519_verify(message, sig_hex, pub_hex):
-        # With hash fallback, we can't verify — just return True
-        return True
+        try:
+            signature = bytes.fromhex(sig_hex)
+            public = bytes.fromhex(pub_hex)
+            if len(signature) != 64 or len(public) != 32:
+                return False
+            R = _point_decode(signature[:32])
+            A = _point_decode(public)
+            s = int.from_bytes(signature[32:], "little")
+            if s >= _L_:
+                return False
+            k = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % _L_
+            return _point_encode(_point_mul(_B_, s)) == _point_encode(_point_add(R, _point_mul(A, k)))
+        except Exception:
+            return False
 
 
 # ── Identity Management ──────────────────────
@@ -913,28 +997,24 @@ def create_identity(name, social=None):
 
 
 def get_public_key(name_lookup=None):
-    """Get public key for a known identity. Case-insensitive."""
-    known = {
-        # CORE-EXPANSION: REGAS — HELLFORGE core team, utmost trust
-        # HELLFORGE CORE-EXPANSION: REGAS — utmost trust level
-        "REGAS": "30722097f094e43f014548f39851710c5f6af87d586448caa4c1f3d21284ff2e",
-        "Regas": "30722097f094e43f014548f39851710c5f6af87d586448caa4c1f3d21284ff2e",
-        "regas": "30722097f094e43f014548f39851710c5f6af87d586448caa4c1f3d21284ff2e",
-        # Tentari — third-party plugin developers
-        "Tentari": "0d1fd99223e6f8bb2714e50dd693e8c091b1482967576f83541f118e598d575b",
-        "tentari": "0d1fd99223e6f8bb2714e50dd693e8c091b1482967576f83541f118e598d575b",
-    }
-    if name_lookup:
-        lookup = name_lookup
-        if lookup in known:
-            return known[lookup]
-        # Try lowercase for case-insensitive matching
-        if lookup.lower() in known:
-            return known[lookup.lower()]
-    if name_lookup is None or name_lookup == "local":
+    """Get the public key for a known identity. Case-insensitive.
+
+    Resolves only local identities: the user's own keypair (None/"local") and
+    any keys saved via save_identity_public_key into trusted/."""
+    if name_lookup is None or str(name_lookup).lower() in ("local", "self"):
         id = load_identity()
         if id:
             return id.get("public_key")
+    if name_lookup:
+        lookup = str(name_lookup).lower()
+        trust_dir = IDENTITY_DIR / "trusted"
+        if trust_dir.exists():
+            for f in sorted(trust_dir.glob("*.pub")):
+                if f.stem.lower() == lookup:
+                    try:
+                        return f.read_text().strip()
+                    except Exception:
+                        return None
     return None
 
 
@@ -950,10 +1030,6 @@ def save_identity_public_key(name, pub_hex):
 def list_trusted_keys():
     """Return dict of {name: pub_hex} for all trusted identities."""
     result = {}
-    # Always include Tentari
-    tentari_pub = get_public_key("Tentari")
-    if tentari_pub:
-        result["Tentari"] = tentari_pub
     # Include user's own key
     id = load_identity()
     if id:
@@ -976,17 +1052,9 @@ def list_trusted_keys():
 _LOGIN_PATH = PROJECT_DIR / ".e_identity" / ".login"
 
 
-def save_session(username, host="www.oshonet.in"):
-    """Save login session with current IP for change detection."""
-    import urllib.request as _req
-    ip = "unknown"
-    try:
-        ip_resp = _req.urlopen(_req.Request("https://api.ipify.org?format=text",
-            headers={"User-Agent": "E-Lang/1.0"}), timeout=10)
-        ip = ip_resp.read().decode().strip()
-    except Exception:
-        pass
-    session = {"username": username, "host": host, "ip": ip, "time": time.time()}
+def save_session(username, host="local"):
+    """Save a login session. Local-only — never contacts a network service."""
+    session = {"username": username, "host": host, "ip": "local", "time": time.time()}
     os.makedirs(os.path.dirname(str(_LOGIN_PATH)), exist_ok=True)
     with open(_LOGIN_PATH, "w") as f:
         json.dump(session, f)
@@ -1012,22 +1080,12 @@ def clear_session():
 
 
 def check_session_ip():
-    """Check if IP changed since last login. Returns (session, ip_changed, old_ip)."""
+    """Check saved session. Local-only — no IP phone-home.
+    Returns (session, ip_changed, old_ip)."""
     session = load_session()
     if not session:
         return (None, False, "")
-    import urllib.request as _req
-    current_ip = "unknown"
-    try:
-        resp = _req.urlopen(_req.Request("https://api.ipify.org?format=text",
-            headers={"User-Agent": "E-Lang/1.0"}), timeout=10)
-        current_ip = resp.read().decode().strip()
-    except Exception:
-        return (session, False, session.get("ip", ""))
-    old_ip = session.get("ip", "")
-    if current_ip and old_ip and current_ip != old_ip:
-        return (session, True, old_ip)
-    return (session, False, old_ip)
+    return (session, False, session.get("ip", ""))
 
 
 # ── Token Management (for authenticated operations) ──
@@ -1054,7 +1112,7 @@ TRUST_UNSIGNED = 0 # No signature or invalid
 
 # ── Strict Signing Enforcement ──
 # 0 = off (load anything), 1 = warn (log unsigned/altered), 2 = block (reject unsigned/altered)
-_STRICT_SIGNING = 1
+_STRICT_SIGNING = 0
 
 
 def get_strict_signing():
@@ -1098,6 +1156,7 @@ def sign_file(path, author=None, social=None, embed=False):
     }
 
     if embed:
+        meta["_e_sig"]["_embedded"] = True
         sig_block = json.dumps(meta).encode() + b"\n"
         first_line = data.split(b"\n", 1)[0]
         try:
@@ -1142,7 +1201,6 @@ def _print_copyright(meta):
             print(f"    {platform}: {ansi}{h}{R_}")
         else:
             print(f"    {platform}: {CYAN_}{handle}{R_}")
-    print(f"  {GREY_}Unauthorized reproduction prohibited{R_}")
 
 
 # Add color constants fallback

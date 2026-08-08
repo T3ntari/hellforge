@@ -8,8 +8,6 @@ import shutil
 import hashlib
 import base64
 import time
-import urllib.request
-import urllib.error
 
 PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT)
@@ -180,48 +178,37 @@ test("Compile pipeline triggers talisman culling", test_cull_compile)
 
 # ── Backend Tests ──
 
-# 11. Backend fentclient code accepted (test via register endpoint)
+# 11. Backend fentclient code accepted (local integrity verification, offline)
 def test_backend_code():
-    import urllib.request
-    import json
-    from plugins.fentclient.security import get_fentclient_code
+    from plugins.fentclient.security import (
+        get_fentclient_code,
+        verify_plugin_integrity,
+        refresh_verification_cache,
+    )
     code = get_fentclient_code()
     assert code and len(code) == 64, f"Bad code length: {len(code)}"
-    # Send a register request with bad pubkey — should fail with 400, not 401
-    payload = json.dumps({"username": "test_backend_" + hashlib.sha256(os.urandom(8)).hexdigest()[:8],
-                          "password": "testpass12345",
-                          "public_key": "00" * 32}).encode()
-    req = urllib.request.Request(
-        "https://www.oshonet.in/e_identity/register",
-        data=payload,
-        headers={"X-E-Lang-Client": code, "X-E-Lang-Device": "test",
-                 "Content-Type": "application/json",
-                 "User-Agent": "Fentclient/1.0"}
-    )
-    try:
-        resp = urllib.request.urlopen(req, timeout=15)
-        body = json.loads(resp.read())
-        assert body.get("status") == "ok", f"Register failed: {body}"
-    except urllib.error.HTTPError as e:
-        body = json.loads(e.read())
-        # Rate limited or already exists — that's fine (means backend worked)
-        assert e.code in (400, 409, 429), f"Unexpected: {e.code} {body}"
-test("Backend: fentclient code accepted", test_backend_code)
+    # Local pkglist must provide the verification code without network
+    codes = refresh_verification_cache(force=True)
+    assert "fentclient" in codes, "local pkglist should provide codes"
+    valid, exp, act, detail = verify_plugin_integrity("fentclient")
+    assert valid, f"Local verification failed: {detail}"
+test("Backend: fentclient code accepted (local verify)", test_backend_code)
 
-# 12. Backend rejects wrong code
+# 12. Backend rejects wrong code (local mismatch detection)
 def test_backend_wrong_code():
-    import urllib.request
-    req = urllib.request.Request(
-        "https://www.oshonet.in/e_identity/tentari",
-        headers={"X-E-Lang-Client": "wrong_code_here", "X-E-Lang-Device": "test",
-                 "User-Agent": "Fentclient/1.0"}
+    from plugins.fentclient.security import (
+        refresh_verification_cache,
+        verify_plugin_integrity,
     )
-    try:
-        urllib.request.urlopen(req, timeout=10)
-        raise AssertionError("Should have rejected")
-    except urllib.error.HTTPError as e:
-        assert e.code == 401
-test("Backend: wrong code rejected", test_backend_wrong_code)
+    codes = refresh_verification_cache(force=True)
+    saved = codes.get("fentclient")
+    assert saved, "fentclient code should exist in local pkglist"
+    codes["fentclient"] = "00" * 32
+    valid, exp, act, detail = verify_plugin_integrity("fentclient")
+    assert not valid, "Wrong code should be rejected locally"
+    assert "mismatch" in detail.lower()
+    codes["fentclient"] = saved
+test("Backend: wrong code rejected locally", test_backend_wrong_code)
 
 # ── Compiler Math Tests ──
 

@@ -104,9 +104,9 @@ HELLFORGE v1.0.0.0 ALPHA/
 │   ├── hellforge_plugins_backup.zip  ← Full backup (146 files, 137KB)
 │   └── *.json               ←   Per-plugin embedded backups
 ├── tools/                   ← Standalone utilities
-│   ├── hellforge_sign_and_backup.py ← Master signing + backup tool
-│   ├── sign_tentari_plugins.py      ← Legacy Tentari signing
-│   └── ... 
+│   ├── e2midi.py            ←   E → MIDI converter
+│   ├── midi2e.py            ←   MIDI → E converter
+│   └── v2compiler.py        ←   Legacy syntax v2 compiler
 ├── examples/                ← Example compositions + game engine demo
 │   ├── Rush_E.e             ←   Reference music piece
 │   └── opengl_engine.py     ←   AAA game engine built on OPENapi+Vulkanizer+EAudio
