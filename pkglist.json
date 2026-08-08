@@ -6,7 +6,7 @@
   "plugins": {
     "talisman": {
       "version": "1.0.0",
-      "description": "Audio culling & occlusion engine. Psychoacoustic masking â€” removes inaudible notes on compile. Run 'talisman on|off'.",
+      "description": "Audio culling & occlusion engine. Psychoacoustic masking \u00e2\u20ac\u201d removes inaudible notes on compile. Run 'talisman on|off'.",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,culling,occlusion,masking,privacy",
       "url": "file://plugins/talisman/__init__.py",
@@ -109,7 +109,7 @@
     },
     "launcher": {
       "version": "1.0.0.0",
-      "description": "New window launching & process management — open, player, shell, log, ps, kill",
+      "description": "New window launching & process management \u2014 open, player, shell, log, ps, kill",
       "author": "REGAS",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,launcher,window,process,detach",
       "url": "file://plugins/launcher/__init__.py",
@@ -128,6 +128,11 @@
       "dependencies": [],
       "verification": "7208cc0c0f7a7769727deeb673055a039c9036bb2d21b22dd9ba9520dcdf2cfc",
       "verification_domain": "www.oshonet.in"
+    },
+    "llm": {
+      "version": "1.0.0",
+      "description": "LLM copilot \u2014 OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation",
+      "verification": "d1b89c89a3940821da3ab3784860615185a0be5534ec3dadc6c2f0d32930bdc3"
     }
   },
   "_description": "Default package list for E Language by Tentari. All plugins backed up in embedded_plugins/*.json and integrity-verified via SHA-256 verification codes. Remote verification: www.oshonet.in",

@@ -402,6 +402,22 @@ def cmd_merge(args):
     return 0
 
 
+def cmd_ai(args):
+    """AI copilot (LLM plugin): ai status|provider|model|url|key|ask|chat|fix|plugin"""
+    from ep_core import _plugin_api
+    try:
+        from plugins.llm import _cmd
+    except ImportError as e:
+        print(f"  LLM plugin unavailable: {e}")
+        return 1
+    if not args or args[0] in ("--help", "-h"):
+        print("  Usage: run.py ai status|provider <name>|model [name]|url <u>|key <k>|")
+        print("         run.py ai connect|disconnect|ask \"<q>\"|chat|fix \"<issue>\"|plugin \"<desc>\"")
+        return 0
+    _cmd(args, _plugin_api)
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -416,6 +432,8 @@ def main():
         return cmd_check(args)
     if mode in ("shell", "s"):
         return cmd_shell(args)
+    if mode in ("ai", "llm"):
+        return cmd_ai(args)
     if mode in ("stats",):
         return cmd_stats(args)
     if mode in ("tracks",):
