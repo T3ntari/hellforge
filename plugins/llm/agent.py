@@ -21,24 +21,36 @@ When the user asks you to MAKE CHANGES, respond with ONLY a JSON object
 
 {
   "summary": "one-line description of the change",
+  "commands": [ {"cmd": "python tests/syntax_test.py"} ],
   "files": [
     {
       "path": "relative/path/in/project.py",
-      "action": "write" | "edit" | "delete",
+      "action": "read" | "write" | "edit" | "delete",
       "content": "full new file content for write (or omit for edit/delete)",
-      "edits": [ {"search": "exact existing text", "replace": "replacement"} ]
+      "edits": [ {"search": "exact existing text", "replace": "replacement"} ],
+      "start": 1, "end": 50
     }
   ]
 }
 
 Rules:
 - paths are ALWAYS relative to the project root, use forward slashes.
-- "read" displays a file's content to the user (no changes are made).
+- "read" displays a file's content to the user (no changes are made);
+  use start/end for line ranges.
 - "edit" uses exact search/replace pairs; each search must match exactly once
   in the file as it currently exists; keep pairs small and precise.
 - "write" replaces the entire file; include the complete content.
-- "delete" removes the file (the user is always asked to confirm).
+- "delete" removes the file (the user is always asked to confirm) — only use
+  it when truly required.
+- "commands" may run harmless commands like 'python tests/x.py' or
+  'git status' — NEVER propose destructive commands (rm, del, mv, sudo,
+  shutdown, etc.) or anything touching files outside the project root.
+- HARD RULES: never delete files unless essential; NEVER modify, read, or
+  reference anything outside the project root (no '..', no absolute paths);
+  never access secrets or runtime state.
 - When the user only asks a question, answer normally in plain text.
+- When finished (or when nothing more is needed), reply
+  {"done": true, "summary": "..."} instead of an empty plan.
 Never propose edits outside the project. Never fabricate file contents;
 if you cannot see a file, use the project structure the user described."""
 
@@ -60,6 +72,8 @@ def safe_path(project_dir, rel_path):
     target = (root / p).resolve()
     if not str(target).startswith(str(root)):
         raise ValueError(f"path escapes project root: {rel_path}")
+    if target == root:
+        raise ValueError(f"cannot target the project root itself: {rel_path}")
     for part in target.relative_to(root).parts:
         if part in FORBIDDEN_DIRS:
             raise ValueError(f"path inside protected dir: {rel_path}")
@@ -86,9 +100,11 @@ def parse_plan(text):
         try:
             plan = json.loads(candidate)
         except Exception:
+            end -= 1
             continue
-        if isinstance(plan, dict) and "files" in plan:
+        if isinstance(plan, dict) and ("files" in plan or plan.get("done")):
             return plan
+        end -= 1
     return None
 
 
@@ -179,6 +195,9 @@ def interactive_apply(plan, project_dir, confirm_write=True):
 
         # ── write / edit: diff preview + confirm ──
         if action == "write":
+            if target.is_dir():
+                skipped.append((rel, "is a directory — cannot write over it"))
+                continue
             new_text = f.get("content", "")
             old_text = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
             dv.print_diff(old_text, new_text, rel)
@@ -213,6 +232,9 @@ def interactive_apply(plan, project_dir, confirm_write=True):
         # edit
         if not target.exists():
             skipped.append((rel, "file does not exist"))
+            continue
+        if target.is_dir():
+            skipped.append((rel, "is a directory — cannot edit it"))
             continue
         old_text = target.read_text(encoding="utf-8", errors="replace")
         new_text = old_text
@@ -364,3 +386,28 @@ def apply_plan(plan, project_dir, confirm_write=True):
         msgs.append(f"  deleted {rel}")
 
     return applied, skipped, msgs
+
+
+def execute_plan_commands(plan, project_dir):
+    """Execute every command in the plan's "commands" list (validated by
+    exec.py's guard). Returns (results, chat_lines)."""
+    from . import exec as safe_exec
+    results = []
+    for c in plan.get("commands") or []:
+        cmd = c.get("cmd") if isinstance(c, dict) else str(c)
+        res = safe_exec.run_command(cmd, project_dir)
+        res["cmd"] = cmd
+        results.append(res)
+    chat_lines = [safe_exec.chat_line(r) for r in results]
+    return results, chat_lines
+
+
+def plan_is_done(plan):
+    """True when the model says it is finished (no files, no commands)."""
+    if not plan:
+        return True
+    if plan.get("done"):
+        return True
+    files = plan.get("files") or []
+    commands = plan.get("commands") or []
+    return not files and not commands

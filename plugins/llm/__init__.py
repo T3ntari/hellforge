@@ -3,6 +3,7 @@ Ollama native). Agentic edits with confirmation, plugin generation, chat.
 
 Commands (eshell + run.py):
   ai status                     — provider/model/connection
+  ai setup                      — first-time wizard (auto-runs when no config)
   ai provider <name>            — openai | deepseek | claude | ollama | custom
   ai model [name]               — list known models / set model
   ai url <base_url>             — custom base URL (OpenAI-compatible)
@@ -11,20 +12,31 @@ Commands (eshell + run.py):
   ai disconnect                 — disconnect without forgetting config
   ai ask "<question>"           — single-shot answer
   ai chat                       — interactive REPL chat (Ctrl-C / 'quit' to exit)
-  ai fix "<issue description>"  — agentic mode: model proposes edits, you confirm
+  ai fix "<issue>"              — multi-step agentic loop: plan → review →
+                                  apply → verify → repeat until done
   ai plugin "<description>"     — generate a plugin skeleton in plugins/<name>/
+  ai read <file> [start [end]]  — line-numbered file view
+  ai agents on|off              — multi-agent orchestration (persisted)
+  ai agent-model [name|ollama|provider]
+                                — daughter agent model selection
+  ai index [build|status]       — project index (files/symbols/directives)
+  ai index-model [name]         — indexing model (selectable from Ollama)
+  ai index off                  — disable indexing (not recommended)
 """
 
 import json
 import os
 import sys
+import time
 
 VERSION = "1.0.0"
 author = "HELLFORGE"
-description = "LLM copilot — OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation"
+description = ("LLM copilot — OpenAI/DeepSeek/Claude/Ollama, multi-step agent, "
+               "indexing, safe command execution")
 
 from . import providers
 from . import agent as llm_agent
+from . import indexer
 
 CONF = {}
 
@@ -40,6 +52,12 @@ def _get_state(api):
         "base_url": _cfg(api, "llm_base_url"),
         "api_key": api.get_auth_token("llm"),
         "connected": _cfg(api, "llm_connected", False),
+        "setup_done": _cfg(api, "llm_setup_done", False),
+        "agents_enabled": _cfg(api, "llm_agents_enabled", False),
+        "agent_model": _cfg(api, "llm_agent_model"),
+        "index_enabled": _cfg(api, "llm_index_enabled", True),
+        "index_model": _cfg(api, "llm_index_model"),
+        "index_rebuilt": _cfg(api, "llm_index_rebuilt", 0),
     }
 
 
@@ -52,6 +70,14 @@ def _save_state(api, state):
     api.set_config("llm_connected", bool(state["connected"]))
     if state.get("api_key"):
         api.set_auth_token("llm", state["api_key"])
+    api.set_config("llm_setup_done", bool(state.get("setup_done")))
+    api.set_config("llm_agents_enabled", bool(state.get("agents_enabled")))
+    if state.get("agent_model"):
+        api.set_config("llm_agent_model", state["agent_model"])
+    api.set_config("llm_index_enabled", bool(state.get("index_enabled")))
+    if state.get("index_model"):
+        api.set_config("llm_index_model", state["index_model"])
+    api.set_config("llm_index_rebuilt", int(state.get("index_rebuilt", 0)))
 
 
 def _endpoint(state):
@@ -83,10 +109,54 @@ def _cmd(args, api):
     sub = args[0].lower()
     rest = args[1:]
 
+    # First-run setup wizard: no saved config → walk the user through it.
+    if sub != "setup" and not state["setup_done"]:
+        print("  No AI config found on this machine — running setup wizard.")
+        _setup_wizard(api, state)
+        if not state["setup_done"]:
+            return
+
+    if sub == "setup":
+        _setup_wizard(api, state)
+        return
+
     if sub == "status":
         _status(state)
 
-    elif sub in ("provider", "set-provider"):
+    elif sub == "agents":
+        if not rest:
+            on = "enabled (persisted)" if state["agents_enabled"] else "disabled"
+            print(f"  Multi-agent orchestration: {on}")
+            print("  Usage: ai agents on|off")
+            return
+        if rest[0].lower() in ("on", "enable", "yes"):
+            state["agents_enabled"] = True
+            _save_state(api, state)
+            print("  Multi-agent orchestration ENABLED (saved forever until disabled).")
+            if not state.get("agent_model"):
+                _agent_model_wizard(api, state)
+        elif rest[0].lower() in ("off", "disable", "no"):
+            state["agents_enabled"] = False
+            _save_state(api, state)
+            print("  Multi-agent orchestration DISABLED (saved).")
+        else:
+            print("  Usage: ai agents on|off")
+
+    elif sub in ("agent-model", "agentmodel"):
+        _agent_model_cmd(api, state, rest)
+
+    elif sub == "index":
+        _index_cmd(api, state, rest)
+
+    elif sub == "index-model":
+        if not rest:
+            m = state.get("index_model")
+            print(f"  Indexing model: {m or '(none — local symbol index only)'}")
+            print("  Usage: ai index-model <name> | ollama | provider | off")
+            return
+        _set_index_model(api, state, rest[0])
+
+    elif sub == "provider":
         if not rest:
             print("  Providers: " + ", ".join(providers.PROVIDERS))
             return
@@ -205,6 +275,223 @@ def _cmd(args, api):
               "ask | chat | fix | plugin")
 
 
+def _setup_wizard(api, state):
+    """First-run wizard: provider → model → indexing → multi-agent.
+    Runs automatically when no config exists (fresh machine / no cache)."""
+    print("  ── AI Copilot setup ──")
+    try:
+        if not sys.stdin.isatty():
+            print("  Non-interactive: skipping wizard (run 'ai setup' on a terminal).")
+            return
+        ans = input("  Configure AI now? [Y/n] ").strip().lower()
+        if ans == "n":
+            print("  Skipped. Run 'ai setup' any time.")
+            return
+        # 1. Provider
+        print("  Providers: " + ", ".join(providers.PROVIDERS))
+        p = input("  Select provider: ").strip().lower()
+        if p not in providers.PROVIDERS:
+            p = "openai"
+        state["provider"] = p
+        state["base_url"] = providers.PROVIDERS[p]["base_url"]
+        state["model"] = providers.DEFAULT_MODEL.get(p)
+        # 2. Model
+        if p == "ollama":
+            _ollama_wizard(api, state)
+        else:
+            models = providers.PROVIDERS[p]["models"]
+            print("  Models: " + ", ".join(models))
+            m = input("  Select model (Enter = first): ").strip()
+            state["model"] = m if m in models else (models[0] if models else None)
+            key = input("  API key (Enter = none): ").strip()
+            if key:
+                state["api_key"] = key
+        state["connected"] = True
+        # 3. Indexing
+        ans = input("  Enable project indexing? [Y/n] ").strip().lower()
+        state["index_enabled"] = ans != "n"
+        if state["index_enabled"]:
+            _set_index_model(api, state, "ollama", quiet=True)
+        # 4. Multi-agent orchestration
+        ans = input("  Enable multi-agent orchestration? [y/N] ").strip().lower()
+        state["agents_enabled"] = ans == "y"
+        if state["agents_enabled"]:
+            _agent_model_wizard(api, state)
+        state["setup_done"] = True
+        _save_state(api, state)
+        print("  ── Setup complete (saved forever on this machine) ──")
+        print("  Run 'ai fix \"<issue>\"' to start. 'ai setup' to redo.")
+    except (EOFError, KeyboardInterrupt):
+        print("\n  Setup cancelled.")
+
+
+def _agent_model_cmd(api, state, rest):
+    """Daughter agent model: a name, 'provider' (same as main), or 'ollama'
+    (pick directly from the local Ollama models)."""
+    if not rest:
+        m = state.get("agent_model") or "provider (same as main)"
+        on = "enabled" if state["agents_enabled"] else "disabled"
+        print(f"  Daughter agent model: {m}")
+        print(f"  Multi-agent orchestration: {on} (ai agents on|off)")
+        print("  Usage: ai agent-model <name> | provider | ollama")
+        return
+    choice = rest[0].lower()
+    if choice == "provider":
+        state["agent_model"] = None
+        _save_state(api, state)
+        print("  Daughter agent = provider model (same as main).")
+    elif choice == "ollama":
+        _agent_model_wizard(api, state)
+    else:
+        state["agent_model"] = rest[0]
+        _save_state(api, state)
+        print(f"  Daughter agent model: {rest[0]}")
+    if not state["agents_enabled"]:
+        print("  Note: enable orchestration with 'ai agents on'.")
+
+
+def _agent_model_wizard(api, state):
+    """Pick the daughter agent model — from the provider (all saved models)
+    or directly from local Ollama."""
+    try:
+        if not sys.stdin.isatty():
+            state["agent_model"] = state.get("model")
+            _save_state(api, state)
+            return
+        print("  Daughter agent model sources:")
+        print("    [p] provider model (same as main)")
+        print("    [o] Ollama (pick from locally installed models)")
+        ans = input("  Choose [p/o]: ").strip().lower()
+        if ans == "o" and providers.ollama_detected():
+            models = providers.ollama_models()
+            if not models:
+                print("  Ollama has no models — using provider model.")
+                state["agent_model"] = state.get("model")
+            else:
+                for i, m in enumerate(models, 1):
+                    print(f"    [{i}] {m}")
+                pick = input("  Select daughter model number: ").strip()
+                try:
+                    state["agent_model"] = models[int(pick) - 1]
+                except (ValueError, IndexError):
+                    state["agent_model"] = models[0]
+                print(f"  Daughter agent: ollama / {state['agent_model']}")
+        else:
+            state["agent_model"] = None  # provider model
+            print("  Daughter agent: provider model (same as main).")
+        _save_state(api, state)
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+def _index_cmd(api, state, rest):
+    """ai index build|status|off — project indexing control."""
+    sub = rest[0].lower() if rest else "status"
+    if sub == "off":
+        state["index_enabled"] = False
+        _save_state(api, state)
+        print("  Indexing DISABLED (not recommended — model context gets weaker).")
+        print("  Re-enable: 'ai index on'")
+        return
+    if sub == "on":
+        state["index_enabled"] = True
+        _save_state(api, state)
+        print("  Indexing ENABLED.")
+        sub = "build"
+    if sub in ("build", "rebuild"):
+        idx = indexer.build_index(api.project_dir)
+        state["index_rebuilt"] = int(idx.get("built", 0))
+        _save_state(api, state)
+        print(f"  Index rebuilt: {idx['file_count']} files, "
+              f"{idx['line_count']} lines "
+              f"({sum(len(f.get('symbols', [])) for f in idx['files'].values())} symbols)")
+        if state.get("index_model"):
+            _index_summarize(api, state, idx)
+        return
+    # status
+    idx = indexer.load_index(api.project_dir)
+    on = "enabled" if state["index_enabled"] else "disabled"
+    model = state.get("index_model") or "local symbol index (no model)"
+    if idx:
+        print(f"  Indexing: {on} | model: {model}")
+        print(f"  Index: {idx.get('file_count', 0)} files, "
+              f"{idx.get('line_count', 0)} lines "
+              f"(built {time.strftime('%H:%M:%S', time.localtime(idx.get('built', 0)))})")
+        print("  Rebuild: 'ai index build'")
+    else:
+        print(f"  Indexing: {on} | model: {model}")
+        print("  No index yet — run 'ai index build'")
+
+
+def _set_index_model(api, state, choice, quiet=False):
+    """Indexing model: a name, 'ollama' (pick locally), 'provider' (main),
+    or 'off' (local symbol index only)."""
+    choice = choice.lower()
+    if choice == "off":
+        state["index_model"] = None
+        _save_state(api, state)
+        if not quiet:
+            print("  Indexing model off — local symbol index only (works, weaker).")
+        return
+    if choice == "ollama":
+        if not providers.ollama_detected():
+            if not quiet:
+                print("  Ollama not detected — add a model name instead: "
+                      "'ai index-model <name>'")
+            state["index_model"] = None
+            _save_state(api, state)
+            return
+        models = providers.ollama_models()
+        if not models:
+            if not quiet:
+                print("  Ollama has no models installed. 'ai index-model <name>' to add one.")
+            state["index_model"] = None
+            _save_state(api, state)
+            return
+        if not quiet:
+            for i, m in enumerate(models, 1):
+                print(f"    [{i}] {m}")
+        try:
+            if sys.stdin.isatty() and not quiet:
+                pick = input("  Select indexing model number: ").strip()
+            else:
+                pick = "1"
+            state["index_model"] = models[int(pick) - 1]
+        except (ValueError, IndexError):
+            state["index_model"] = models[0]
+        _save_state(api, state)
+        if not quiet:
+            print(f"  Indexing model: {state['index_model']} (disable: 'ai index-model off')")
+        return
+    if choice == "provider":
+        state["index_model"] = None  # main model is used
+        _save_state(api, state)
+        if not quiet:
+            print("  Indexing model: provider (same as main).")
+        return
+    state["index_model"] = choice
+    _save_state(api, state)
+    if not quiet:
+        print(f"  Indexing model: {choice}")
+
+
+def _index_summarize(api, state, idx):
+    """Optional model pass over the index (top files). Never required —
+    the deterministic symbol index is always available."""
+    try:
+        files = sorted(idx.get("files", {}))[:15]
+        if not files:
+            return
+        prompt = ("Summarize this project index in 3-5 lines for a coding "
+                  "agent:\n" + indexer.index_to_text(idx, max_files=15))
+        text, err = _request(state, [{"role": "user", "content": prompt}])
+        if text:
+            print("  Index summary:")
+            print("  " + text.replace("\n", "\n  "))
+    except Exception:
+        pass
+
+
 def _status(state):
     provider = state["provider"]
     label = providers.PROVIDERS.get(provider, {}).get("label", provider)
@@ -305,51 +592,189 @@ def _chat_repl(state):
         pass
 
 
-def _agentic(api, state, request, plugin=False, confirm_write=True):
-    """Agentic mode: ask the model for a JSON plan, review the colored diff
-    per file (y/n/v/a/q), apply. Deletes always confirmed individually."""
+def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5):
+    """Multi-step agentic loop: plan → review → apply → (commands) →
+    verify → repeat until the model says done. Deletes always confirmed."""
     project_dir = api.project_dir
-    context = _build_context(project_dir, request)
-    if plugin:
-        prompt = (
-            f"Create a HELLFORGE plugin that: {request}\n\n"
-            "The plugin lives in plugins/<name>/__init__.py and registers via "
-            "def register(api): api.add_command('name', handler, help) or "
-            "api.on('post_compile', fn) etc. Respond with the JSON plan format "
-            "(action write)."
-        )
-    else:
-        prompt = (
-            f"The user reports this issue / wants this change: {request}\n\n"
-            f"Project context:\n{context}\n\n"
-            "Inspect the project and propose the minimal set of changes. "
-            "Respond with the JSON plan format (read/write/edit/delete)."
-        )
-    messages = [
-        {"role": "system", "content": llm_agent.SYSTEM_PROMPT},
-        {"role": "user", "content": prompt},
-    ]
-    print(f"  Asking {state['provider']}/{state.get('model') or '?'} for a plan...")
-    text, err = _request(state, messages)
-    if err:
-        print(f"  [ai error] {err}")
-        return
-    plan = llm_agent.parse_plan(text)
-    if plan is None:
-        print("  The model did not return a valid change plan. Raw reply:")
-        print("  " + (text or "").replace("\n", "\n  "))
-        return
-    print(f"  Plan: {plan.get('summary', 'no summary')}")
-    for f in plan.get("files", []):
-        print(f"    {f.get('action', '?'):6s} {f.get('path', '?')}")
     from . import diffview as dv
-    applied, skipped, msgs = llm_agent.interactive_apply(
-        plan, project_dir, confirm_write=confirm_write)
-    for m in msgs:
-        print(m)
-    for rel, why in skipped:
-        print(f"  {dv.dim('skipped')} {rel}: {why}")
-    print(f"  Applied {applied} change(s).")
+
+    if not state["setup_done"]:
+        print("  Run 'ai setup' first (or the wizard will appear on next command).")
+        _setup_wizard(api, state)
+        if not state["setup_done"]:
+            return
+
+    idx = None
+    if state.get("index_enabled", True):
+        idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
+        state["index_rebuilt"] = int(idx.get("built", 0))
+
+    steps = 0
+    while steps < max_steps:
+        steps += 1
+        print(f"\n  ── step {steps}/{max_steps} ──")
+        if plugin:
+            prompt = (
+                f"Create a HELLFORGE plugin that: {request}\n\n"
+                "The plugin lives in plugins/<name>/__init__.py and registers via "
+                "def register(api): api.add_command('name', handler, help) or "
+                "api.on('post_compile', fn) etc. Respond with the JSON plan format "
+                "(action write)."
+            )
+        else:
+            prompt = (
+                f"The user reports this issue / wants this change: {request}\n\n"
+                f"Project context:\n{_build_context(project_dir, request)}\n\n"
+                f"{indexer.index_to_text(idx, max_files=30)}\n\n"
+                "You may use 'read' to inspect files, 'commands' to run checks "
+                "(e.g. python tests/...), and write/edit to change files. "
+                "When the change is complete (or on the final step), reply "
+                '{"done": true, "summary": "..."}. Respond with the JSON plan format.'
+            )
+        messages = [
+            {"role": "system", "content": llm_agent.SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+        print(f"  Asking {state['provider']}/{state.get('model') or '?'}...")
+        text, err = _request(state, messages)
+        if err:
+            print(f"  [ai error] {err}")
+            return
+        plan = llm_agent.parse_plan(text)
+        if plan is None:
+            # One automatic retry: feed the reply back and demand JSON.
+            messages.append({"role": "assistant", "content": text or ""})
+            messages.append({"role": "user", "content":
+                "That reply was not a valid change plan. Reply with ONLY the "
+                'JSON object: {"summary": "...", "files": [...], '
+                '"commands": [...]} or {"done": true, "summary": "..."}.'})
+            print("  No JSON plan — asking again...")
+            text2, err2 = _request(state, messages)
+            if err2:
+                print(f"  [ai error] {err2}")
+                return
+            plan = llm_agent.parse_plan(text2)
+            text = text2
+        if plan is None:
+            print("  No valid plan. Raw reply:")
+            print("  " + (text or "").replace("\n", "\n  "))
+            return
+        if llm_agent.plan_is_done(plan):
+            print(f"  Done: {plan.get('summary', 'no summary')}")
+            break
+
+        # 1. Commands first — run them, show one-liners in chat, feed output back
+        cmds = plan.get("commands") or []
+        if cmds:
+            results, chat_lines = llm_agent.execute_plan_commands(plan, project_dir)
+            for line in chat_lines:
+                print(f"  {dv.dim(line)}")
+            cmd_out = "\n".join(
+                f"$ {r.get('cmd')}\n{r.get('output', '')[:1200]}"
+                for r in results if not r.get("blocked")
+            )
+            blocked = [r.get("cmd") for r in results if r.get("blocked")]
+            if blocked:
+                print(f"  {dv.red('blocked: ' + ', '.join(blocked))}")
+
+        # 2. Files — review the colored diff and apply
+        files = plan.get("files") or []
+        if files:
+            for f in files:
+                print(f"    {f.get('action', '?'):6s} {f.get('path', '?')}")
+            applied, skipped, msgs = llm_agent.interactive_apply(
+                plan, project_dir, confirm_write=confirm_write)
+            for m in msgs:
+                print(m)
+            for rel, why in skipped:
+                print(f"  {dv.dim('skipped')} {rel}: {why}")
+
+        # 3. Multi-agent verification: daughter agent reviews the result
+        if (state.get("agents_enabled") and (files or cmds)
+                and state.get("agent_model")):
+            _daughter_verify(api, state, request, project_dir)
+
+        # 4. Next step: model sees what changed / commands output
+        if steps >= max_steps:
+            break
+        follow = [f"Step {steps} finished. Changes applied and reviewed."]
+        if cmds:
+            follow.append(f"Command results:\n{cmd_out or '(none)'}")
+        if files:
+            follow.append("Files were changed (see above). "
+                          "Verify with commands, or reply with the next step "
+                          "or {\"done\": true}.")
+        else:
+            follow.append("No files changed yet — propose the actual edits, "
+                          "or {\"done\": true} if nothing is needed.")
+        messages.append({"role": "assistant", "content": text})
+        messages.append({"role": "user", "content": "\n".join(follow)})
+        text, err = _request(state, messages)
+        if err:
+            print(f"  [ai error] {err}")
+            return
+        plan2 = llm_agent.parse_plan(text)
+        if plan2 is None:
+            print("  No valid next-step plan. Raw reply:")
+            print("  " + (text or "").replace("\n", "\n  "))
+            return
+        plan = plan2
+        if llm_agent.plan_is_done(plan):
+            print(f"  Done: {plan.get('summary', 'no summary')}")
+            break
+        cmds = plan.get("commands") or []
+        if cmds:
+            results, chat_lines = llm_agent.execute_plan_commands(plan, project_dir)
+            for line in chat_lines:
+                print(f"  {dv.dim(line)}")
+            cmd_out = "\n".join(
+                f"$ {r.get('cmd')}\n{r.get('output', '')[:1200]}"
+                for r in results if not r.get("blocked")
+            )
+        files = plan.get("files") or []
+        if files:
+            applied, skipped, msgs = llm_agent.interactive_apply(
+                plan, project_dir, confirm_write=confirm_write)
+            for m in msgs:
+                print(m)
+            for rel, why in skipped:
+                print(f"  {dv.dim('skipped')} {rel}: {why}")
+        if (state.get("agents_enabled") and (files or cmds)
+                and state.get("agent_model")):
+            _daughter_verify(api, state, request, project_dir)
+        request = f"Continue: {request}"
+
+    print(f"\n  Finished after {steps} step(s).")
+
+
+def _daughter_verify(api, state, request, project_dir):
+    """Multi-agent orchestration: the daughter agent model reviews the
+    changes and reports problems. Never edits — only observes."""
+    from . import diffview as dv
+    model = state.get("agent_model") or state.get("model")
+    if not model:
+        return
+    old_state = dict(state)
+    state["model"] = model
+    try:
+        text, err = _request(state, [
+            {"role": "system", "content":
+             "You are a code reviewer. Review the recent changes for the "
+             "request below. Report only real problems in 2-3 short lines, "
+             "or say 'OK'."},
+            {"role": "user", "content":
+             f"Request: {request}\nReview the applied changes in the project."},
+        ])
+        if err:
+            print(f"  {dv.dim(f'daughter agent error: {err}')}")
+            return
+        if text and text.strip().lower() != "ok":
+            print(f"  {dv.yellow('daughter agent review:')}")
+            print("  " + text.strip().replace("\n", "\n  "))
+        else:
+            print(f"  {dv.dim('daughter agent review: OK')}")
+    finally:
+        state["model"] = old_state["model"]
 
 
 def _build_context(project_dir, request, max_files=3, max_lines=200, budget=60000):

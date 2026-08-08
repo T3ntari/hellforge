@@ -400,6 +400,183 @@ def test_context_builds():
 test("Context: named file included in prompt context", test_context_builds)
 
 
+
+
+# ── safe command execution ──
+
+def test_exec_valid():
+    from plugins.llm import exec as safe_exec
+    ok, why = safe_exec.validate_command("python --version")
+    assert ok and why is None
+    ok, _ = safe_exec.validate_command("git status")
+    assert ok
+test("Exec: harmless commands validate", test_exec_valid)
+
+
+def test_exec_forbidden():
+    from plugins.llm import exec as safe_exec
+    for bad in ("rm -rf .", "rm file.py", "sudo reboot", "mv a b",
+                "git push origin main", "python -c 'import os'",
+                "ls; rm x", "cd .. && ls", "echo hi > out.txt",
+                "cat file | grep x", "pip install numpy"):
+        ok, why = safe_exec.validate_command(bad)
+        assert not ok, f"{bad} should be blocked ({why})"
+test("Exec: destructive/meta commands blocked", test_exec_forbidden)
+
+
+def test_exec_runs_inside_project():
+    from plugins.llm import exec as safe_exec
+    d = tempfile.mkdtemp()
+    res = safe_exec.run_command("pwd", d)
+    assert res["ok"] and res["output"].strip() == d, res
+test("Exec: command runs inside project dir", test_exec_runs_inside_project)
+
+
+def test_exec_missing_program():
+    from plugins.llm import exec as safe_exec
+    res = safe_exec.run_command("definitely_not_a_real_cmd_xyz --help", tempfile.mkdtemp())
+    assert not res["ok"] and "not found" in res["error"]
+test("Exec: missing program reports error", test_exec_missing_program)
+
+
+def test_exec_blocked_reports():
+    from plugins.llm import exec as safe_exec
+    res = safe_exec.run_command("rm file.py", tempfile.mkdtemp())
+    assert res["blocked"] and res["error"]
+    assert "blocked" in safe_exec.chat_line(res)
+test("Exec: blocked command surfaces in chat line", test_exec_blocked_reports)
+
+
+def test_exec_plan_commands():
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    plan = {"commands": [{"cmd": "python --version"}, {"cmd": "rm x"}]}
+    results, lines = ag.execute_plan_commands(plan, d)
+    assert results[0]["ok"] and "executed" in lines[0]
+    assert results[1]["blocked"] and "blocked" in lines[1]
+test("Exec: plan commands execute + blocked surfaced", test_exec_plan_commands)
+
+
+# ── indexer ──
+
+def test_indexer_build():
+    from plugins.llm import indexer
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, "src"))
+    with open(os.path.join(d, "src", "mod.py"), "w") as f:
+        f.write("def hello():\n    return 1\n\nclass Foo:\n    pass\n")
+    idx = indexer.build_index(d)
+    assert idx["file_count"] == 1
+    assert "src/mod.py" in idx["files"]
+    syms = [s["name"] for s in idx["files"]["src/mod.py"]["symbols"]]
+    assert "hello" in syms and "Foo" in syms
+test("Index: builds file/symbol index", test_indexer_build)
+
+
+def test_indexer_persists():
+    from plugins.llm import indexer
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "a.py"), "w") as f:
+        f.write("x = 1\n")
+    indexer.build_index(d)
+    loaded = indexer.load_index(d)
+    assert loaded and loaded["file_count"] == 1
+test("Index: persists to .fent_cache and loads", test_indexer_persists)
+
+
+def test_indexer_skips_runtime():
+    from plugins.llm import indexer
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, ".e_identity"))
+    os.makedirs(os.path.join(d, "plugins", "__pycache__"))
+    with open(os.path.join(d, "plugins", "x.py"), "w") as f:
+        f.write("a = 1\n")
+    with open(os.path.join(d, ".e_identity", "secret.key"), "w") as f:
+        f.write("k")
+    idx = indexer.build_index(d)
+    names = list(idx["files"].keys())
+    assert "plugins/x.py" in names and not any("secret" in n for n in names)
+test("Index: runtime dirs excluded", test_indexer_skips_runtime)
+
+
+def test_index_to_text():
+    from plugins.llm import indexer
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "a.py"), "w") as f:
+        f.write("def f():\n    pass\n")
+    idx = indexer.build_index(d)
+    text = indexer.index_to_text(idx)
+    assert "Project index" in text and "a.py" in text
+test("Index: renders to prompt text", test_index_to_text)
+
+
+# ── multi-step + plan done ──
+
+def test_plan_done():
+    from plugins.llm import agent as ag
+    assert ag.plan_is_done({"done": True, "summary": "x"})
+    assert ag.plan_is_done({"files": [], "commands": []})
+    assert not ag.plan_is_done({"files": [{"path": "a", "action": "write"}]})
+    assert not ag.plan_is_done({"commands": [{"cmd": "ls"}]})
+test("Plan: done detection", test_plan_done)
+
+
+def test_multi_step_loop_mocked():
+    import unittest.mock as mock
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    steps = iter([
+        '{"files": [{"path": "a.py", "action": "write", "content": "x = 1\\n"}]}',
+        '{"done": true, "summary": "all set"}',
+    ])
+    llm.providers.chat_request = lambda *a, **k: (next(steps), None)
+    class FakeAPI:
+        project_dir = d
+        def get_config(self, k, default=None):
+            cfg = {"llm_setup_done": True, "llm_index_enabled": False,
+                   "llm_agents_enabled": False, "llm_provider": "deepseek",
+                   "llm_model": "deepseek-chat", "llm_connected": True}
+            return cfg.get(k, default)
+        def set_config(self, k, v): pass
+        def get_auth_token(self, k): return "x"
+    api = FakeAPI()
+    state = llm._get_state(api)
+    with mock.patch.object(llm.llm_agent, "_is_tty", return_value=True), \
+         mock.patch("builtins.input", return_value="y"):
+        llm._agentic(api, state, "create a.py", confirm_write=False, max_steps=3)
+    assert os.path.exists(os.path.join(d, "a.py"))
+test("Multi-step: plan → apply → done (mocked)", test_multi_step_loop_mocked)
+
+
+# ── setup wizard + persistence ──
+
+def test_state_persists_toggles():
+    import plugins.llm as llm
+    class FakeAPI:
+        def __init__(self):
+            self.cfg = {}
+            self.tokens = {}
+        def get_config(self, k, default=None): return self.cfg.get(k, default)
+        def set_config(self, k, v): self.cfg[k] = v
+        def get_auth_token(self, k): return self.tokens.get(k)
+        def set_auth_token(self, k, v): self.tokens[k] = v
+    api = FakeAPI()
+    state = llm._get_state(api)
+    assert state["setup_done"] is False
+    state["agents_enabled"] = True
+    state["agent_model"] = "deepseek-chat"
+    state["setup_done"] = True
+    state["index_enabled"] = True
+    llm._save_state(api, state)
+    # "new machine" simulation: fresh API reads from persisted config
+    api2 = FakeAPI()
+    api2.cfg = dict(api.cfg)
+    state2 = llm._get_state(api2)
+    assert state2["agents_enabled"] is True
+    assert state2["agent_model"] == "deepseek-chat"
+    assert state2["setup_done"] is True
+test("Settings: agents/index/setup persist forever", test_state_persists_toggles)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
