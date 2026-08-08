@@ -5,8 +5,10 @@ composition. This file covers how to contribute code, tests, and docs.
 
 ## Ground rules
 
-- **v4 is canonical.** New syntax is added to the v4 path (`ep_compiler/`),
-  never by reviving v1–v3. Legacy versions are frozen and deprecated.
+- **v5 is canonical.** v5 = v4 + piano performance features + the v5 statement set
+  (print, assert, include, `!fn`, prog, perc, scale/range loops, `@seed` +
+  pick/rand). New syntax is added to the v5 path (`ep_compiler/`), never by
+  reviving v1–v4. Legacy versions are frozen and deprecated.
 - **No stubs.** Every advertised feature must work end-to-end: source →
   compile → events → MIDI → render. If a feature is not implemented, it must
   not be advertised.
