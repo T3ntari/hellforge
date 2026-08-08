@@ -2022,6 +2022,163 @@ def test_search_fresh_cache_not_rebuilt():
     assert res and res[0]["path"] == "a.py"
     assert os.path.getmtime(cache) == before, "fresh cache reused, not rewritten"
 test("Search: fresh cache reused across queries", test_search_fresh_cache_not_rebuilt)
+# ── context scaling (scale.py) ──
+
+def test_scale_profile_small():
+    from plugins.llm import scale
+    assert scale.profile("llama3.2:3b", "ollama") == "small"
+    assert scale.profile("qwen2.5:0.5b", "ollama") == "small"
+    assert scale.profile("gemma2:2b", "ollama") == "small"
+    assert scale.profile("qwen2.5:6b", "ollama") == "small", "sub-7B ollama params"
+    assert scale.profile("gpt-4o-mini", "openai") == "small", "mini beats gpt-4"
+    assert scale.profile("phi-3.5-mini-instruct") == "small"
+    assert scale.profile("hf.co/SmolLM2-1.5b") == "small"
+    assert scale.profile("llama3.2:3b", None) == "small", "provider-agnostic"
+test("Scale: small profile classification", test_scale_profile_small)
+
+
+def test_scale_profile_large():
+    from plugins.llm import scale
+    assert scale.profile("deepseek-chat", "deepseek") == "large", "deepseek-chat is large-class"
+    assert scale.profile("deepseek-v4", "deepseek") == "large"
+    assert scale.profile("claude-opus-4-5", "claude") == "large"
+    assert scale.profile("gpt-4o", "openai") == "large"
+    assert scale.profile("llama3.1:70b", "ollama") == "large"
+    assert scale.profile("llama3.1:405b", "ollama") == "large"
+    assert scale.profile("gemini-2.0-pro") == "large"
+test("Scale: large profile classification", test_scale_profile_large)
+
+
+def test_scale_profile_medium():
+    from plugins.llm import scale
+    assert scale.profile("claude-sonnet-4-5", "claude") == "medium"
+    assert scale.profile("claude-haiku-4-5", "claude") == "medium"
+    assert scale.profile("llama3.1:8b", "ollama") == "medium", "8B is not small"
+    assert scale.profile("qwen2.5:30b", "ollama") == "medium"
+    assert scale.profile("unknown-model-xyz", "custom") == "medium"
+    assert scale.profile("", "openai") == "medium", "unknown → medium"
+    assert scale.profile(None, None) == "medium"
+test("Scale: medium default classification", test_scale_profile_medium)
+
+
+def test_scale_budget_table():
+    from plugins.llm import scale
+    assert scale.BUDGETS["small"] == {"prompt_budget": 6000, "context_windows": 6,
+                                      "search_top": 3, "max_files": 1,
+                                      "thinking": "collapsed"}
+    assert scale.BUDGETS["medium"] == {"prompt_budget": 18000, "context_windows": 10,
+                                       "search_top": 5, "max_files": 2,
+                                       "thinking": "collapsed"}
+    assert scale.BUDGETS["large"] == {"prompt_budget": 60000, "context_windows": 16,
+                                      "search_top": 10, "max_files": 4,
+                                      "thinking": "full allowed"}
+test("Scale: budget table values", test_scale_budget_table)
+
+
+def test_scale_budget_for():
+    from plugins.llm import scale
+    assert scale.budget_for("gpt-4o-mini", "openai") == scale.BUDGETS["small"]
+    assert scale.budget_for("deepseek-chat", "deepseek") == scale.BUDGETS["large"]
+    assert scale.budget_for("claude-sonnet-4-5", "claude") == scale.BUDGETS["medium"]
+    assert scale.budget_for("llama3.2:3b", "ollama")["search_top"] == 3
+    b = scale.budget_for("deepseek-v4", "deepseek")
+    assert b["prompt_budget"] == 60000 and b["thinking"] == "full allowed"
+    assert b is not scale.BUDGETS["large"], "caller gets a copy"
+test("Scale: budget_for returns per-profile dict", test_scale_budget_for)
+
+
+def test_scale_system_prompt_docs():
+    from plugins.llm import scale
+    with tempfile.TemporaryDirectory() as td:
+        d = os.path.join(td, "docs", "agent")
+        os.makedirs(d, exist_ok=True)
+        for name in ("quickstart", "testing", "copilot", "language",
+                     "compiler", "plugins", "architecture"):
+            with open(os.path.join(d, name + ".md"), "w") as fh:
+                fh.write(f"doc content {name} section")
+
+        small = scale.system_prompt_scaled(td, "gpt-4o-mini", "openai")
+        assert "HELLFORGE Copilot" in small, "base prompt always present"
+        assert "doc content quickstart" in small, "small includes quickstart"
+        assert "doc content testing" not in small, "small omits testing"
+        assert "doc content language" not in small, "small omits language.md"
+        assert "doc content architecture" not in small
+
+        medium = scale.system_prompt_scaled(td, "claude-sonnet-4-5", "claude")
+        assert "doc content quickstart" in medium
+        assert "doc content testing" in medium and "doc content copilot" in medium
+        assert "doc content language" not in medium, "medium omits language.md"
+        assert "doc content compiler" not in medium
+
+        large = scale.system_prompt_scaled(td, "deepseek-chat", "deepseek")
+        for name in ("quickstart", "testing", "copilot", "language",
+                     "compiler", "plugins", "architecture"):
+            assert f"doc content {name}" in large, f"large includes {name}.md"
+test("Scale: system_prompt_scaled assembles by profile", test_scale_system_prompt_docs)
+
+
+def test_scale_system_prompt_docs_caps():
+    from plugins.llm import scale
+    with tempfile.TemporaryDirectory() as td:
+        d = os.path.join(td, "docs", "agent")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "quickstart.md"), "w") as fh:
+            fh.write("Q" * 9000)  # bigger than the small prompt_budget
+        with open(os.path.join(d, "language.md"), "w") as fh:
+            fh.write("LVALUE" * 13000 + "TAILMARKER")  # 78010 chars total
+        # small: quickstart is taken WHOLE (uncapped)
+        small = scale.system_prompt_scaled(td, "gpt-4o-mini", "openai")
+        assert small.count("Q") == 9000, "quickstart whole for small"
+        # large: each doc capped by prompt_budget (60000) — tail cut off,
+        # exactly 10000 whole LVALUE words survive (60000 / 6)
+        large = scale.system_prompt_scaled(td, "deepseek-chat", "deepseek")
+        assert "TAILMARKER" not in large, "language.md capped at prompt_budget"
+        assert large.count("LVALUE") == 10000
+test("Scale: cap semantics (small whole, large capped)", test_scale_system_prompt_docs_caps)
+
+
+def test_scale_system_prompt_fallback():
+    from plugins.llm import scale
+    with tempfile.TemporaryDirectory() as td:
+        with open(os.path.join(td, "AGENTS.md"), "w") as fh:
+            fh.write("AGENT CONTENT X" + "a" * 13000)
+        with open(os.path.join(td, "RULES.md"), "w") as fh:
+            fh.write("RULES CONTENT Y")
+        with open(os.path.join(td, "TODO.md"), "w") as fh:
+            fh.write("TODO CONTENT Z")
+        prompt = scale.system_prompt_scaled(td, "gpt-4o-mini", "openai")
+        assert "HELLFORGE Copilot" in prompt
+        assert "AGENT CONTENT X" in prompt, "AGENTS.md included"
+        assert "RULES CONTENT Y" in prompt and "TODO CONTENT Z" in prompt
+        assert "AGENT CONTENT X" in prompt and "a" * 13000 not in prompt, "AGENTS.md capped"
+        assert "doc content quickstart" not in prompt, "no docs/agent → fallback"
+    with tempfile.TemporaryDirectory() as td:
+        prompt = scale.system_prompt_scaled(td, "claude-sonnet-4-5", "claude")
+        assert "HELLFORGE Copilot" in prompt, "bare project → base prompt only"
+test("Scale: missing docs fallback to AGENTS/RULES/TODO", test_scale_system_prompt_fallback)
+
+
+def test_scale_override():
+    from plugins.llm import scale
+    assert scale.get_override() is None
+    scale.set_override("small")
+    assert scale.get_override() == "small"
+    assert scale.profile("deepseek-chat", "deepseek") == "small", "forced small wins"
+    assert scale.budget_for("deepseek-chat", "deepseek")["prompt_budget"] == 6000
+    scale.set_override("large")
+    assert scale.profile("gpt-4o-mini", "openai") == "large", "forced large wins"
+    scale.set_override("auto")
+    assert scale.get_override() is None, "auto clears"
+    assert scale.profile("deepseek-chat", "deepseek") == "large"
+    scale.set_override(None)
+    assert scale.get_override() is None
+    try:
+        scale.set_override("huge")
+        raise AssertionError("invalid profile must raise")
+    except ValueError:
+        pass
+    assert scale.get_override() is None, "invalid set is rejected, state unchanged"
+test("Scale: override forces profile, auto clears", test_scale_override)
 
 
 print(f"\n{'='*50}")
