@@ -126,42 +126,60 @@ def cmd_compile(args):
         return 0
 
     cmd = [sys.executable, EP_PATH, "compile"]
-    non_flags = [a for a in args if not a.startswith("--")]
-    for a in non_flags:
-        cmd.append(a)
+    out_path = None
+    if "-o" in args:
+        idx = args.index("-o")
+        if idx + 1 < len(args):
+            out_path = args[idx + 1]
+    specs = [a for a in args if not a.startswith("--") and a != "-o" and a != out_path]
+    from ep_compiler.paths import resolve_inputs
+    files = resolve_inputs(specs if specs else ["/"], recursive="--recursive" in flags)
+    if not files:
+        print("  No matching files found.")
+        return 1
+
+    extra = []
     if "--human" in flags:
-        cmd.append("--human")
+        extra.append("--human")
     if "--machine" in flags:
-        cmd.append("--machine")
+        extra.append("--machine")
     if "--strict" in flags:
-        cmd.append("--strict")
-    proc, log = launch(cmd, window="--window" in flags, detach="--detach" in flags)
-    if log:
-        print(f"  Detached (pid {proc.pid}). Log: {log}")
-    elif proc:
-        print(f"  Compiling in new window (pid {proc.pid}).")
-    else:
-        # Blocking compile finished — print a real summary (events, duration)
-        out_path = None
-        if "-o" in args:
-            idx = args.index("-o")
-            if idx + 1 < len(args):
-                out_path = args[idx + 1]
-        elif non_flags:
-            base = os.path.splitext(non_flags[-1])[0]
-            out_path = base + ".mid"
-        if out_path and os.path.exists(out_path):
-            try:
-                import mido
-                m = mido.MidiFile(out_path)
-                notes = sum(1 for msg in m if msg.type == "note_on" and msg.velocity > 0)
-                mins, secs = divmod(int(m.length), 60)
-                size = os.path.getsize(out_path)
-                print(f"  ✓ {out_path} — {notes} notes, {mins}:{secs:02d}, {size//1024}KB (MIDI is compact; size is normal)")
-            except Exception:
-                pass
+        extra.append("--strict")
+
+    use_window = "--window" in flags
+    use_detach = "--detach" in flags
+    if out_path and len(files) > 1:
+        print(f"  -o {out_path} ignored for {len(files)} files — outputs written next to sources")
+
+    for f in files:
+        fcmd = cmd + [f]
+        if out_path and len(files) == 1:
+            fcmd += ["-o", out_path]
+        fcmd += extra
+        proc, log = launch(fcmd, window=use_window, detach=use_detach)
+        if log:
+            print(f"  Detached (pid {proc.pid}). Log: {log}")
+            print(f"  View: launcher log {os.path.basename(log)}")
+        elif proc:
+            print(f"  Compiling in new window (pid {proc.pid}).")
+
+    if not use_window and not use_detach:
+        if len(files) == 1:
+            out_path = out_path or os.path.splitext(files[0])[0] + ".mid"
+            if out_path and os.path.exists(out_path):
+                try:
+                    import mido
+                    m = mido.MidiFile(out_path)
+                    notes = sum(1 for msg in m if msg.type == "note_on" and msg.velocity > 0)
+                    mins, secs = divmod(int(m.length), 60)
+                    size = os.path.getsize(out_path)
+                    print(f"  ✓ {out_path} — {notes} notes, {mins}:{secs:02d}, {size//1024}KB (MIDI is compact; size is normal)")
+                except Exception:
+                    pass
+        else:
+            print(f"  ✓ Compiled {len(files)} file(s) — outputs next to sources")
         if "--mem" in args:
-            _print_mem_report(non_flags)
+            _print_mem_report(specs if specs else ["/"])
     return 0
 
 
