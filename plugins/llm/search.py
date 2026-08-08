@@ -303,7 +303,7 @@ def similar(project_dir, text, top_k=3):
 
 # ── query dispatch ──
 
-def run_query(project_dir, query):
+def run_query(project_dir, query, top_k=5):
     """Dispatch a search request: leading `~` → similar (stripped); anything
     else → search. Returns a text block formatted for the model:
       SEARCH "velocity curve" — top 5:
@@ -312,11 +312,11 @@ def run_query(project_dir, query):
     q = query.strip()
     if q.startswith("~"):
         payload = q[1:].strip()
-        hits = similar(project_dir, payload, top_k=3)
+        hits = similar(project_dir, payload, top_k=top_k)
         head = f'SIMILAR "{payload}" — top {len(hits)}:'
         rows = [f'  {h["path"]}  ({h["score"]})' for h in hits]
     else:
-        hits = search(project_dir, q, top_k=5)
+        hits = search(project_dir, q, top_k=top_k)
         head = f'SEARCH "{q}" — top {len(hits)}:'
         rows = [f'  {h["path"]}:{h["line"]}  {h["text"]}' for h in hits]
     if not rows:

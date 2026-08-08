@@ -337,6 +337,8 @@ def _dispatch(api, state, history, cmd, rest, get_request, apply_plan_fn):
         _cmd_memory(getattr(api, "project_dir", None))
     elif cmd == "/review":
         _cmd_review(api, state)
+    elif cmd == "/search":
+        _cmd_search(api, state, rest)
     elif cmd in ("/exit", "/quit"):
         return False
     else:

@@ -42,11 +42,20 @@ from . import ui
 
 CONF = {}
 
+# Current provider/model for scaled system prompts (updated per command)
+_CURRENT_STATE = {}
+
 
 def _system_prompt(project_dir, base=None):
-    """Build the system prompt: AGENTS.md + RULES.md + TODO.md (capped) on
-    top of the copilot base prompt — the agent always sees the repo rules
-    and the live checklist."""
+    """Build the system prompt, SCALED to the model profile: small models get
+    the distilled briefing, large models get the full docs/agent/* set."""
+    try:
+        from . import scale as scale_mod
+        return scale_mod.system_prompt_scaled(
+            project_dir, _CURRENT_STATE.get("model"), _CURRENT_STATE.get("provider"))
+    except Exception:
+        pass
+    # Fallback: AGENTS.md + RULES.md + TODO.md (capped)
     from pathlib import Path
     root = Path(project_dir)
     parts = []
@@ -76,7 +85,8 @@ def _cfg(api, key, default=None):
 
 
 def _get_state(api):
-    return {
+    global _CURRENT_STATE
+    _st = {
         "provider": _cfg(api, "llm_provider", "openai"),
         "model": _cfg(api, "llm_model"),
         "base_url": _cfg(api, "llm_base_url"),
@@ -89,6 +99,8 @@ def _get_state(api):
         "index_model": _cfg(api, "llm_index_model"),
         "index_rebuilt": _cfg(api, "llm_index_rebuilt", 0),
     }
+    _CURRENT_STATE = _st
+    return _st
 
 
 def _save_state(api, state):
@@ -130,10 +142,38 @@ def _request(state, messages):
                                   timeout=600 if provider == "ollama" else 300)
 
 
+def _request_visible(state, messages, on_thinking=None):
+    """_request + thinking-tag handling: strips <thinking> blocks, shows them
+    per config (full or collapsed 'thought for Xs'), returns visible text."""
+    import time as _t
+    t0 = _t.time()
+    text, err = _request(state, messages)
+    dt = _t.time() - t0
+    if not text:
+        return text, err
+    try:
+        from . import thinking as th
+        blocks, visible = th.extract_thinking(text)
+        if blocks:
+            cfg = th.apply_config(state)
+            if cfg.get("show_full"):
+                print(th.render_full(blocks))
+            else:
+                print("  " + ui.thinking_collapsed(dt))
+            if on_thinking:
+                on_thinking(blocks, dt)
+            return visible, err
+    except Exception:
+        pass
+    return text, err
+
+
 # ── eshell command ─────────────────────────────
 
 def _cmd(args, api):
     state = _get_state(api)
+    global _CURRENT_STATE
+    _CURRENT_STATE = state
     if not args:
         _status(state)
         return
@@ -280,6 +320,12 @@ def _cmd(args, api):
 
     elif sub in ("doctor", "checkup"):
         _doctor_cmd(api)
+
+    elif sub == "search":
+        _search_cmd(api, state, rest)
+
+    elif sub == "context":
+        _context_cmd(api, state, rest)
 
     elif sub == "init":
         _init_cmd(api)
@@ -598,6 +644,55 @@ def _test_cmd(api, state, rest):
     print(f"  {ui.result_line('all green' if failed == 0 else f'{failed} file(s) failing', 'ok' if failed == 0 else 'err')}")
 
 
+def _search_cmd(api, state, rest):
+    """ai search <query> — codebase search (prefix ~ for similar)."""
+    query = " ".join(rest).strip()
+    if not query:
+        print("  Usage: ai search <query>   (prefix ~ for similar-to)")
+        return
+    try:
+        from . import search as search_mod
+        from . import scale as scale_mod
+        b = scale_mod.budget_for(state.get("model"), state.get("provider"))
+        top = b.get("search_top", 5)
+    except ImportError:
+        search_mod = None
+        top = 5
+    if search_mod is None:
+        print(f"  {ui.chip('error', 'error')} search support missing")
+        return
+    if search_mod.is_stale(api.project_dir):
+        print("  rebuilding search index...")
+        search_mod.build_search_index(api.project_dir)
+    print(search_mod.run_query(api.project_dir, query, top_k=top))
+
+
+def _context_cmd(api, state, rest):
+    """ai context small|medium|large|auto — override the context profile."""
+    if not rest:
+        try:
+            from . import scale as scale_mod
+            ov = scale_mod.get_override()
+            p = scale_mod.profile(state.get("model"), state.get("provider"))
+            print(f"  profile: {p} (override: {ov or 'auto'})")
+        except ImportError:
+            print("  scale support missing")
+        return
+    choice = rest[0].lower()
+    try:
+        from . import scale as scale_mod
+        if choice in ("auto", "default", "off"):
+            scale_mod.set_override(None)
+            print("  context profile: auto")
+        elif choice in ("small", "medium", "large"):
+            scale_mod.set_override(choice)
+            print(f"  context profile forced: {choice}")
+        else:
+            print("  Usage: ai context small|medium|large|auto")
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} scale support missing")
+
+
 def _status(state):
     provider = state["provider"]
     label = providers.PROVIDERS.get(provider, {}).get("label", provider)
@@ -678,16 +773,32 @@ def _agent_cc(state, api, rest):
             else api.get_config("llm_mode", "ask"))
     state["mode"] = mode
 
+    turn_counts = {"reads": 0, "edits": 0, "commands": 0}
+
     def _get_request(messages):
-        return _request(state, messages)
+        def _on_thinking(blocks, dt):
+            pass
+        return _request_visible(state, messages)
 
     def _apply_plan(plan, pd, confirm_write=True):
-        return llm_agent.interactive_apply(plan, pd, confirm_write=confirm_write)
+        res = llm_agent.interactive_apply(plan, pd, confirm_write=confirm_write)
+        for f in plan.get("files") or []:
+            act = f.get("action", "")
+            if act == "read":
+                turn_counts["reads"] += 1
+            elif act in ("edit", "write"):
+                turn_counts["edits"] += 1
+        return res
 
     def _on_turn(history, meta):
         try:
             from . import session as sess
             sess.save_session(project_dir, history, meta)
+            if any(turn_counts.values()):
+                print("  " + ui.explored(turn_counts["reads"],
+                                         turn_counts["edits"],
+                                         turn_counts["commands"]))
+                turn_counts.update(reads=0, edits=0, commands=0)
         except Exception:
             pass
 
@@ -1097,7 +1208,7 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
             {"role": "user", "content": prompt},
         ]
         ui.thinking(f"asking {state.get('provider')}/{state.get('model') or '?'}...")
-        text, err = _request(state, messages)
+        text, err = _request_visible(state, messages)
         if err:
             print(f"  [ai error] {err}")
             return
@@ -1198,6 +1309,22 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
             except Exception:
                 pass
 
+        # 2d-prime. Search: plan may carry "search" — index + query the
+        # codebase; results are printed and fed back.
+        sq = plan.get("search")
+        if sq:
+            try:
+                from . import search as search_mod
+                q = sq.get("query", "") if isinstance(sq, dict) else str(sq)
+                tk = sq.get("top", 5) if isinstance(sq, dict) else 5
+                if q and search_mod.is_stale(project_dir):
+                    search_mod.build_search_index(project_dir)
+                if q:
+                    print(f"  {ui.chip('search', 'command')} {q}")
+                    print(search_mod.run_query(project_dir, q, top_k=tk))
+            except Exception as e:
+                print(f"  {ui.chip('error', 'error')} search: {e}")
+
         # 2d. Subagents: plan may carry "subagents" — spawn focused child
         # chats; results are fed back to the main loop.
         subs = plan.get("subagents")
@@ -1233,7 +1360,7 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
                           "or {\"done\": true} if nothing is needed.")
         messages.append({"role": "assistant", "content": text})
         messages.append({"role": "user", "content": "\n".join(follow)})
-        text, err = _request(state, messages)
+        text, err = _request_visible(state, messages)
         if err:
             print(f"  [ai error] {err}")
             return
