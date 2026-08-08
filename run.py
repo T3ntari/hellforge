@@ -4,7 +4,15 @@
 Usage:
     run.py play <file> [--gui] [--window] [--detach]
     run.py compile <file> -o <out> [--window] [--detach] [--human|--machine]
+    run.py check <spec> [--recursive] [--max <N>]
     run.py shell
+    run.py stats <file>                 Notes, duration, range, velocity, polyphony, density, channels
+    run.py tracks <file>                Per-channel table (+ per-track when TRK metadata present)
+    run.py inspect <file> [N]           Show first N events (default 12)
+    run.py new <name> [-o <dir>]        Scaffold a v5 project directory
+    run.py transpose <file> <n> [-o out]  Shift notes by semitones (default <file>_transposed.mid)
+    run.py tempo <file> <bpm> [-o out]  Recompile at a new tempo (default <file>_tempo.mid)
+    run.py merge <a> <b> [-o out]       Concatenate two files (default <a>_merged.mid)
 
 Modes:
     --window   Open a dedicated console window (CREATE_NEW_CONSOLE on Windows)
@@ -287,6 +295,113 @@ def cmd_shell(args):
     return 0
 
 
+# === v5 CLI commands (shared logic lives in ep_compiler.cli_cmds) ===
+
+def _cli_out(args):
+    for i, a in enumerate(args):
+        if a in ("-o", "--output") and i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+def cmd_stats(args):
+    from ep_compiler.cli_cmds import CLIError, stats_report
+    if not args:
+        print("  Usage: run.py stats <file>")
+        return 1
+    try:
+        print(stats_report(args[0]))
+    except CLIError as e:
+        print(f"  ✗ {e}")
+        return 1
+    return 0
+
+
+def cmd_tracks(args):
+    from ep_compiler.cli_cmds import CLIError, tracks_report
+    if not args:
+        print("  Usage: run.py tracks <file>")
+        return 1
+    try:
+        print(tracks_report(args[0]))
+    except CLIError as e:
+        print(f"  ✗ {e}")
+        return 1
+    return 0
+
+
+def cmd_inspect(args):
+    from ep_compiler.cli_cmds import CLIError, inspect_lines
+    if not args:
+        print("  Usage: run.py inspect <file> [N]")
+        return 1
+    n = 12
+    if len(args) > 1 and args[1].lstrip("-").isdigit():
+        n = int(args[1])
+    try:
+        print("\n".join(inspect_lines(args[0], n)))
+    except CLIError as e:
+        print(f"  ✗ {e}")
+        return 1
+    return 0
+
+
+def cmd_new(args):
+    from ep_compiler.cli_cmds import CLIError, scaffold_project
+    if not args:
+        print("  Usage: run.py new <name> [-o <dir>]")
+        return 1
+    try:
+        root = scaffold_project(args[0], _cli_out(args))
+        print(f"  ✓ {os.path.join(root, 'index.ei')}")
+        print(f"  ✓ {os.path.join(root, 'parts/main.e')}")
+        print(f"  ✓ {os.path.join(root, 'README.md')}")
+        print(f"  v5 project scaffolded: {root}")
+    except CLIError as e:
+        print(f"  ✗ {e}")
+        return 1
+    return 0
+
+
+def cmd_transpose(args):
+    from ep_compiler.cli_cmds import CLIError, transpose_file
+    if len(args) < 2:
+        print("  Usage: run.py transpose <file> <semitones> [-o out]")
+        return 1
+    try:
+        print(transpose_file(args[0], args[1], _cli_out(args)))
+    except CLIError as e:
+        print(f"  ✗ {e}")
+        return 1
+    return 0
+
+
+def cmd_tempo(args):
+    from ep_compiler.cli_cmds import CLIError, tempo_file
+    if len(args) < 2:
+        print("  Usage: run.py tempo <file> <bpm> [-o out]")
+        return 1
+    try:
+        print(tempo_file(args[0], args[1], _cli_out(args)))
+    except CLIError as e:
+        print(f"  ✗ {e}")
+        return 1
+    return 0
+
+
+def cmd_merge(args):
+    from ep_compiler.cli_cmds import CLIError, merge_files
+    if len(args) < 2:
+        print("  Usage: run.py merge <a> <b> [-o out]")
+        return 1
+    try:
+        print(merge_files(args[0], args[1], _cli_out(args)))
+    except CLIError as e:
+        print(f"  ✗ {e}")
+        return 1
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -301,6 +416,20 @@ def main():
         return cmd_check(args)
     if mode in ("shell", "s"):
         return cmd_shell(args)
+    if mode in ("stats",):
+        return cmd_stats(args)
+    if mode in ("tracks",):
+        return cmd_tracks(args)
+    if mode in ("inspect",):
+        return cmd_inspect(args)
+    if mode in ("new", "scaffold"):
+        return cmd_new(args)
+    if mode in ("transpose",):
+        return cmd_transpose(args)
+    if mode in ("tempo",):
+        return cmd_tempo(args)
+    if mode in ("merge",):
+        return cmd_merge(args)
     if mode in ("--help", "-h", "help"):
         print(__doc__)
         return 0
