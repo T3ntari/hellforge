@@ -1,9 +1,0 @@
-// sad_piece_in_a_minor
-project "sad_piece_in_a_minor"
-tempo 120
-
-include "parts/main.e" as main
-
-section "Main" {
-    play main
-}

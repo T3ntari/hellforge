@@ -1,9 +1,0 @@
-// test_shell
-project "test_shell"
-tempo 120
-
-include "parts/main.e" as main
-
-section "Main" {
-    play main
-}
