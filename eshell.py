@@ -1522,7 +1522,10 @@ def main():
             MODS_DIR,
         )
         _pkg_data = _pkg_load()
+        _updates = []
         for _ptype, _dir in [("plugins", PLUGINS_DIR), ("mods", MODS_DIR)]:
+            if not os.path.isdir(_dir):
+                continue
             for _name, _path in _find_pkgs(_dir):
                 _installed = _get_meta(_path)
                 _avail = _pkg_data.get(_ptype, {}).get(_name, {})
@@ -1530,7 +1533,10 @@ def main():
                     _iv = _installed.get("version", "?")
                     _av = _avail.get("version", "?")
                     if _iv != "?" and _av != "?" and _iv != _av:
-                        print(f"  {c('⬆', YELLOW)} {_name}: v{_iv} → v{_av} ({c(f'{_ptype} update {_name}', CYAN)})")
+                        _updates.append((_name, _iv, _av))
+        if _updates:
+            _parts = ", ".join(f"{_n} v{_i} → v{_a}" for _n, _i, _a in _updates)
+            print(f"  {c('⬆', YELLOW)} {len(_updates)} update(s) available: {_parts}")
     except Exception:
         pass
 
@@ -1556,29 +1562,29 @@ def main():
                 print(f"  {YELLOW}  Current session user: {username}{R}")
             print(f"  {GREEN}✓ Logged in as: {username}{R}")
         else:
-            print(f"  {RED}HELLFORGE> No active login session.{R}")
-            if identity_exists():
-                id = load_identity()
-                id_name = id.get("name", "?") if id else "?"
-                print(f"  {D}  Local identity: {id_name} (not logged in){R}")
-                print(f"  {D}  Run 'sign --login' to sign in to oshonet.in{R}")
-            else:
-                print(f"  {D}  First time? Run 'sign --setup' to create an account{R}")
-                print(f"  {D}  Already registered? Run 'sign --login'{R}")
-            r = input(f"  Login? [{c('y/N',B)}] ").strip().lower()
-            if r == "y":
+            if sys.stdin.isatty():
+                print(f"  {RED}HELLFORGE> No active login session.{R}")
                 if identity_exists():
-                    from plugins.fentclient.security import identity_login
-                    identity_login()
+                    id = load_identity()
+                    id_name = id.get("name", "?") if id else "?"
+                    print(f"  {D}  Local identity: {id_name} (not logged in){R}")
+                    print(f"  {D}  Run 'sign --login' to sign in{R}")
                 else:
-                    from plugins.fentclient.security import identity_register
-                    identity_register()
-                session = load_session()
-                if session:
-                    print(f"  {GREEN}✓ Logged in as: {session.get('username', '?')}{R}")
-            else:
-                print(f"  {D}  Run 'sign --setup' or 'sign --login' to authenticate.{R}")
-                print(f"  {D}  Without login: limited local functionality{R}")
+                    print(f"  {D}  First time? Run 'sign --setup' to create an account{R}")
+                    print(f"  {D}  Already registered? Run 'sign --login'{R}")
+                r = input(f"  Login? [{c('y/N',B)}] ").strip().lower()
+                if r == "y":
+                    if identity_exists():
+                        from plugins.fentclient.security import identity_login
+                        identity_login()
+                    else:
+                        from plugins.fentclient.security import identity_register
+                        identity_register()
+                    session = load_session()
+                    if session:
+                        print(f"  {GREEN}✓ Logged in as: {session.get('username', '?')}{R}")
+                else:
+                    print(f"  {D}  Run 'sign --setup' or 'sign --login' to authenticate.{R}")
     except Exception:
         pass
 

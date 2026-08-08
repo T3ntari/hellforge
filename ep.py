@@ -58,4 +58,10 @@ def _read_and_compile(path):
     return compile_source(text)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except IsADirectoryError as e:
+        print(f"  Error: {e}", file=sys.stderr)
+        print("  That's a directory — compile takes a single file.", file=sys.stderr)
+        print("  Use 'run.py compile <dir>' to compile every file in a directory.", file=sys.stderr)
+        sys.exit(1)
