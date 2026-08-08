@@ -791,7 +791,8 @@ def _daughter_verify(api, state, request, project_dir):
 
 def _build_context(project_dir, request, max_files=3, max_lines=200, budget=60000):
     """Compact project context for agentic prompts: a top-level tree plus the
-    contents of files the request explicitly names (up to budget bytes)."""
+    contents of files the request explicitly names (up to budget bytes).
+    Names may include or omit the extension ('eshell' → eshell.py)."""
     import re
     from pathlib import Path
     root = Path(project_dir)
@@ -805,6 +806,11 @@ def _build_context(project_dir, request, max_files=3, max_lines=200, budget=6000
     except Exception:
         pass
     named = re.findall(r"[\w./\\-]+\.\w+", request)
+    # Also match bare names without extension (e.g. 'eshell' → eshell.py)
+    bare = re.findall(r"(?<![\w./])([A-Za-z_][\w-]*)(?![\w.])", request)
+    bare = [b for b in bare if b.lower() not in ("fix", "bug", "add", "the", "and",
+                                                 "with", "that", "this", "run",
+                                                 "file", "code", "issue")]
     used = 0
     for rel in named[:max_files]:
         rel = rel.replace("\\", "/").lstrip("./")
@@ -823,6 +829,33 @@ def _build_context(project_dir, request, max_files=3, max_lines=200, budget=6000
                 break
         except Exception:
             continue
+    if len(bare) > 0 and used < budget:
+        # Resolve bare names against the file tree (first match by stem)
+        import fnmatch
+        all_files = []
+        for p in root.rglob("*"):
+            if p.is_file() and not any(part.startswith(".") or part in
+                                       (".venv", "node_modules", "__pycache__")
+                                       for part in p.relative_to(root).parts):
+                all_files.append(p)
+        for name in bare[:max_files]:
+            matches = [p for p in all_files
+                       if p.stem.lower() == name.lower() or p.name.lower() == name.lower()]
+            if not matches:
+                continue
+            target = matches[0]
+            rel = str(target.relative_to(root))
+            text = target.read_text(encoding="utf-8", errors="replace")
+            if len(text) > budget:
+                text = text[:budget] + "\n... (truncated)"
+            lines = text.splitlines()[:max_lines]
+            if f"--- {rel} " in "\n".join(parts):
+                continue
+            parts.append(f"--- {rel} ({target.stat().st_size} bytes) ---\n"
+                         + "\n".join(lines))
+            used += len(text)
+            if used > budget:
+                break
     return "\n".join(parts) or "(empty)"
 
 

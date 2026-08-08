@@ -200,23 +200,61 @@ def interactive_apply(plan, project_dir, confirm_write=True):
                 continue
             new_text = f.get("content", "")
             old_text = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+            # Catastrophic-collapse guard: replacing a large existing file
+            # with a tiny one is the classic small-model hallucination.
+            collapse = False
+            if target.exists() and len(old_text) > 200 and \
+                    len(new_text) < len(old_text) * 0.1:
+                collapse = True
+                print(f"  {dv.red('WARNING')}: this WRITE would shrink {rel} from "
+                      f"{len(old_text)} to {len(new_text)} bytes "
+                      f"({int(100 * len(new_text) / max(1, len(old_text)))}%).")
+                print("  " + dv.red("Likely a hallucinated rewrite — the file must "
+                                    "be edited, not replaced."))
             dv.print_diff(old_text, new_text, rel)
+            if collapse:
+                # Only an explicit 'yes' (full word) can authorize a collapse.
+                if auto_accept or not confirm_write:
+                    skipped.append((rel, "collapse guard — type 'yes' to replace"))
+                    continue
+                if not _is_tty():
+                    skipped.append((rel, "declined (collapse guard, no TTY)"))
+                    continue
+                try:
+                    ans = input(f"  Type 'yes' to REPLACE {rel} anyway? [yes/n/v] ").strip().lower()
+                except EOFError:
+                    ans = "n"
+                if ans == "v":
+                    for line in dv.render_read(new_text.splitlines()):
+                        print(f"  {line}")
+                    try:
+                        ans = input(f"  Type 'yes' to REPLACE {rel} anyway? [yes/n] ").strip().lower()
+                    except EOFError:
+                        ans = "n"
+                if ans != "yes":
+                    skipped.append((rel, "declined (collapse guard)"))
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(new_text, encoding="utf-8")
+                applied += 1
+                msgs.append(f"  wrote {rel}")
+                continue
             if auto_accept:
                 ok = True
             elif not confirm_write:
                 ok = True
             else:
-                ok, view, quit_, all_ = _confirm(f"Apply {action.upper()} {rel}? [y/n/v/a/q]")
+                ok, view, quit_, all_ = _confirm(f"Apply WRITE {rel}? [y/n/v/a/q]")
                 if all_:
                     auto_accept = True
                 if quit_:
                     skipped.append((rel, "quit"))
                     break
                 if view:
-                    full = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+                    full = old_text if old_text else ""
                     for line in dv.render_read(new_text.splitlines() if not full else full.splitlines()):
                         print(f"  {line}")
-                    ok, _, quit_, _ = _confirm(f"Apply {action.upper()} {rel}? [y/n/a/q]")
+                    ok, _, quit_, _ = _confirm(f"Apply WRITE {rel}? [y/n/a/q]")
                     if quit_:
                         skipped.append((rel, "quit"))
                         break
