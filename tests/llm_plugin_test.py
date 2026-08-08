@@ -862,6 +862,7 @@ def test_agent_repl_multi_turn():
     assert open(os.path.join(d, "x.py")).read() == "v = 2\n"
 test("Agent repl: multi-turn edits then conversation", test_agent_repl_multi_turn)
 
+<<<<<<< HEAD
 
 # ── UI rendering (plugins/llm/ui.py) ──
 
@@ -928,6 +929,120 @@ def test_ui_prompt_colored_on_tty():
     assert "\033[0m" in you, "prompt must reset color"
 test("UI: prompt returns 'you> ' colored on fake-TTY", test_ui_prompt_colored_on_tty)
 
+
+
+
+# ── tests_runner: discovery / running / summarizing / auto-fix ──
+
+import json as _json
+from plugins.llm import tests_runner as tr
+
+_FAKE_HARNESS = '''import sys
+passed = 0
+failed = 0
+def test(name, fn):
+    global passed, failed
+    try:
+        fn()
+        passed += 1
+        print("  [PASS] " + name)
+    except Exception:
+        failed += 1
+        print("  [FAIL] " + name)
+'''
+
+
+def _write_fake(project_dir, name, body):
+    os.makedirs(os.path.join(project_dir, "tests"), exist_ok=True)
+    with open(os.path.join(project_dir, "tests", name), "w") as fh:
+        fh.write(_FAKE_HARNESS + body)
+
+
+def test_discover_real_tests_dir():
+    found = tr.discover_test_files(ROOT)
+    assert len(found) >= 5
+    assert all(f.startswith("tests") and f.endswith("_test.py") for f in found)
+test("tests_runner: discovers real tests dir (>= 5 files)", test_discover_real_tests_dir)
+
+
+def test_run_test_file_scratch_failing():
+    with tempfile.TemporaryDirectory() as d:
+        _write_fake(d, "scratch_test.py",
+                    'test("a", lambda: None)\ntest("b", lambda: None)\n'
+                    'test("c", lambda: 1 / 0)\n'
+                    'print("SCRATCH TESTS: %d/%d passed" % (passed, passed + failed))\n'
+                    "sys.exit(1)\n")
+        res = tr.run_test_file(d, "tests/scratch_test.py")
+        assert res["total"] == 3 and res["passed"] == 2 and res["failed"] == 1
+        assert res["ok"] is False
+test("tests_runner: scratch file 2 pass / 1 fail parsed, ok=False", test_run_test_file_scratch_failing)
+
+
+def test_run_test_file_scratch_passing():
+    with tempfile.TemporaryDirectory() as d:
+        _write_fake(d, "ok_test.py",
+                    'test("a", lambda: None)\ntest("b", lambda: None)\n'
+                    'print("OK TESTS: %d/%d passed" % (passed, passed + failed))\n')
+        res = tr.run_test_file(d, "tests/ok_test.py")
+        assert res["total"] == 2 and res["passed"] == 2 and res["failed"] == 0
+        assert res["exit_code"] == 0 and res["ok"] is True
+test("tests_runner: fully passing scratch file ok=True", test_run_test_file_scratch_passing)
+
+
+def test_summarize_markers():
+    with tempfile.TemporaryDirectory() as d:
+        _write_fake(d, "ok_test.py",
+                    'test("a", lambda: None)\n'
+                    'print("OK TESTS: %d/%d passed" % (passed, passed + failed))\n')
+        _write_fake(d, "bad_test.py",
+                    'test("a", lambda: 1 / 0)\n'
+                    'print("BAD TESTS: %d/%d passed" % (passed, passed + failed))\n'
+                    "sys.exit(1)\n")
+        results = tr.run_tests(d)
+        text = tr.summarize(results)
+        assert "\u2713 tests/ok_test.py" in text and "\u2717 tests/bad_test.py" in text
+        assert "2 files, 1 passed / 1 failed" in text
+        assert "output (truncated)" in text and "FAIL" in text
+test("tests_runner: summarize shows ✓/✗ markers + file names", test_summarize_markers)
+
+
+def test_plan_test_targets():
+    assert tr.plan_test_targets({"tests": "all", "files": []}) is None
+    assert tr.plan_test_targets({"tests": ["a_test.py", "b_test.py"]}) == ["a_test.py", "b_test.py"]
+    assert tr.plan_test_targets({"files": []}) is None
+    assert tr.plan_test_targets(None) is None
+test("tests_runner: plan_test_targets all/list/absent", test_plan_test_targets)
+
+
+def test_auto_fix_loop():
+    with tempfile.TemporaryDirectory() as d:
+        _write_fake(d, "fix_test.py",
+                    "def value():\n    return 1\n"
+                    'def check():\n    assert value() == 2, "value must be 2"\n'
+                    'test("value is 2", check)\n'
+                    'print("FIX TESTS: %d/%d passed" % (passed, passed + failed))\n'
+                    "if failed:\n    sys.exit(1)\n")
+        plan1 = {"tests": ["tests/fix_test.py"], "files": [
+            {"path": "tests/fix_test.py", "action": "edit",
+             "edits": [{"search": "def value():\n    return 1",
+                        "replace": "def value():\n    return 1  # patched"}]}]}
+        calls = []
+
+        def model_fn(messages):
+            calls.append(messages)
+            assert "fix_test.py" in messages[0]["content"]
+            return _json.dumps({"tests": ["tests/fix_test.py"], "files": [
+                {"path": "tests/fix_test.py", "action": "edit",
+                 "edits": [{"search": "def value():\n    return 1",
+                            "replace": "def value():\n    return 2"}]}]})
+
+        apply_fn = lambda plan, pd: llm_agent.apply_plan(plan, pd, confirm_write=False)
+        out = tr.auto_fix_loop(d, model_fn, plan1, apply_fn, max_rounds=3)
+        assert out["rounds"] == 2
+        assert len(out["fixes_applied"]) == 2
+        assert all(r["ok"] for r in out["final_results"])
+        assert len(calls) == 1
+test("tests_runner: auto-fix loop greens in 2 rounds", test_auto_fix_loop)
 
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
