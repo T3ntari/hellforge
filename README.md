@@ -141,6 +141,11 @@ warnings. Convert old sources with:
 .venv/bin/python tests/run_all.py
 ```
 
+## AI Copilot
+
+The repo ships an LLM copilot (`ai.py` / `ai` command — `ai fix`, `ai agent`,
+`ai chat`). AI agent instructions live in **AGENTS.md / RULES.md / TODO.md**.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Contributions welcome; see
