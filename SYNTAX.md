@@ -202,6 +202,7 @@ For GPU/plugin/audio API docs, see the [Plugins section](#45-plugin--mod-system-
 58. [Ethics & Attribution — Don't Steal Music](#58-ethics--attribution--dont-steal-music)
 52. [Glossary](#52-glossary)
 53. [MIT License](#53-mit-license)
+63. [v5 — The Canonical Syntax](#63-v5--the-canonical-syntax)
 
 ---
 
@@ -686,7 +687,7 @@ play note(G4) @dur:s @vel:pp            # Very soft fast G
 
 ## 7. Syntax Version Compatibility
 
-E has evolved through five major syntax versions. This document covers **v5 (latest — the canonical default)**. v5 = v4 + piano performance features (sustain pedal, rests, articulations, tuplets, octave shift, velocity curves, ties). v1-v4 still compile but are deprecated and emit warnings.
+E has evolved through five major syntax versions. This document covers **v5 (latest — the canonical default)**. v5 = v4 + piano performance features (sustain pedal, rests, articulations, tuplets, octave shift, velocity curves, ties) + the v5 statement set (print, assert, include, !fn macros, prog, perc, scale/range/list/run loops with break/continue, @seed with pick/rand). See [Section 63 — v5: The Canonical Syntax](#63-v5--the-canonical-syntax) for the complete reference. v1-v4 still compile but are deprecated and emit warnings.
 
 ### Version Table
 
@@ -696,7 +697,8 @@ E has evolved through five major syntax versions. This document covers **v5 (lat
 | **v1 #HUMAN** | ✅ Supported | `play note(C4) @dur:q @vel:mf` | Readable compositions, teaching |
 | **v2 Semantic** | ⚠️ Deprecated | `[Section:]`, chord blocks, scale degrees | Existing v2 projects (migrate to v5) |
 | **v3 Shorthand** | ✅ Supported | `C4 q`, macros `!name`, repeats `xN`, probability `?0.8` | Quick prototyping, concise notation |
-| **v4 Polyrhythm** | ✅ Latest | `[notes]/N`, Euclidean `E(N,M)`, scale quantization, polyrhythms `(X:Y)` | Complex rhythms, modern compositions |
+| **v4 Polyrhythm** | ⚠️ Deprecated | `[notes]/N`, Euclidean `E(N,M)`, scale quantization, polyrhythms `(X:Y)` | Legacy — superseded by v5 |
+| **v5 Canonical** | ✅ **Current** | Piano performance layer + statement set (see [Section 63](#63-v5--the-canonical-syntax)) | **All new compositions** |
 | **v4 .eci** | ⚠️ Deprecated | `@mode machine/human/auto` toggle within one file | Mixed-precision files |
 | **v4 .ei** | ⚠️ Deprecated | Project index with `include`, `section`, `play`, `root` inheritance | Multi-part songs, orchestral works |
 | **v4 .enx** | ⚠️ Deprecated | Album ordering with `order`, tempo override, delays | Albums, concerts, practice loops |
@@ -6006,3 +6008,181 @@ The watcher monitors approximately 100 files across the entire project tree.
 | File signing | HMAC-SHA256 with author metadata. Sidecar or embedded modes |
 | Encryption | XOR or AES-256-GCM with scrypt key derivation |
 | Self-disabling | `_fatal()` auto-disables any plugin/mod that crashes during load |
+
+## 63. v5 — The Canonical Syntax
+
+v5 is the canonical HELLFORGE syntax — **every source compiles as v5 by default**,
+no version headers required. v5 is a strict superset: v1–v4 sources still compile
+for backward compatibility but emit deprecation warnings, and every feature below
+is additive — it activates only on lines that no earlier version could parse.
+
+v5 = v4 + the **piano performance layer** + the **v5 statement set**.
+
+### Version History
+
+| Version | Status | Key Features | When to Use |
+|---------|--------|-------------|-------------|
+| **v1 #MACHINE** | ⚠️ Deprecated | `T{N} N{N} D{N} V{N}` token stream | Legacy only |
+| **v1 #HUMAN** | ⚠️ Deprecated | `play note(C4) @dur:q @vel:mf` | Legacy only |
+| **v2 Semantic** | ⚠️ Deprecated | `[Section:]`, chord blocks, scale degrees | Legacy only |
+| **v3 Shorthand** | ⚠️ Deprecated | `C4 q`, `!name`, `xN`, `?0.8` | Legacy only |
+| **v4 Polyrhythm** | ⚠️ Deprecated | `[notes]/N`, `E(N,M)`, `@mode` | Legacy only |
+| **v5 Canonical** | ✅ **Current default** | Piano performance layer + statement set | **All new compositions** |
+
+### The Piano Performance Layer (carried from v4)
+
+All seven piano-performance features from v4 carry into v5 unchanged:
+
+| Feature | Syntax | Example |
+|---------|--------|---------|
+| Sustain pedal | `pedal on` / `pedal off`, `@pedal:<0-127>` | `pedal on` |
+| Pedal preset | `@sustain` | `@sustain` |
+| Rests | `rest q`, `R 500ms` | `rest e` |
+| Articulations | `@art:staccato` \| `legato` \| `tenuto` \| `accent` | `play note(C4) @dur:q @art:staccato` |
+| Machine articulation | `S[art:...]` | `T0 N60 D500 S[art:staccato]` |
+| Tuplets | `t3(...)`, `trip(...)`, `tup(3,2,...)` | `t3(C4 E4 G4) @vel:f` |
+| Octave shift | `@oct:±N` | `@oct:+1` |
+| Velocity curves | `@curve vel <start> <end> [over <beats>]` | `@curve vel 60 115 over 4q` |
+| Ties | `C4~ q q`, `@tie` | `C4~ q q` |
+
+`samples/v5-current/performance_demo.e` exercises all seven.
+
+### The v5 Statement Set
+
+Eight new statement-level constructs. All are compile-time features — they run
+during compilation, not playback.
+
+#### `print` — Compile-Time Output
+
+```
+print "text"        // literal text
+print $var          // variable value
+print {expr}        // math expression
+print N60           // note number -> note name (C4)
+print midi          // compilation stats (2 notes, C4-E4, 1.0s)
+```
+
+Works anywhere in a source file, **including inside loop bodies** — a `print` inside
+a `for` block fires once per iteration.
+
+#### `assert` — Compile-Time Guard
+
+```
+assert <condition>, "message"
+```
+
+When `<condition>` is false, compilation fails with `message`. Conditions are plain
+math after variable/expression substitution — loop variables work inside loop
+bodies:
+
+```
+for $i in 1..4 {
+    assert $i < 5, "too many iterations"
+}
+```
+
+#### `include` — Inline Another File
+
+```
+include "path.e"
+```
+
+Inlines another E file at the point of the include, before version detection —
+included content participates fully (macros, loops, directives). Paths resolve
+relative to the including file first, then the project root. Recursion depth
+and include cycles are guarded (max depth 16).
+
+#### `!fn` — Parameterized Macros
+
+```
+!fn name(p1, p2) = <body>
+!name(arg1, arg2)
+```
+
+Define once, call anywhere — the body is expanded textually with `$p1`, `$p2` (and
+the named parameters) substituted by the arguments:
+
+```
+!fn arp(r, d, v) = play note($r) @dur:$d @vel:$v
+
+!arp(C4, e, mf)
+!arp(E4, e, mf)
+!arp(G4, e, mf)
+```
+
+#### `prog` — Chord Progressions
+
+```
+prog(C:q G:q Am:h F:q)
+```
+
+Expands to human chord lines. Each element is `root + quality + optional :dur`;
+quality defaults to major, duration to quarter: `C:q` = C major quarter, `Am:h` =
+A minor half, `G:maj7:q` = G major-7 quarter.
+
+#### `perc` — GM Percussion
+
+```
+perc(kick|snare|hihat|openhat|clap|tom_low|tom_mid|tom_high|crash|ride|tambourine|cowbell|shaker)
+```
+
+Plays a GM percussion voice on MIDI channel 9 (the drum channel):
+
+```
+perc(kick)
+perc(hihat)
+```
+
+#### Loop Additions — `for-in`, `break`, `continue`
+
+Four new iteration sources join the existing `for $i = a to b` and `repeat N`:
+
+```
+for $n in [C4 E4 G4]             // list of values
+for $i in 1..8                   // integer range, inclusive
+for $n in scale(C major, 4, 1)   // scale degrees (name, octave, octaves)
+for $n in run(C4, C5)            // chromatic run, inclusive
+```
+
+`break` exits the loop block early; `continue` skips to the next iteration. All
+loop forms support single-line and multi-line `{ ... }` bodies, and loop variables
+resolve inside `print`, `assert`, `!fn` arguments and math expressions.
+
+#### `@seed` + `pick()` / `rand()` — Deterministic Randomness
+
+```
+@seed 42
+
+$v = pick(C4 E4 G4)      // space-separated choices -> one of them
+$x = rand(1, 8)          // random integer, inclusive
+play note({pick(C5 G5)}) @dur:q @vel:mf   // usable inside {expr} too
+```
+
+`@seed N` seeds a deterministic RNG: the same seed always produces the same
+choices, so `pick()`/`rand()` are reproducible across compiles and machines.
+
+### Migrating to v5
+
+v1–v4 sources still compile, but each prints a deprecation warning banner. Convert
+any old file with:
+
+```
+.venv/bin/python run.py compile <old.e> --to v5
+```
+
+| Old syntax (v1–v4) | v5 replacement |
+|--------------------|----------------|
+| `Version: v4` / `#MACHINE` headers | Nothing needed — v5 is the default; keep or drop the header |
+| `T0 N60 D500 V80` (machine line) | Same — machine lines are v5 |
+| `play note(C4) @dur:q @vel:mf` (human line) | Same — human lines are v5 |
+| `!name = body` (v3 macro) | `!fn name(p1, p2) = body` + `!name(arg1, arg2)` |
+| `repeat N { ... }` / `for $i = 0 to N { ... }` | `for $i in 1..N { ... }` — plus list/scale/run iterators |
+| `N60-72` random range | `$n = rand(60, 72)` under `@seed` |
+| `?0.8` probability gates | `$v = pick(A B C)` under `@seed` |
+| `arpeggio(up, ...)` (v2) | `!fn` macros or `for $n in scale(...)` |
+| `[Section: name]` blocks (v2) | `section "Name" { ... }` in `.ei` / `.eci` |
+| `E(N,M)` Euclidean rhythm | Unchanged — still valid v5 |
+
+For a full worked example of the statement set, see
+`samples/v5-current/pattern_demo.e`.
+

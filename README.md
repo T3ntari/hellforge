@@ -20,7 +20,8 @@ That is a complete piece of music — a C major chord. Compile it, play it.
 - **Precision** — millisecond timing, 0–127 velocity, pitch bend, pan, filters, envelopes
 - **v5 syntax** — the canonical version (default always). v5 = v4 + piano performance
   features (sustain pedal, rests, articulations, tuplets, octave shift, velocity
-  curves, ties)
+  curves, ties) + the v5 statement set (print, assert, include, `!fn` macros, prog,
+  perc, scale/range loops with `break`/`continue`, `@seed` with `pick`/`rand`)
 - **Low-level controllers** — `@vol`, `@master`, `@gain`, `@sr`, `@bit`, `@quality`,
   `@gc`, `@mem`, `@sub`, `@bass_boost`, `@stereo_width`, `@neural` work end-to-end
   from source through MIDI export to WAV rendering
@@ -88,6 +89,36 @@ pedal off
 
 The full tutorial and reference live in [`SYNTAX.md`](SYNTAX.md) and the
 [`doc/`](doc/index.md) wiki.
+
+## v5 quick tour
+
+A single piece exercising the v5 statement set — compile it, play it:
+
+```e
+// v5 — quick tour: !fn macros, scale loops, print, assert, prog, perc, @seed
+@bpm 96 @seed 42
+
+!fn arp(r, d, v) = play note($r) @dur:$d @vel:$v
+!arp(C4, e, mf)
+!arp(E4, e, mf)
+!arp(G4, e, mf)
+
+for $n in scale(C major, 4, 1) {
+    print $n
+    play note($n) @dur:q @vel:mp
+}
+
+for $i in 1..4 {
+    assert $i < 5, "too many iterations"
+}
+
+prog(C:q G:q Am:h F:q)
+perc(kick)
+perc(hihat)
+
+$fill = pick(C5 E5 G5)
+play note($fill) @dur:h @vel:mf
+```
 
 ## Version policy
 
