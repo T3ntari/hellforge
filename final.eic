@@ -1,0 +1,478 @@
+// EIC — E Index Clear (human-readable)
+// Generated from: Nocturne_Bm.ei
+
+// ===== PROJECT INDEX =====
+project "Nocturne in B Minor"
+composer "AI"
+tempo 56
+
+include "parts/opening.e" as opening
+include "parts/development.e" as development
+include "parts/climax.e" as climax
+
+section "I. Opening" {
+    play opening
+}
+
+section "II. Development" {
+    play development after 500ms
+}
+
+section "III. Climax" {
+    play climax after 500ms
+}
+
+// ===== parts/opening.e =====
+# Nocturne in B Minor — Opening
+# Intro + Theme A | 56 BPM | ppp → p
+# LH: B1-F#2-B2-D3-F#3-B3 rolling pattern
+
+@bpm 56
+
+# Intro — LH alone, ppp
+play note(B1) @dur:e @vel:ppp
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:e @vel:ppp
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:e @vel:ppp
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:e @vel:ppp
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+# Theme A — melody enters, p
+play note(B1) @dur:e @vel:pp  // + B3
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + D4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + E4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + F#4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+// ===== parts/development.e =====
+# Nocturne in B Minor — Development
+# Theme A' + Theme B | 56 BPM | mp → mf
+# B minor → G major
+
+@bpm 56
+
+# Theme A' — higher register, mp
+play note(B1) @dur:e @vel:pp  // + F#4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + G4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:p  // + A4
+play note(F#2) @dur:e @vel:p
+play note(B2) @dur:e @vel:p
+play note(D3) @dur:e @vel:p
+play note(F#3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+
+play note(B1) @dur:e @vel:p  // + B4
+play note(F#2) @dur:e @vel:p
+play note(B2) @dur:e @vel:p
+play note(D3) @dur:e @vel:p
+play note(F#3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+
+# Theme B — G major, warmer, mf
+play note(G2) @dur:e @vel:p  // + G4
+play note(D3) @dur:e @vel:p
+play note(G3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+play note(D4) @dur:e @vel:p
+play note(G3) @dur:e @vel:p
+
+play note(G2) @dur:e @vel:p  // + B4
+play note(D3) @dur:e @vel:p
+play note(G3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+play note(D4) @dur:e @vel:p
+play note(G3) @dur:e @vel:p
+
+play note(G2) @dur:e @vel:mp  // + D5
+play note(D3) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+play note(D4) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+
+play note(G2) @dur:e @vel:mp  // + G5
+play note(D3) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+play note(D4) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+
+// ===== parts/climax.e =====
+# Nocturne in B Minor — Climax + Coda
+# Development + Climax + Resolution | 56 BPM | f → ppp
+# E minor → F#7 → B minor
+
+@bpm 56
+
+# Development — E minor, building
+play note(E2) @dur:e @vel:mp  // + E5
+play note(B2) @dur:e @vel:mp
+play note(E3) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+play note(B2) @dur:e @vel:mp
+
+play note(E2) @dur:e @vel:mp  // + F#5
+play note(B2) @dur:e @vel:mp
+play note(E3) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+play note(B2) @dur:e @vel:mp
+
+# F#7, tension
+play note(F#2) @dur:e @vel:mp  // +, C#5
+play note(C#3) @dur:e @vel:mp
+play note(F#3) @dur:e @vel:mp
+play note(A#3) @dur:e @vel:mp
+play note(C#4) @dur:e @vel:mp
+play note(F#3) @dur:e @vel:mp
+
+play note(F#2) @dur:e @vel:mf  // +, F#4
+play note(C#3) @dur:e @vel:mf
+play note(F#3) @dur:e @vel:mf
+play note(A#3) @dur:e @vel:mf
+play note(C#4) @dur:e @vel:mf
+play note(F#3) @dur:e @vel:mf
+
+# Climax — B minor, full chords, f
+play note(B1) @dur:e @vel:f  // + F#3, F#4, D5, F#5
+play note(F#2) @dur:e @vel:f  // +, D3, D4, B4
+play note(B2) @dur:e @vel:f  // + F#3, F#4, D5
+play note(D3) @dur:e @vel:f  // + B3, A4, F#5
+
+play note(B1) @dur:e @vel:f  // + F#3, F#4, D5, F#5
+play note(F#2) @dur:e @vel:f  // +, D3, D4, B4
+play note(B2) @dur:e @vel:f  // + F#3, F#4, D5
+play note(D3) @dur:e @vel:f  // + B3, A4, F#5
+
+# Resolution — descending, p
+play note(B1) @dur:e @vel:mp  // + B4
+play note(F#2) @dur:e @vel:mp
+play note(B2) @dur:e @vel:mp
+play note(D3) @dur:e @vel:mp
+play note(F#3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+
+play note(B1) @dur:e @vel:p  // + A4
+play note(F#2) @dur:e @vel:p
+play note(B2) @dur:e @vel:p
+play note(D3) @dur:e @vel:p
+play note(F#3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+
+# Resolution continued — fading
+play note(B1) @dur:e @vel:pp  // + F#4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + E4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+# Coda — fragments, ppp
+play note(B1) @dur:e @vel:ppp  // + D4
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:e @vel:ppp  // + B3
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:5000ms @vel:ppp  // + F#2, B2, D3, F#3, B3, E4
+
+play note(B1) @dur:8000ms @vel:ppp  // + F#2, B2, D3, F#3, B3, E4
+
+// ===== parts\climax.e (auto-included) =====
+# Nocturne in B Minor — Climax + Coda
+# Development + Climax + Resolution | 56 BPM | f → ppp
+# E minor → F#7 → B minor
+
+@bpm 56
+
+# Development — E minor, building
+play note(E2) @dur:e @vel:mp  // + E5
+play note(B2) @dur:e @vel:mp
+play note(E3) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+play note(B2) @dur:e @vel:mp
+
+play note(E2) @dur:e @vel:mp  // + F#5
+play note(B2) @dur:e @vel:mp
+play note(E3) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+play note(B2) @dur:e @vel:mp
+
+# F#7, tension
+play note(F#2) @dur:e @vel:mp  // +, C#5
+play note(C#3) @dur:e @vel:mp
+play note(F#3) @dur:e @vel:mp
+play note(A#3) @dur:e @vel:mp
+play note(C#4) @dur:e @vel:mp
+play note(F#3) @dur:e @vel:mp
+
+play note(F#2) @dur:e @vel:mf  // +, F#4
+play note(C#3) @dur:e @vel:mf
+play note(F#3) @dur:e @vel:mf
+play note(A#3) @dur:e @vel:mf
+play note(C#4) @dur:e @vel:mf
+play note(F#3) @dur:e @vel:mf
+
+# Climax — B minor, full chords, f
+play note(B1) @dur:e @vel:f  // + F#3, F#4, D5, F#5
+play note(F#2) @dur:e @vel:f  // +, D3, D4, B4
+play note(B2) @dur:e @vel:f  // + F#3, F#4, D5
+play note(D3) @dur:e @vel:f  // + B3, A4, F#5
+
+play note(B1) @dur:e @vel:f  // + F#3, F#4, D5, F#5
+play note(F#2) @dur:e @vel:f  // +, D3, D4, B4
+play note(B2) @dur:e @vel:f  // + F#3, F#4, D5
+play note(D3) @dur:e @vel:f  // + B3, A4, F#5
+
+# Resolution — descending, p
+play note(B1) @dur:e @vel:mp  // + B4
+play note(F#2) @dur:e @vel:mp
+play note(B2) @dur:e @vel:mp
+play note(D3) @dur:e @vel:mp
+play note(F#3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+
+play note(B1) @dur:e @vel:p  // + A4
+play note(F#2) @dur:e @vel:p
+play note(B2) @dur:e @vel:p
+play note(D3) @dur:e @vel:p
+play note(F#3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+
+# Resolution continued — fading
+play note(B1) @dur:e @vel:pp  // + F#4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + E4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+# Coda — fragments, ppp
+play note(B1) @dur:e @vel:ppp  // + D4
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:e @vel:ppp  // + B3
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:5000ms @vel:ppp  // + F#2, B2, D3, F#3, B3, E4
+
+play note(B1) @dur:8000ms @vel:ppp  // + F#2, B2, D3, F#3, B3, E4
+
+// ===== parts\development.e (auto-included) =====
+# Nocturne in B Minor — Development
+# Theme A' + Theme B | 56 BPM | mp → mf
+# B minor → G major
+
+@bpm 56
+
+# Theme A' — higher register, mp
+play note(B1) @dur:e @vel:pp  // + F#4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + G4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:p  // + A4
+play note(F#2) @dur:e @vel:p
+play note(B2) @dur:e @vel:p
+play note(D3) @dur:e @vel:p
+play note(F#3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+
+play note(B1) @dur:e @vel:p  // + B4
+play note(F#2) @dur:e @vel:p
+play note(B2) @dur:e @vel:p
+play note(D3) @dur:e @vel:p
+play note(F#3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+
+# Theme B — G major, warmer, mf
+play note(G2) @dur:e @vel:p  // + G4
+play note(D3) @dur:e @vel:p
+play note(G3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+play note(D4) @dur:e @vel:p
+play note(G3) @dur:e @vel:p
+
+play note(G2) @dur:e @vel:p  // + B4
+play note(D3) @dur:e @vel:p
+play note(G3) @dur:e @vel:p
+play note(B3) @dur:e @vel:p
+play note(D4) @dur:e @vel:p
+play note(G3) @dur:e @vel:p
+
+play note(G2) @dur:e @vel:mp  // + D5
+play note(D3) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+play note(D4) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+
+play note(G2) @dur:e @vel:mp  // + G5
+play note(D3) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+play note(B3) @dur:e @vel:mp
+play note(D4) @dur:e @vel:mp
+play note(G3) @dur:e @vel:mp
+
+// ===== parts\opening.e (auto-included) =====
+# Nocturne in B Minor — Opening
+# Intro + Theme A | 56 BPM | ppp → p
+# LH: B1-F#2-B2-D3-F#3-B3 rolling pattern
+
+@bpm 56
+
+# Intro — LH alone, ppp
+play note(B1) @dur:e @vel:ppp
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:e @vel:ppp
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:e @vel:ppp
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+play note(B1) @dur:e @vel:ppp
+play note(F#2) @dur:e @vel:ppp
+play note(B2) @dur:e @vel:ppp
+play note(D3) @dur:e @vel:ppp
+play note(F#3) @dur:e @vel:ppp
+play note(B3) @dur:e @vel:ppp
+
+# Theme A — melody enters, p
+play note(B1) @dur:e @vel:pp  // + B3
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + D4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + E4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+
+play note(B1) @dur:e @vel:pp  // + F#4
+play note(F#2) @dur:e @vel:pp
+play note(B2) @dur:e @vel:pp
+play note(D3) @dur:e @vel:pp
+play note(F#3) @dur:e @vel:pp
+play note(B3) @dur:e @vel:pp
+

@@ -1,0 +1,14 @@
+{
+  "name": "piano-dsl",
+  "version": "1.0.0",
+  "description": "A domain-specific language for composing piano music",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "start": "npx serve .",
+    "prebuild": "npm run build"
+  },
+  "devDependencies": {
+    "peggy": "^4.0.0"
+  }
+}

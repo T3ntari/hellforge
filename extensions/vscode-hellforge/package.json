@@ -1,0 +1,371 @@
+{
+  "name": "hellforge-language",
+  "displayName": "HELLFORGE \u2014 E Language Support",
+  "description": "E language (HELLFORGE) syntax highlighting, IntelliSense, autocomplete, diagnostics, and file icons. Made by Tentari.",
+  "version": "1.0.4",
+  "publisher": "tentari",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets",
+    "Other"
+  ],
+  "keywords": [
+    "e",
+    "e-language",
+    "hellforge",
+    "music",
+    "composition",
+    "midi",
+    "piano",
+    "compiler",
+    "syntax"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:e",
+    "onCommand:hellforge.play",
+    "onCommand:hellforge.openShell",
+    "onCommand:hellforge.selectShell",
+    "onCommand:hellforge.settings",
+    "onCommand:hellforge.convert",
+    "onCommand:hellforge.menu"
+  ],
+  "main": "./client/out/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tentari/hellforge"
+  },
+  "icon": "icons/e.png",
+  "contributes": {
+    "languages": [
+      {
+        "id": "e",
+        "aliases": [
+          "E",
+          "HELLFORGE",
+          "E Language"
+        ],
+        "extensions": [
+          ".e",
+          ".ei",
+          ".eic",
+          ".enx",
+          ".eci",
+          ".machine",
+          ".human"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "e",
+        "scopeName": "source.e",
+        "path": "./syntaxes/e.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "e",
+        "path": "./snippets/e.code-snippets"
+      }
+    ],
+    "themes": [
+      {
+        "label": "HELLFORGE Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/hellforge-dark.json"
+      },
+      {
+        "label": "HELLFORGE Light",
+        "uiTheme": "vs",
+        "path": "./themes/hellforge-light.json"
+      }
+    ],
+    "fileIcons": {
+      "associations": {
+        "*.e": "hellforge-e",
+        "*.ei": "hellforge-ei",
+        "*.eic": "hellforge-eic",
+        "*.enx": "hellforge-enx",
+        "*.eci": "hellforge-eci",
+        "*.ec": "hellforge-ec",
+        "*.ee": "hellforge-ee",
+        "*.ecc": "hellforge-ecc",
+        "*.mid": "hellforge-mid",
+        "*.wav": "hellforge-wav",
+        "*.mp3": "hellforge-mp3",
+        "*.mp4": "hellforge-mp4",
+        "*.machine": "hellforge-machine",
+        "*.human": "hellforge-human"
+      }
+    },
+    "iconDefinitions": {
+      "hellforge-e": {
+        "iconPath": "icons/e.svg"
+      },
+      "hellforge-ei": {
+        "iconPath": "icons/ei.svg"
+      },
+      "hellforge-eic": {
+        "iconPath": "icons/eic.svg"
+      },
+      "hellforge-enx": {
+        "iconPath": "icons/enx.svg"
+      },
+      "hellforge-eci": {
+        "iconPath": "icons/eci.svg"
+      },
+      "hellforge-ec": {
+        "iconPath": "icons/ec.svg"
+      },
+      "hellforge-ee": {
+        "iconPath": "icons/ee.svg"
+      },
+      "hellforge-ecc": {
+        "iconPath": "icons/ecc.svg"
+      },
+      "hellforge-mid": {
+        "iconPath": "icons/mid.svg"
+      },
+      "hellforge-wav": {
+        "iconPath": "icons/wav.svg"
+      },
+      "hellforge-mp3": {
+        "iconPath": "icons/mp3.svg"
+      },
+      "hellforge-mp4": {
+        "iconPath": "icons/mp4.svg"
+      },
+      "hellforge-machine": {
+        "iconPath": "icons/machine.svg"
+      },
+      "hellforge-human": {
+        "iconPath": "icons/human.svg"
+      }
+    },
+    "commands": [
+      {
+        "command": "hellforge.play",
+        "title": "HELLFORGE: Play",
+        "icon": "$(play)"
+      },
+      {
+        "command": "hellforge.openShell",
+        "title": "HELLFORGE: Open E Shell",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "hellforge.playWindow",
+        "title": "HELLFORGE: Play in New Window",
+        "icon": "$(play)"
+      },
+      {
+        "command": "hellforge.selectShell",
+        "title": "HELLFORGE: Select Shell (eshell / hshell)",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "hellforge.settings",
+        "title": "HELLFORGE: Open Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "hellforge.convert",
+        "title": "HELLFORGE: Convert Syntax (v1–v4)",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "hellforge.menu",
+        "title": "HELLFORGE: Quick Menu",
+        "icon": "$(terminal)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "hellforge.play",
+        "key": "ctrl+shift+p",
+        "when": "editorLangId == e"
+      },
+      {
+        "command": "hellforge.openShell",
+        "key": "ctrl+shift+e",
+        "when": "editorLangId == e"
+      },
+      {
+        "command": "hellforge.convert",
+        "key": "ctrl+shift+b",
+        "when": "editorLangId == e"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "hellforge.play",
+          "when": "editorLangId == e",
+          "group": "navigation@2",
+          "icon": "$(play)"
+        },
+        {
+          "command": "hellforge.convert",
+          "when": "editorLangId == e",
+          "group": "navigation@3",
+          "icon": "$(arrow-swap)"
+        },
+        {
+          "command": "hellforge.settings",
+          "group": "navigation@4",
+          "icon": "$(settings-gear)"
+        },
+        {
+          "command": "hellforge.openShell",
+          "when": "editorLangId == e",
+          "group": "navigation@5",
+          "icon": "$(terminal)"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "hellforge.convert",
+          "when": "editorLangId == e",
+          "group": "navigation@1",
+          "icon": "$(arrow-swap)"
+        },
+        {
+          "command": "hellforge.play",
+          "when": "editorLangId == e",
+          "group": "navigation@2",
+          "icon": "$(play)"
+        },
+        {
+          "command": "hellforge.settings",
+          "when": "editorLangId == e",
+          "group": "navigation@3",
+          "icon": "$(settings-gear)"
+        },
+        {
+          "command": "hellforge.openShell",
+          "group": "navigation@4",
+          "icon": "$(terminal)"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "hellforge.convert",
+          "when": "editorLangId == e",
+          "group": "hellforge@1",
+          "title": "Convert Syntax (v1–v4)"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "hellforge.convert",
+          "when": "resourceExtname == .e || resourceExtname == .ei || resourceExtname == .eic || resourceExtname == .enx",
+          "group": "hellforge@1",
+          "icon": "$(arrow-swap)"
+        },
+        {
+          "command": "hellforge.play",
+          "when": "resourceExtname == .e || resourceExtname == .ei || resourceExtname == .eic || resourceExtname == .enx || resourceExtname == .mid || resourceExtname == .wav",
+          "group": "hellforge@2",
+          "icon": "$(play)"
+        },
+        {
+          "command": "hellforge.openShell",
+          "group": "hellforge@3",
+          "icon": "$(terminal)"
+        },
+        {
+          "command": "hellforge.settings",
+          "group": "hellforge@4",
+          "icon": "$(settings-gear)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "HELLFORGE",
+      "properties": {
+        "hellforge.projectPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the HELLFORGE project root (directory containing ep.py). Leave empty to auto-detect."
+        },
+        "hellforge.shellType": {
+          "type": "string",
+          "enum": [
+            "eshell",
+            "hshell"
+          ],
+          "enumDescriptions": [
+            "Open the HELLFORGE shell in the integrated VS Code terminal.",
+            "Open the HELLFORGE shell in a separate native window."
+          ],
+          "default": "eshell",
+          "description": "Which shell to open when using the HELLFORGE shell command or status bar button."
+        },
+        "hellforge.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Python executable used to run the compiler (default: 'py' on Windows, 'python3' elsewhere)."
+        },
+        "hellforge.autoCompileOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically compile .e files to .mid when saved."
+        },
+        "hellforge.playWindowed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open the player in its own native window instead of the integrated terminal."
+        },
+        "hellforge.shellPath": {
+          "type": "string",
+          "default": "",
+          "description": "Full path to the eshell executable (eshell.py). Leave empty to use the auto-detected one. Advanced settings are fetched from this shell and reload when it changes."
+        },
+        "hellforge.maxMemoryGb": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Max memory limit in GB. Real limit: loop unrolling fails gracefully beyond it (no OOM)."
+        },
+        "hellforge.threads": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 64,
+          "description": "Threads used for async compilation. 0 = auto (default). Resizes the thread pool for real."
+        },
+        "hellforge.gpuAcceleration": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable GPU math acceleration (TensorSHARP / Radical evaluators). Real toggle."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p client && tsc -p server",
+    "watch": "tsc -watch -p client & tsc -watch -p server",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/l10n": "^0.0.18",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
+  }
+}

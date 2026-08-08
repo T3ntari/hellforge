@@ -1,0 +1,116 @@
+{
+  "version": "1.0.0.0",
+  "updated": "2026-08-08T22:14:24",
+  "url": "",
+  "mods": {},
+  "plugins": {
+    "talisman": {
+      "version": "1.0.0",
+      "description": "Audio culling & occlusion engine. Psychoacoustic masking â€” removes inaudible notes on compile. Run 'talisman on|off'.",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,culling,occlusion,masking,privacy",
+      "url": "file://plugins/talisman/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "84ae3d5e0b49d63ddbb5d319c9e0b65fcd16da92b9a332dc0a3a9f7917fb2154"
+    },
+    "lure": {
+      "version": "3.0.0",
+      "description": "Lua Runtime Accelerator for E. LuaJIT-powered hot-path parsing, 3-10x speedup on compilation. Batch line parsing, scale quantization, MIDI tick calculation. GIL-free parallel execution via lupa.",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,luajit,jit,compiler,acceleration,async",
+      "url": "file://plugins/lure/__init__.py",
+      "update_url": "",
+      "dependencies": [
+        "lupa"
+      ],
+      "verification": "d8f3945ffc4f07badd749be70a518f39b2fb0a3552b4244840491109220a4a43"
+    },
+    "portbaby": {
+      "version": "1.0.0",
+      "description": "Syntax version porting for E Language. Convert between v1 machine, v1 human, v2 semantic, v3 shorthand, and v4 polyrhythm/generative syntax. Loss percentage reporting. Multi-file project generation with index.ei + parts/ + project.enx.",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,conversion,syntax,porting,v1,v2,v3,v4",
+      "url": "file://plugins/portbaby/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "a512c4f272d014c9e608ad5ec7d057777000029953ae4573544c83e220867aea"
+    },
+    "eaudio": {
+      "version": "1.0.0",
+      "description": "E Language plugin: eaudio",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,spatial,dsp,effects,3d",
+      "url": "file://plugins/eaudio/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "2195a35fb1ef00b6d7fc1db4c90976398afa4643e5d82d386a193fb757b453d6"
+    },
+    "openapi": {
+      "version": "1.0.0",
+      "description": "E Language plugin: openapi",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,opengl,graphics,rendering,api",
+      "url": "file://plugins/openapi/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "7316234d9e6a10be809a7b8664813f781af3bb42136abf9824dd2302cfec6b10"
+    },
+    "radical": {
+      "version": "1.0.0",
+      "description": "E Language plugin: radical",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,gpu,compute,shader,glsl,math",
+      "url": "file://plugins/radical/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "bcbe94fd30194305248ad8df4a2cc77c241910a7595b176680593593c647b37c"
+    },
+    "tensorsharp": {
+      "version": "1.0.0",
+      "description": "E Language plugin: tensorsharp",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,cuda,tensorcore,nvidia,matmul",
+      "url": "file://plugins/tensorsharp/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "ce173db3f98b6560ac0f3c2e95b59dbec4e0fb17bbc895d9a2c53e60155be5a2"
+    },
+    "vulkanizer": {
+      "version": "1.0.0",
+      "description": "E Language plugin: vulkanizer",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,vulkan,compute,raytracing,upscaling",
+      "url": "file://plugins/vulkanizer/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "2125775aa5655c7917ce452dcc1b1c8364e01561d95076177adc10629a9894b9"
+    },
+    "launcher": {
+      "version": "1.0.0.0",
+      "description": "New window launching & process management — open, player, shell, log, ps, kill",
+      "author": "REGAS",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,launcher,window,process,detach",
+      "url": "file://plugins/launcher/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "4a9db3291b3471b65c0ce491a4a364fb85848f59e9e90ec9cb3a73dfcf97bab4"
+    },
+    "humanize": {
+      "version": "1.0.0",
+      "description": "MoE humanization - de-robots MIDI with micro-timing + velocity expression (@humanize:nn)",
+      "author": "REGAS",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,humanize,moe,ml,expression,timing",
+      "url": "file://plugins/humanize/__init__.py",
+      "update_url": "",
+      "dependencies": []
+    },
+    "llm": {
+      "version": "1.11.0",
+      "description": "LLM copilot — OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation"
+    }
+  },
+  "_description": "Default package list for E Language by Tentari. All plugins integrity-verified via SHA-256 verification codes. Remote verification is opt-in via HF_VERIFY_URL/HF_VERIFY_TOKEN.",
+  "ecosystem": "HELLFORGE",
+  "core_expansion": "REGAS"
+}

@@ -1,0 +1,154 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "E (HELLFORGE)",
+  "scopeName": "source.e",
+  "fileTypes": ["e", "ei", "eic", "enx", "eci", "machine", "human"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#mode_directives" },
+    { "include": "#directives" },
+    { "include": "#variable_def" },
+    { "include": "#variable_use" },
+    { "include": "#machine_line" },
+    { "include": "#human_play" },
+    { "include": "#loop_constructs" },
+    { "include": "#math_functions" },
+    { "include": "#expression_blocks" },
+    { "include": "#metadata" },
+    { "include": "#chord_qualities" },
+    { "include": "#duration_velocity" },
+    { "include": "#note_names" },
+    { "include": "#numbers" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.e",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "comment.line.double-slash.e",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "keyword.operator.statement-separator.e",
+          "match": ";"
+        },
+        {
+          "name": "keyword.operator.parallel.e",
+          "match": "\\|"
+        },
+        {
+          "name": "keyword.operator.label.e",
+          "match": "\\b[TNDVCH]\\s*(?=:)"
+        },
+        {
+          "name": "keyword.operator.continuation.e",
+          "match": "\\\\$"
+        },
+        {
+          "name": "punctuation.bracket.angle.e",
+          "match": "[<>]"
+        },
+        {
+          "name": "keyword.operator.polyrhythm.e",
+          "match": "\\d+:\\d+"
+        }
+      ]
+    },
+    "mode_directives": {
+      "name": "entity.name.mode.e",
+      "match": "^\\s*#[A-Z][A-Z0-9]*\\b"
+    },
+    "directives": {
+      "name": "keyword.control.directive.e",
+      "match": "@(bpm|tempo|key|scale|vol|volume|gc|dur|vel|ch|prob|probability|curve|mode|random|pan|reverb|delay)\\b"
+    },
+    "variable_def": {
+      "name": "meta.variable.definition.e",
+      "match": "^(\\$[a-zA-Z_]\\w*)\\s*=",
+      "captures": {
+        "1": { "name": "variable.other.e" }
+      }
+    },
+    "variable_use": {
+      "name": "variable.other.e",
+      "match": "\\$[a-zA-Z_]\\w*"
+    },
+    "machine_line": {
+      "name": "meta.machine-line.e",
+      "match": "\\b(CH\\[\\d+\\]\\s*)?(T)(\\d+)(\\s+(N)(\\d+))?(\\s+(D)(\\d+))?(\\s+(V)([\\d.]+))?",
+      "captures": {
+        "2": { "name": "keyword.operator.token.e" },
+        "3": { "name": "constant.numeric.e" },
+        "5": { "name": "keyword.operator.token.e" },
+        "6": { "name": "constant.numeric.e" },
+        "8": { "name": "keyword.operator.token.e" },
+        "9": { "name": "constant.numeric.e" },
+        "11": { "name": "keyword.operator.token.e" },
+        "12": { "name": "constant.numeric.e" }
+      }
+    },
+    "human_play": {
+      "name": "meta.human-line.e",
+      "match": "\\b(play)\\s+(note|chord)\\s*\\(",
+      "captures": {
+        "1": { "name": "keyword.other.e" },
+        "2": { "name": "support.function.e" }
+      }
+    },
+    "loop_constructs": {
+      "name": "keyword.control.flow.e",
+      "match": "\\b(for|repeat|while|to|step|do|if|else|inherit|track)\\b"
+    },
+    "math_functions": {
+      "name": "support.function.math.e",
+      "match": "\\b(sin|cos|sqrt|pow|round|floor|abs|min|max|quadratic|solve_linear)\\s*\\("
+    },
+    "expression_blocks": {
+      "name": "meta.expression.e",
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [
+        { "include": "#variable_use" },
+        { "include": "#math_functions" },
+        { "include": "#numbers" }
+      ]
+    },
+    "metadata": {
+      "patterns": [
+        {
+          "name": "entity.name.tag.e",
+          "match": "^(title|composer|artist|album|genre)\\s*:?"
+        },
+        {
+          "name": "string.quoted.e",
+          "match": "\"[^\"]*\""
+        }
+      ]
+    },
+    "chord_qualities": {
+      "name": "support.type.chord.e",
+      "match": "\\b(major|minor|dom7|min7|Maj7|maj7|dim|dim7|aug|aug7|sus2|sus4|m7b5|add9|maj9|min9|dom9|maj6|min6)\\b"
+    },
+    "duration_velocity": {
+      "name": "constant.language.duration.e",
+      "match": "\\b(whqest|ppp|pp|p|mp|mf|f|ff|fff|whole|semibreve|half|minim|quarter|crotchet|eighth|quaver|sixteenth|semiquaver|thirtysecond|demisemiquaver|pianissimo|piano|mezzo|mezzoforte|mezzo-forte|forte|fortissimo|soft|normal|loud|max|silent)\\b"
+    },
+    "note_names": {
+      "name": "constant.character.note.e",
+      "match": "\\b[A-G](?:#|b)?\\d?\\b"
+    },
+    "numbers": {
+      "name": "constant.numeric.e",
+      "match": "\\b\\d+\\.?\\d*\\b"
+    }
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "BPM Directive": {
+    "prefix": "@bpm",
+    "body": "@bpm ${1:120}",
+    "description": "Set tempo in beats per minute"
+  },
+  "Tempo Directive": {
+    "prefix": "@tempo",
+    "body": "@tempo ${1:120}",
+    "description": "Alias for @bpm"
+  },
+  "Key Directive": {
+    "prefix": "@key",
+    "body": "@key ${1:C_Major}",
+    "description": "Set musical key"
+  },
+  "Scale Directive": {
+    "prefix": "@scale",
+    "body": "@scale ${1:C_Major}",
+    "description": "Set scale for quantization"
+  },
+  "Volume Directive": {
+    "prefix": "@vol",
+    "body": "@vol ${1:0.8}",
+    "description": "Master volume 0-1"
+  },
+  "Probability Directive": {
+    "prefix": "@prob",
+    "body": "@prob ${1:0.5}",
+    "description": "Note probability 0-1"
+  },
+  "Curve Directive": {
+    "prefix": "@curve",
+    "body": "@curve bpm from ${1:80} to ${2:160} over ${3:8}",
+    "description": "Tempo curve"
+  },
+  "Play Note": {
+    "prefix": "playnote",
+    "body": "play note(${1:C4}) @dur:${2:q} @vel:${3:mf}",
+    "description": "Play a single note in human mode"
+  },
+  "Play Chord": {
+    "prefix": "playchord",
+    "body": "play chord(${1:C}, ${2:major}) @dur:${3:h} @vel:${4:mf}",
+    "description": "Play a chord in human mode"
+  },
+  "Machine Line": {
+    "prefix": "machine",
+    "body": "T${1:0} N${2:60} D${3:500} V${4:80}",
+    "description": "Machine mode note"
+  },
+  "Machine Channel": {
+    "prefix": "channel",
+    "body": "CH[${1:1}] T${2:0} N${3:60} D${4:500} V${5:80}",
+    "description": "Machine note on a channel"
+  },
+  "For Loop": {
+    "prefix": "for",
+    "body": [
+      "for $i = 0 to ${1:7} {",
+      "\tT{$i * ${2:100}} N{${3:60} + $i} D${4:80} V${5:80}",
+      "}"
+    ],
+    "description": "For loop with counter"
+  },
+  "Repeat": {
+    "prefix": "repeat",
+    "body": [
+      "repeat ${1:4} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Repeat a block N times"
+  },
+  "While Loop": {
+    "prefix": "while",
+    "body": [
+      "$i = 0",
+      "while $i < ${1:8} {",
+      "\t${0}",
+      "\t$i = $i + 1",
+      "}"
+    ],
+    "description": "While loop with counter"
+  },
+  "Inherit": {
+    "prefix": "inherit",
+    "body": "inherit \"${1:parts/file.e}\"",
+    "description": "Include a sub-file in a project (.ei)"
+  },
+  "Track": {
+    "prefix": "track",
+    "body": "track \"${1:name}\" ${2:120}",
+    "description": "Album track entry (.enx)"
+  },
+  "Section Comment": {
+    "prefix": "section",
+    "body": [
+      "// ═══════ ${1:SECTION NAME} ═══════"
+    ],
+    "description": "Visual section divider comment"
+  },
+  "Velocity Crescendo": {
+    "prefix": "cresc",
+    "body": [
+      "for $i = 0 to ${1:7} {",
+      "\tT{$i * ${2:100}} N{${3:60}} D80 V{${4:50} + $i * ${5:10}}",
+      "}"
+    ],
+    "description": "Crescendo pattern"
+  }
+}

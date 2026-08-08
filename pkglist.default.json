@@ -1,0 +1,24 @@
+{
+  "version": "3.0.0",
+  "updated": "2026-07-28T12:00:00",
+  "url": "",
+  "mods": {},
+  "plugins": {
+    "lure": {
+      "version": "3.0.0",
+      "description": "Lua Runtime Accelerator for E. LuaJIT-powered hot-path parsing with 3-10x speedup. Batch line parsing, scale quantization, MIDI tick calculation. GIL-free parallel execution.",
+      "author": "Tentari",
+      "tags": "performance,acceleration,luajit,jit,compiler,batch,parallel,gil-free",
+      "url": "file://plugins/lure/__init__.py",
+      "update_url": ""
+    },
+    "portbaby": {
+      "version": "1.0.0",
+      "description": "Syntax version porting for E Language. Convert between v1 machine/v1 human/v2 semantic/v3 shorthand/v4 polyrhythm syntax. Loss reporting. Multi-file project generation.",
+      "author": "Tentari",
+      "tags": "conversion,porting,migration,upgrade,downgrade,v1,v2,v3,v4,syntax,project",
+      "url": "file://plugins/portbaby/__init__.py",
+      "update_url": ""
+    }
+  }
+}

@@ -1,0 +1,55 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment / Secrets
+.identity/
+.env
+tools/update_all.py
+tools/sign_*.py
+tools/gen_embedded_json.py
+tools/upload_hashes.py
+tools/dl_fluidsynth.py
+
+# Virtualenv
+.venv
+venv/
+
+# Config / runtime state
+.synth_config.json
+.player_volume.json
+.plugin_config.json
+.fent_cache/
+.radical_cache/
+logs/
+*.sig
+
+# Build artifacts / binaries
+node_modules/
+dist/
+*.vsix
+doc.zip
+tools/fluidsynth/
+tools/*.dll
+tools/default.sf2
+*.mid
+*.wav
+*.mp3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# TypeScript TUI
+tui-ts/node_modules/
+tui-ts/dist/
+hellgate-state/
+plugins/hellgate/knowledge/current.md
+hellgate-state/
+.aider*

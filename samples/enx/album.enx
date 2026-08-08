@@ -1,0 +1,54 @@
+/* HELLFORGE v1.0.0.0 ALPHA — CORE-EXPANSION: REGAS */
+// .enx album root — ordered track listing
+   File:       album.enx
+   Version:    v4 (album root index) — .enx extension
+   Status:     CURRENT STANDARD
+   
+   .enx files are album-level root indexes that define a collection
+   of tracks for ordered playback. An album contains metadata and
+   a sequence of track references that the HELLFORGE player reads
+   and plays in order — like a playlist or album track listing.
+   
+   The .enx format is designed for:
+   - Full album/EP playback
+   - Concert setlists
+   - Multi-movement works
+   - Looping background music for games/apps
+
+/* @title "My First HELLFORGE Album" — Album/collection title.
+   Displayed by the player when the album is loaded. */
+@title "My First HELLFORGE Album"
+
+/* @artist "HELLFORGE User" — Artist/composer name metadata. */
+@artist "HELLFORGE User"
+
+/* @year 2026 — Release year for metadata tagging. */
+@year 2026
+
+/* **track tracks/song1.e** — Reference to the first track.
+   The **track** keyword tells the album index to load and play
+   the referenced .e file as a track.
+   
+   Tracks are played in the order they appear.
+   Each track can have its own tempo, key, and structure.
+   The player pauses between tracks (configurable gap). */
+**track tracks/song1.e**
+
+/* A second track (placeholder for future songs).
+   In a full album, you would list all tracks here in sequence.
+   The player automatically advances to the next track when
+   the current track finishes.
+
+   Example of additional tracks (uncomment when files exist):
+   **track tracks/song2.e**
+   **track tracks/song3.e**
+   **track tracks/song4.e**
+*/
+
+/* Album playback options (configurable per .enx):
+   - Tracks play sequentially by default.
+   - Loop mode: add @loop at the album level to repeat endlessly.
+   - Shuffle mode: add @shuffle to randomize track order on each play.
+   - Crossfade: add @crossfade 3 to crossfade between tracks (seconds). */
+
+// Run from project root: py ep.py compile samples/enx/album.enx

@@ -1,0 +1,52 @@
+/* HELLFORGE v1.0.0.0 ALPHA — CORE-EXPANSION: REGAS */
+// .eic toggleable mode — switch between #MACHINE and #HUMAN
+   File:       toggle_basics.eic
+   Version:    v4 (toggleable mode) — .eic extension
+   Status:     CURRENT STANDARD
+   
+   .eic files support mode toggling between MACHINE and HUMAN modes.
+   #MACHINE mode uses raw numeric tokens (v1-compatible syntax).
+   #HUMAN mode uses human-readable note/chord syntax (v3-compatible).
+   
+   This file demonstrates switching between modes within a single
+   composition, using each mode where it's most appropriate.
+
+/* @bpm 120 — @-directives work in both modes. */
+@bpm 120
+
+/* ======================== #MACHINE MODE ========================
+   Machine mode uses T, N, D, V tokens with numeric values.
+   Best for: precise timing, algorithmic sequences, percussion. */
+#MACHINE
+
+/* T0 N60 D250 V80 — Machine mode token sequence.
+   T0 = tempo default, N60 = C4, D250 = quarter, V80 = mf. */
+T0 N60 D250 V80
+T0 N62 D250 V80
+T0 N64 D250 V80
+
+/* ======================== #HUMAN MODE ========================
+   Human mode uses play note, play chord, @dur, @vel keywords.
+   Best for: melodies, chord progressions, readable scores. */
+#HUMAN
+
+/* play note(F4) @dur:q @vel:mf — Human mode note.
+   Much more readable than T0 N65 D250 V80. */
+play note(F4) @dur:q @vel:mf
+play note(G4) @dur:q @vel:mf
+play note(A4) @dur:q @vel:mf
+
+/* ======================== BACK TO MACHINE ========================
+   Switch back for precise rhythmic control. */
+#MACHINE
+
+T0 N72 D500 V100   /* C5 half note, loud */
+
+/* Mode rules:
+   - #MACHINE and #HUMAN are case-sensitive directives.
+   - Mode applies from the directive line downward until the next toggle.
+   - All v3/v4 @-directives work in both modes.
+   - Machine mode tokens (T,N,D,V) are only valid in #MACHINE.
+   - Human mode keywords (play, chord) are only valid in #HUMAN. */
+
+// Run from project root: py ep.py compile samples/eic/toggle_basics.eic
