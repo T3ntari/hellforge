@@ -1,6 +1,6 @@
 # HELLFORGE v0.1.0-beta — E Language — Complete Tutorial & Reference
 
-> **Open Source (MIT) | [GitHub](https://github.com/tentari/hellforge) | [Docs](doc/index.md)**
+> **Open Source (MIT) | [GitHub](https://github.com/T3ntari/hellforge) | [Docs](doc/index.md)**
 >
 > **For everyone — no piano experience needed, no programming experience needed.**
 > This guide teaches you music + the E language from absolute zero to advanced composer.
