@@ -1,0 +1,24 @@
+{
+  "name": "hellforge-tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/App.tsx"
+  },
+  "dependencies": {
+    "ink": "^5.0.0",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  },
+  "bin": {
+    "hellforge-tui": "dist/index.js"
+  }
+}
