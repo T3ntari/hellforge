@@ -110,3 +110,53 @@ def chat_line(result):
     status = "ok" if result.get("ok") else f"exit {result.get('exit_code')}"
     return (f"command executed - \"{result.get('cmd', '')}\" "
             f"({status}, {result.get('duration_s', 0)}s)")
+
+
+def run_command_streaming(cmd, project_dir, on_line, timeout=TIMEOUT):
+    """Like run_command, but each output line is delivered to on_line AS IT
+    IS PRODUCED (live). Blocked commands return the blocked dict without
+    calling on_line. Returns the same result dict as run_command."""
+    ok, reason = validate_command(cmd)
+    if not ok:
+        return {"ok": False, "output": "", "exit_code": None,
+                "duration_s": 0.0, "error": reason, "blocked": True}
+    parts = shlex.split(cmd)
+    if parts and parts[0] in ("python", "python3", "py"):
+        parts[0] = sys.executable
+    t0 = time.time()
+    lines = []
+    try:
+        proc = subprocess.Popen(parts, cwd=project_dir,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding="utf-8", errors="replace")
+        for raw in proc.stdout:
+            line = raw.rstrip("\n")
+            lines.append(line)
+            try:
+                on_line(line)
+            except Exception:
+                pass
+        proc.wait(timeout=timeout)
+        out = "\n".join(lines)
+        if len(out) > MAX_OUTPUT:
+            out = out[:MAX_OUTPUT] + f"\n... (output truncated at {MAX_OUTPUT} chars)"
+        return {"ok": proc.returncode == 0, "output": out.strip(),
+                "exit_code": proc.returncode,
+                "duration_s": round(time.time() - t0, 2), "error": None,
+                "blocked": False}
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return {"ok": False, "output": "\n".join(lines), "exit_code": None,
+                "duration_s": timeout, "error": f"timed out after {timeout}s",
+                "blocked": False}
+    except FileNotFoundError:
+        return {"ok": False, "output": "", "exit_code": None,
+                "duration_s": round(time.time() - t0, 2),
+                "error": f"command not found: {parts[0]}", "blocked": False}
+    except Exception as e:
+        return {"ok": False, "output": "\n".join(lines), "exit_code": None,
+                "duration_s": round(time.time() - t0, 2), "error": str(e),
+                "blocked": False}

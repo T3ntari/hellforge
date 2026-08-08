@@ -3093,6 +3093,106 @@ def test_repl_resume_replay_shows_history():
     assert "resumed conversation" in out
 test("Repl: resume replays the conversation like a chat", test_repl_resume_replay_shows_history)
 
+
+
+# ── streaming: providers + exec ──
+
+def test_stream_openai_sse_parsing():
+    import io
+    import json as _json
+    from plugins.llm import providers
+    events = [
+        'data: {"choices": [{"delta": {"content": "Hel"}}]}',
+        'data: {"choices": [{"delta": {"content": "lo"}}]}',
+        'data: {"choices": [{"delta": {"reasoning_content": "hmm"}}]}',
+        'data: [DONE]',
+    ]
+    body = ("\n".join(events) + "\n").encode()
+    chunks = []
+
+    class _FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    class _FakeUrl:
+        def __init__(self, *a, **k):
+            pass
+        def __enter__(self):
+            return _FakeResp(body)
+        def __exit__(self, *a):
+            return False
+
+    orig = providers.urllib.request.urlopen
+    providers.urllib.request.urlopen = lambda *a, **k: _FakeUrl(*a, **k)
+    try:
+        text, err, thinking = providers.stream_chat(
+            "openai", "http://x/v1", "k", "m",
+            [{"role": "user", "content": "hi"}], chunks.append)
+    finally:
+        providers.urllib.request.urlopen = orig
+    assert text == "Hello", text
+    assert "hmm" in thinking, thinking
+    assert chunks == ["Hel", "lo"], chunks
+test("Stream: openai SSE chunks + thinking", test_stream_openai_sse_parsing)
+
+
+def test_stream_ollama_ndjson():
+    import io
+    from plugins.llm import providers
+    body = ('{"message": {"content": "yo"}, "done": false}\n'
+            '{"message": {"thinking": "considering"}, "done": false}\n'
+            '{"message": {"content": "!"}, "done": true}\n').encode()
+    chunks = []
+
+    class _FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+    class _FakeUrl:
+        def __enter__(self):
+            return _FakeResp(body)
+        def __exit__(self, *a):
+            return False
+    orig = providers.urllib.request.urlopen
+    providers.urllib.request.urlopen = lambda *a, **k: _FakeUrl()
+    try:
+        text, err, thinking = providers.stream_chat(
+            "ollama", "http://127.0.0.1:11434", None, "m",
+            [{"role": "user", "content": "hi"}], chunks.append)
+    finally:
+        providers.urllib.request.urlopen = orig
+    assert text == "yo!", text
+    assert "considering" in thinking
+test("Stream: ollama native NDJSON + thinking", test_stream_ollama_ndjson)
+
+
+def test_stream_command_live_lines():
+    from plugins.llm import exec as safe_exec
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "printer.py"), "w") as f:
+        f.write("import sys, time\n"
+                "for i in range(3):\n"
+                "    print(f'line {i}', flush=True)\n"
+                "    time.sleep(0.05)\n")
+    got = []
+    res = safe_exec.run_command_streaming(
+        "python printer.py", d, lambda ln: got.append(ln))
+    assert res["ok"], res
+    assert got == ["line 0", "line 1", "line 2"], got
+test("Stream: command output delivered line-by-line", test_stream_command_live_lines)
+
+
+def test_stream_command_blocked():
+    from plugins.llm import exec as safe_exec
+    got = []
+    res = safe_exec.run_command_streaming(
+        "rm x", tempfile.mkdtemp(), lambda ln: got.append(ln))
+    assert res["blocked"] and got == []
+test("Stream: blocked command never emits lines", test_stream_command_blocked)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
