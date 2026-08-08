@@ -114,7 +114,15 @@ def make_dataset(n=16000):
 
 
 def train(epochs=18, batch=512, lr=0.03, dataset_n=12000, progress=None):
-    """Train the MoE with mini-batch SGD. Returns (params, time_s)."""
+    """Train the MoE with mini-batch SGD. Returns (params, time_s).
+    Numerically stable: gradients are clipped elementwise so a bad random
+    draw can never diverge the training to NaN (observed with numpy 2.x)."""
+    GRAD_CLIP = 1.0  # max magnitude of any single gradient element
+
+    def _step(name, grad):
+        np.clip(grad, -GRAD_CLIP, GRAD_CLIP, out=grad)
+        p[name] -= lr * grad
+
     t0 = time.time()
     x, y = make_dataset(dataset_n)
     p = init_params()
@@ -142,7 +150,7 @@ def train(epochs=18, batch=512, lr=0.03, dataset_n=12000, progress=None):
             mse = np.mean((pred - yb) ** 2)
             balance = 1e-3 * float(np.mean(g * np.log(g + 1e-9)))
             loss = mse + balance
-            # ── backprop ──
+            # ── backprop (clipped) ──
             dpred = 2.0 * (pred - yb) / xb.shape[0]                   # (B, 2)
             D = np.zeros_like(g)                                      # Σ_k dpred·out_e
             for e in range(N_EXPERTS):
@@ -150,19 +158,27 @@ def train(epochs=18, batch=512, lr=0.03, dataset_n=12000, progress=None):
             dgate = g * (D - (g * D).sum(axis=1, keepdims=True))
             dgate += 1e-3 * g * (np.log(g + 1e-9) + 1.0)
             dh = dgate @ p["gate_w"].T
+            g_w1, g_b1, g_w2, g_b2 = [], [], [], []
             for e in range(N_EXPERTS):
                 dout = g[:, e:e + 1] * dpred                          # (B, 2)
                 dz = (dout @ p["exp_w2"][e].T) * (1.0 - zs[e] * zs[e])  # (B, H)
-                p["exp_w2"][e] -= lr * zs[e].T @ dout
-                p["exp_b2"][e] -= lr * dout.sum(axis=0)
-                p["exp_w1"][e] -= lr * h.T @ dz
-                p["exp_b1"][e] -= lr * dz.sum(axis=0)
+                g_w2.append(zs[e].T @ dout)
+                g_b2.append(dout.sum(axis=0))
+                g_w1.append(h.T @ dz)
+                g_b1.append(dz.sum(axis=0))
                 dh += dz @ p["exp_w1"][e].T
+            _step("exp_w2", np.stack(g_w2))
+            _step("exp_b2", np.stack(g_b2))
+            _step("exp_w1", np.stack(g_w1))
+            _step("exp_b1", np.stack(g_b1))
             dh *= (1.0 - h * h)
-            p["gate_w"] -= lr * h.T @ dgate
-            p["gate_b"] -= lr * dgate.sum(axis=0)
-            p["pre_w"] -= lr * xb.T @ dh
-            p["pre_b"] -= lr * dh.sum(axis=0)
+            _step("gate_w", h.T @ dgate)
+            _step("gate_b", dgate.sum(axis=0))
+            _step("pre_w", xb.T @ dh)
+            _step("pre_b", dh.sum(axis=0))
+            # Divergence guard: never propagate non-finite params
+            if not np.isfinite(p["pre_w"]).all():
+                p = init_params()
         if progress:
             progress(epoch + 1, epochs)
     return p, time.time() - t0
