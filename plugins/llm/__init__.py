@@ -229,7 +229,7 @@ def _cmd(args, api):
         _run_request(state, messages)
 
     elif sub == "chat":
-        _chat_repl(state)
+        _chat_repl(state, api)
 
     elif sub == "read":
         if not rest:
@@ -564,9 +564,21 @@ def _run_request(state, messages):
     return text
 
 
-def _chat_repl(state):
+def _chat_repl(state, api=None):
+    """Interactive chat — project-aware: the model sees the project index
+    (when indexing is on) so it never fabricates project structure. It CANNOT
+    edit files — point edits at 'ai fix'."""
     print("  AI chat (Ctrl-C or 'quit' to exit)")
     history = []
+    system = ("You are HELLFORGE Copilot chatting inside a project. "
+              "You can reference the files listed in the project index, but "
+              "you CANNOT read or edit files from chat — for changes the "
+              "user runs 'ai fix'.")
+    if api is not None:
+        idx = indexer.load_index(api.project_dir)
+        if idx:
+            system += "\n\nProject index:\n" + indexer.index_to_text(idx, max_files=25)
+    history.append({"role": "system", "content": system})
     try:
         while True:
             try:
