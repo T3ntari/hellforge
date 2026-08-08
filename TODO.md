@@ -19,3 +19,5 @@ This file is the live checklist maintained by AI agents working in this repo
 - [ ] run relevant tests after every `.py` change
 - [ ] full suite green before finishing (never commit red)
 - [ ] update this checklist as work proceeds
+
+- [x] verify claude-code ui colors

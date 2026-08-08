@@ -1118,6 +1118,59 @@ def test_agents_md_present():
 test("Docs: AGENTS.md covers v5 + line-range", test_agents_md_present)
 
 
+
+
+# ── integration: system prompt + ai todo + tests in plan ──
+
+def test_system_prompt_includes_instructions():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "AGENTS.md"), "w") as f:
+        f.write("# AGENTS\nv5 canonical\nline-range edits only\n")
+    with open(os.path.join(d, "RULES.md"), "w") as f:
+        f.write("# RULES\nnever rewrite\n")
+    with open(os.path.join(d, "TODO.md"), "w") as f:
+        f.write("- [ ] wire tests\n")
+    sp = llm._system_prompt(d)
+    assert "AGENTS.md" in sp and "line-range" in sp
+    assert "RULES.md" in sp and "never rewrite" in sp
+    assert "TODO.md" in sp and "wire tests" in sp
+test("Integration: system prompt loads AGENTS/RULES/TODO", test_system_prompt_includes_instructions)
+
+
+def test_ai_todo_command():
+    import unittest.mock as mock
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    class FakeAPI:
+        project_dir = d
+    captured = []
+    import builtins
+    orig_print = builtins.print
+    def spy(*a, **k):
+        captured.append(" ".join(str(x) for x in a))
+        orig_print(*a, **k)
+    with mock.patch("builtins.print", side_effect=spy):
+        llm._todo_cmd(FakeAPI(), ["add", "make tea"])
+        llm._todo_cmd(FakeAPI(), ["done", "make tea"])
+        llm._todo_cmd(FakeAPI(), [])
+    joined = "\n".join(captured)
+    assert "make tea" in joined
+    assert "- [x] make tea" in open(os.path.join(d, "TODO.md")).read()
+test("Integration: ai todo add/done persists", test_ai_todo_command)
+
+
+def test_plan_tests_key_flow():
+    from plugins.llm import tests_runner as tr
+    # "tests" in plan routes to plan_test_targets
+    plan = {"summary": "s", "tests": "all", "files": []}
+    assert tr.plan_test_targets(plan) is None  # None = all files
+    plan2 = {"summary": "s", "tests": ["tests/x_test.py"]}
+    assert tr.plan_test_targets(plan2) == ["tests/x_test.py"]
+    plan3 = {"summary": "s", "files": []}
+    assert tr.plan_test_targets(plan3) is None
+test("Integration: plan tests key targets", test_plan_tests_key_flow)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:

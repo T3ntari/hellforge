@@ -38,8 +38,37 @@ description = ("LLM copilot — OpenAI/DeepSeek/Claude/Ollama, multi-step agent,
 from . import providers
 from . import agent as llm_agent
 from . import indexer
+from . import ui
 
 CONF = {}
+
+
+def _system_prompt(project_dir, base=None):
+    """Build the system prompt: AGENTS.md + RULES.md + TODO.md (capped) on
+    top of the copilot base prompt — the agent always sees the repo rules
+    and the live checklist."""
+    from pathlib import Path
+    root = Path(project_dir)
+    parts = []
+    for name in ("AGENTS.md", "RULES.md"):
+        p = root / name
+        if p.exists():
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+                parts.append(f"# {name} (project instructions)\n{text[:12000]}")
+            except Exception:
+                pass
+    todo_path = root / "TODO.md"
+    if todo_path.exists():
+        try:
+            parts.append(f"# TODO.md (live checklist — update via the 'todo' plan key)\n"
+                         f"{todo_path.read_text(encoding='utf-8', errors='replace')[:4000]}")
+        except Exception:
+            pass
+    prompt = (base or llm_agent.SYSTEM_PROMPT)
+    if parts:
+        prompt = prompt + "\n\n" + "\n\n".join(parts)
+    return prompt
 
 
 def _cfg(api, key, default=None):
@@ -235,6 +264,12 @@ def _cmd(args, api):
 
     elif sub in ("agent", "interact", "session"):
         _agent_repl(api, state)
+
+    elif sub == "todo":
+        _todo_cmd(api, rest)
+
+    elif sub == "test":
+        _test_cmd(api, state, rest)
 
     elif sub == "read":
         if not rest:
@@ -497,6 +532,50 @@ def _index_summarize(api, state, idx):
         pass
 
 
+def _todo_cmd(api, rest):
+    """ai todo — show / add / done. The agent-managed checklist."""
+    from pathlib import Path
+    from . import todo as todo_mod
+    path = Path(api.project_dir) / "TODO.md"
+    if not rest:
+        text = todo_mod.render_todo(path)
+        print(text if text else "  (no TODO.md yet — 'ai todo add \"first item\"')")
+        return
+    sub = rest[0].lower()
+    item = " ".join(rest[1:]).strip()
+    if sub in ("add", "+"):
+        if not item:
+            print("  Usage: ai todo add \"<item>\"")
+            return
+        added, _ = todo_mod.apply_todo([{"item": item, "status": "open"}], path)
+        print(f"  {ui.chip('todo', 'done')} added: {item}" if added else f"  already listed: {item}")
+    elif sub in ("done", "check", "x"):
+        if not item:
+            print("  Usage: ai todo done \"<item>\"")
+            return
+        _, marked = todo_mod.apply_todo([{"item": item, "status": "done"}], path)
+        print(f"  {ui.chip('done', 'done')} marked done: {item}" if marked else f"  not found: {item}")
+    else:
+        print("  Usage: ai todo | ai todo add \"<item>\" | ai todo done \"<item>\"")
+
+
+def _test_cmd(api, state, rest):
+    """ai test [file...] [--smoke] — run the project test suite (or a subset)
+    from inside the copilot."""
+    from . import tests_runner as tr
+    smoke = "--smoke" in rest
+    files = [a for a in rest if not a.startswith("--")]
+    if smoke:
+        results = tr.run_tests(api.project_dir, smoke=True)
+    elif files:
+        results = tr.run_tests(api.project_dir, files=files)
+    else:
+        results = tr.run_tests(api.project_dir)
+    print(tr.summarize(results))
+    failed = sum(1 for r in results if not r.get("ok"))
+    print(f"  {ui.result_line('all green' if failed == 0 else f'{failed} file(s) failing', 'ok' if failed == 0 else 'err')}")
+
+
 def _status(state):
     provider = state["provider"]
     label = providers.PROVIDERS.get(provider, {}).get("label", provider)
@@ -576,11 +655,14 @@ def _agent_repl(api, state):
     the conversation continues. 'quit' / Ctrl-C exits."""
     project_dir = api.project_dir
     from . import diffview as dv
-    print("  ── interactive agent session ──")
+    print(ui.banner({"model": state.get("model") or "?",
+                     "provider": providers.PROVIDERS.get(state["provider"], {}).get("label", state["provider"]),
+                     "multi_agent": "on" if state.get("agents_enabled") else "off"}))
+    ui.section("interactive agent session")
     print("  Ask anything. The agent can read files, edit line ranges, create")
-    print("  files, and run safe commands — changes are reviewed inline.")
-    print("  'quit' or Ctrl-C exits.")
-    history = [{"role": "system", "content": llm_agent.SYSTEM_PROMPT}]
+    print("  files, run safe commands and the test suite — changes are reviewed")
+    print("  inline. 'quit' or Ctrl-C exits.")
+    history = [{"role": "system", "content": _system_prompt(project_dir)}]
     idx = None
     if state.get("index_enabled", True):
         idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
@@ -588,7 +670,7 @@ def _agent_repl(api, state):
         while True:
             try:
                 if sys.stdin.isatty():
-                    line = input("  you> ")
+                    line = input(ui.prompt("you"))
                 else:
                     line = sys.stdin.readline()
                     if not line:
@@ -598,23 +680,27 @@ def _agent_repl(api, state):
                 break
             if not line or line.strip().lower() in ("quit", "exit", "bye"):
                 break
+            ui.thinking("thinking...")
             repro = _reproduce(project_dir, line, timeout=20)
             prompt = (f"User: {line}\n\n"
                       f"Project context:\n{_build_context(project_dir, line)}\n\n"
                       f"{indexer.index_to_text(idx, max_files=25)}\n\n"
                       + (f"{repro}\n\n" if repro else "")
                       + "Answer questions in plain text. When changes are needed, "
-                      "reply with the JSON plan format (read/edit/write/commands).")
+                      "reply with the JSON plan format "
+                      "(read/edit/write/commands/tests/todo).")
             history.append({"role": "user", "content": prompt})
             text, err = _request(state, history)
             if err:
-                print(f"  [ai error] {err}")
+                print(f"  {ui.chip('error', 'error')} {err}")
                 history.pop()
                 continue
             plan = llm_agent.parse_plan(text)
-            if plan is not None and (plan.get("files") or plan.get("commands")):
-                print(f"  agent plan: {plan.get('summary', 'no summary')}")
+            if plan is not None and (plan.get("files") or plan.get("commands")
+                                     or plan.get("tests") or plan.get("todo")):
+                print(f"  {ui.chip('plan', 'plan')} {plan.get('summary', 'no summary')}")
                 cmds = plan.get("commands") or []
+                cmd_out = ""
                 if cmds:
                     results, chat_lines = llm_agent.execute_plan_commands(plan, project_dir)
                     for l in chat_lines:
@@ -622,21 +708,14 @@ def _agent_repl(api, state):
                     cmd_out = "\n".join(
                         f"$ {r.get('cmd')}\n{r.get('output', '')[:1200]}"
                         for r in results if not r.get("blocked"))
-                    applied, skipped, msgs = llm_agent.interactive_apply(
-                        plan, project_dir)
-                    for m in msgs:
-                        print(m)
-                    for rel, why in skipped:
-                        print(f"  {dv.dim('skipped')} {rel}: {why}")
-                    note = f"Commands run: {cmd_out[:800] or '(none)'}. Applied: {len(msgs)} changes, skipped: {len(skipped)}."
-                else:
-                    applied, skipped, msgs = llm_agent.interactive_apply(plan, project_dir)
-                    for m in msgs:
-                        print(m)
-                    for rel, why in skipped:
-                        print(f"  {dv.dim('skipped')} {rel}: {why}")
-                    note = (f"Applied {len(msgs)} change(s); "
-                            f"skipped: {', '.join(r for r, _ in skipped) or 'none'}.")
+                applied, skipped, msgs = llm_agent.interactive_apply(
+                    plan, project_dir)
+                for m in msgs:
+                    print(m)
+                for rel, why in skipped:
+                    print(f"  {dv.dim('skipped')} {rel}: {why}")
+                note = (f"Applied {len(msgs)} change(s); skipped: "
+                        f"{', '.join(r for r, _ in skipped) or 'none'}.")
                 if any(m.startswith("  edited") or m.startswith("  wrote")
                        or m.startswith("  deleted") for m in msgs):
                     for f in plan.get("files") or []:
@@ -645,13 +724,42 @@ def _agent_repl(api, state):
                             ok, reason = _syntax_check(project_dir, rel)
                             note += (f" Syntax check {rel}: "
                                      f"{'ok' if ok else 'FAILED: ' + reason}")
+                if cmd_out:
+                    note += f" Commands run:\n{cmd_out[:800]}"
+                todos = plan.get("todo")
+                if todos:
+                    try:
+                        from . import todo as todo_mod
+                        added, marked = todo_mod.apply_todo(
+                            todos, Path(project_dir) / "TODO.md")
+                        if added or marked:
+                            print(f"  {ui.chip('todo', 'done')} TODO.md: "
+                                  f"{added} added, {marked} checked off")
+                            note += f" TODO.md updated ({added} added, {marked} done)."
+                    except Exception:
+                        pass
+                if plan.get("tests"):
+                    try:
+                        from . import tests_runner as tr
+                        print(f"  {ui.chip('test', 'test')} running tests...")
+                        out = tr.auto_fix_loop(
+                            project_dir,
+                            lambda msgs: _request(state, msgs),
+                            plan,
+                            lambda p, pd: llm_agent.interactive_apply(p, pd),
+                            max_rounds=3)
+                        summ = tr.summarize(out.get("final_results", []))
+                        print(summ)
+                        note += f"\nTests:\n{summ[:800]}"
+                    except Exception as e:
+                        print(f"  {ui.chip('error', 'error')} tests: {e}")
                 history.append({"role": "assistant", "content": text})
                 history.append({"role": "user", "content": f"[tool result] {note}"})
             elif plan is not None and plan.get("done"):
-                print(f"  done: {plan.get('summary', '')}")
+                print(f"  {ui.chip('done', 'done')} {plan.get('summary', '')}")
                 history.append({"role": "assistant", "content": text})
             else:
-                print("  " + (text or "").replace("\n", "\n  "))
+                print(ui.wrap(text or "", prefix="  agent> "))
                 history.append({"role": "assistant", "content": text})
     except KeyboardInterrupt:
         pass
@@ -677,7 +785,7 @@ def _chat_repl(state, api=None):
         while True:
             try:
                 if sys.stdin.isatty():
-                    line = input("  you> ")
+                    line = input(ui.prompt("you"))
                 else:
                     line = sys.stdin.readline()
                     if not line:
@@ -687,12 +795,13 @@ def _chat_repl(state, api=None):
                 break
             if not line or line.strip().lower() in ("quit", "exit"):
                 break
+            ui.thinking("thinking...")
             history.append({"role": "user", "content": line})
             text, err = _request(state, history)
             if err:
-                print(f"  [ai error] {err}")
+                print(f"  {ui.chip('error', 'error')} {err}")
                 break
-            print("  ai> " + text.replace("\n", "\n      "))
+            print(ui.wrap(text or "", prefix="  ai> "))
             history.append({"role": "assistant", "content": text})
     except KeyboardInterrupt:
         pass
@@ -779,7 +888,7 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
     steps = 0
     while steps < max_steps:
         steps += 1
-        print(f"\n  ── step {steps}/{max_steps} ──")
+        ui.section(f"step {steps}/{max_steps}")
         if plugin:
             prompt = (
                 f"Create a HELLFORGE plugin that: {request}\n\n"
@@ -801,10 +910,10 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
                 '{"done": true, "summary": "..."}. Respond with the JSON plan format.'
             )
         messages = [
-            {"role": "system", "content": llm_agent.SYSTEM_PROMPT},
+            {"role": "system", "content": _system_prompt(project_dir)},
             {"role": "user", "content": prompt},
         ]
-        print(f"  Asking {state['provider']}/{state.get('model') or '?'}...")
+        ui.thinking(f"asking {state.get('provider')}/{state.get('model') or '?'}...")
         text, err = _request(state, messages)
         if err:
             print(f"  [ai error] {err}")
@@ -846,10 +955,30 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
             if blocked:
                 print(f"  {dv.red('blocked: ' + ', '.join(blocked))}")
 
-        # 2. Files — review the colored diff and apply
+        # 2. Tests: plan may carry "tests" — run the suite with the auto-fix
+        # loop (baseline → apply → retest → model fixes → retest until green).
         files = plan.get("files") or []
-        applied_any = False
-        if files:
+        test_summary = None
+        try:
+            from . import tests_runner as tr
+        except ImportError:
+            tr = None
+        if tr is not None and tr.plan_test_targets(plan) is not None:
+            applied_any = False
+            print(f"  {ui.chip('test', 'test')} running tests (auto-fix loop)...")
+            def _model_fn(msgs):
+                return _request(state, msgs)
+            def _apply_fn(p, pd):
+                return llm_agent.interactive_apply(p, pd, confirm_write=confirm_write)
+            out = tr.auto_fix_loop(project_dir, _model_fn, plan, _apply_fn, max_rounds=3)
+            test_summary = tr.summarize(out.get("final_results", []))
+            print(test_summary)
+            if out.get("rounds", 0) > 1:
+                print(f"  {ui.chip('fixed', 'done')} auto-fix loop: "
+                      f"{out['rounds']} round(s), {out.get('fixes_applied', 0)} fix(es) applied")
+            # auto_fix_loop applied the files itself — skip the apply block.
+        elif files:
+            # 2b. Files — review the colored diff and apply
             for f in files:
                 print(f"    {f.get('action', '?'):6s} {f.get('path', '?')}")
             applied, skipped, msgs = llm_agent.interactive_apply(
@@ -859,6 +988,8 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
                 print(m)
             for rel, why in skipped:
                 print(f"  {dv.dim('skipped')} {rel}: {why}")
+        else:
+            applied_any = False
         # Auto syntax check: any edited/written .py must still parse.
         if applied_any:
             for f in files:
@@ -870,6 +1001,19 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
                     print(f"  {dv.dim(f'syntax ok: {rel}')}")
                 else:
                     print(f"  {dv.red(f'syntax error in {rel}: {reason}')}")
+
+        # 2c. TODO: plan may carry "todo" — update the agent checklist.
+        todos = plan.get("todo")
+        if todos:
+            try:
+                from . import todo as todo_mod
+                added, marked = todo_mod.apply_todo(
+                    todos, Path(project_dir) / "TODO.md")
+                if added or marked:
+                    print(f"  {ui.chip('todo', 'done')} TODO.md: "
+                          f"{added} added, {marked} checked off")
+            except Exception:
+                pass
 
         # 3. Multi-agent verification: daughter agent reviews the result
         if (state.get("agents_enabled") and (files or cmds)
@@ -914,13 +1058,38 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
                 for r in results if not r.get("blocked")
             )
         files = plan.get("files") or []
-        if files:
+        test_summary = None
+        if tr is not None and tr.plan_test_targets(plan) is not None:
+            applied_any = False
+            print(f"  {ui.chip('test', 'test')} running tests (auto-fix loop)...")
+            def _model_fn2(msgs):
+                return _request(state, msgs)
+            def _apply_fn2(p, pd):
+                return llm_agent.interactive_apply(p, pd, confirm_write=confirm_write)
+            out = tr.auto_fix_loop(project_dir, _model_fn2, plan, _apply_fn2, max_rounds=3)
+            test_summary = tr.summarize(out.get("final_results", []))
+            print(test_summary)
+            if out.get("rounds", 0) > 1:
+                print(f"  {ui.chip('fixed', 'done')} auto-fix loop: "
+                      f"{out['rounds']} round(s), {out.get('fixes_applied', 0)} fix(es) applied")
+        elif files:
             applied, skipped, msgs = llm_agent.interactive_apply(
                 plan, project_dir, confirm_write=confirm_write)
             for m in msgs:
                 print(m)
             for rel, why in skipped:
                 print(f"  {dv.dim('skipped')} {rel}: {why}")
+        todos = plan.get("todo")
+        if todos:
+            try:
+                from . import todo as todo_mod
+                added, marked = todo_mod.apply_todo(
+                    todos, Path(project_dir) / "TODO.md")
+                if added or marked:
+                    print(f"  {ui.chip('todo', 'done')} TODO.md: "
+                          f"{added} added, {marked} checked off")
+            except Exception:
+                pass
         if (state.get("agents_enabled") and (files or cmds)
                 and state.get("agent_model")):
             _daughter_verify(api, state, request, project_dir)
