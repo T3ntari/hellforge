@@ -766,6 +766,63 @@ def test_parse_plan_regex_escapes():
     assert plan["files"][0]["edits"][0]["search"] == "sys.argv[1] == 'hello'"
 test("Plan: Python regex escapes sanitized", test_parse_plan_regex_escapes)
 
+
+
+# ── edit-not-rewrite policy + insert ──
+
+def test_existing_file_rewrite_refused():
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("a = 1\nb = 2\n" * 50)
+    plan = {"summary": "rewrite", "files": [
+        {"path": "x.py", "action": "write", "content": "a = 1\nb = 2\n" * 50}]}
+    applied, skipped, _ = ag.interactive_apply(plan, d, confirm_write=False)
+    assert applied == 0 and skipped and "'yes'" in skipped[0][1], skipped
+test("Policy: existing file rewrite refused even under --yes", test_existing_file_rewrite_refused)
+
+
+def test_existing_file_rewrite_explicit_yes():
+    import unittest.mock as mock
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("old\n" * 10)
+    plan = {"summary": "rewrite", "files": [
+        {"path": "x.py", "action": "write", "content": "brand new\n"}]}
+    with mock.patch.object(ag, "_is_tty", return_value=True), \
+         mock.patch("builtins.input", return_value="yes"):
+        applied, skipped, _ = ag.interactive_apply(plan, d)
+    assert applied == 1 and not skipped
+    assert open(os.path.join(d, "x.py")).read() == "brand new\n"
+test("Policy: explicit 'yes' can authorize a rewrite", test_existing_file_rewrite_explicit_yes)
+
+
+def test_insert_lines():
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("a\nc\n")
+    plan = {"summary": "insert", "files": [
+        {"path": "x.py", "action": "edit", "lines": [2], "replace": "b"}]}
+    applied, skipped, _ = ag.interactive_apply(plan, d, confirm_write=False)
+    assert applied == 1, skipped
+    assert open(os.path.join(d, "x.py")).read() == "a\nb\nc\n"
+test("Edit: [x] inserts before line x (no end)", test_insert_lines)
+
+
+def test_insert_null_end():
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("a\nb\n")
+    plan = {"summary": "insert", "files": [
+        {"path": "x.py", "action": "edit", "lines": [2, None], "replace": "mid"}]}
+    applied, skipped, _ = ag.interactive_apply(plan, d, confirm_write=False)
+    assert applied == 1, skipped
+    assert open(os.path.join(d, "x.py")).read() == "a\nmid\nb\n"
+test("Edit: [x, null] also inserts", test_insert_null_end)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:

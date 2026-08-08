@@ -132,7 +132,7 @@
     "llm": {
       "version": "1.1.0",
       "description": "LLM copilot \u2014 OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation",
-      "verification": "32c1456f128fb87879440fa32831d927a5ca41d79cc96a7e10cecce91172c4a0"
+      "verification": "5817e4f21e54994350fb697ab028bead76aa8a78d5d7abd047af23d226884166"
     }
   },
   "_description": "Default package list for E Language by Tentari. All plugins backed up in embedded_plugins/*.json and integrity-verified via SHA-256 verification codes. Remote verification: www.oshonet.in",

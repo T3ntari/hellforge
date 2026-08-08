@@ -97,7 +97,8 @@ def _request(state, messages):
             model = "llama3.2"
     if not model:
         return None, "no model selected — run 'ai model <name>'"
-    return providers.chat_request(provider, base, state.get("api_key"), model, messages)
+    return providers.chat_request(provider, base, state.get("api_key"), model, messages,
+                                  timeout=600 if provider == "ollama" else 300)
 
 
 # ── eshell command ─────────────────────────────

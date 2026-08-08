@@ -37,15 +37,17 @@ Rules:
 - paths are ALWAYS relative to the project root, use forward slashes.
 - "read" displays a file's content to the user (no changes are made);
   use start/end for line ranges.
-- "edit" accepts EITHER:
-    a) "lines": [startLine, endLine] (1-based, inclusive — the context shows
-       files with line numbers like "1525 | def do_help(args):") plus
+- "edit" changes an EXISTING file by line range (the context shows files with
+  line numbers like "1525 | def do_help(args):"):
+    a) REPLACE lines: "lines": [startLine, endLine] (1-based inclusive) +
        "replace": "the exact new lines for that range", OR
-    b) "edits": [ {"search": "exact existing text", "replace": "replacement"} ]
-  Prefer (a) line ranges whenever the context shows the target lines — it is
-  far more reliable. Keep ranges small and precise.
-- "write" replaces the entire file; include the complete content. Only use it
-  for NEW files; for existing files prefer line-range edits.
+    b) INSERT lines: "lines": [x] (a single line number, NO end) +
+       "replace": "new lines to insert BEFORE line x"
+  Keep ranges small and precise. NEVER rewrite an existing file whole —
+  changing an existing file always means a small line-range edit.
+- "write" creates a NEW file with "content" (full file). It must NOT be used
+  for files that already exist — the system refuses rewrites of existing
+  files unless the user explicitly types 'yes'.
 - "delete" removes the file (the user is always asked to confirm) — only use
   it when truly required.
 - "commands" may run harmless commands like 'python tests/x.py' or
@@ -231,25 +233,25 @@ def interactive_apply(plan, project_dir, confirm_write=True):
                 continue
             new_text = f.get("content", "")
             old_text = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
-            # Catastrophic-collapse guard: replacing a large existing file
-            # with a tiny one is the classic small-model hallucination.
-            collapse = False
-            if target.exists() and len(old_text) > 200 and \
-                    len(new_text) < len(old_text) * 0.1:
-                collapse = True
-                print(f"  {dv.red('WARNING')}: this WRITE would shrink {rel} from "
-                      f"{len(old_text)} to {len(new_text)} bytes "
-                      f"({int(100 * len(new_text) / max(1, len(old_text)))}%).")
-                print("  " + dv.red("Likely a hallucinated rewrite — the file must "
-                                    "be edited, not replaced."))
-            dv.print_diff(old_text, new_text, rel)
-            if collapse:
-                # Only an explicit 'yes' (full word) can authorize a collapse.
+            if target.exists():
+                # POLICY: existing files are edited, never rewritten. A whole-
+                # file write requires an explicit full-word 'yes', even under
+                # --yes, and always shows the size impact.
+                collapse = len(old_text) > 200 and len(new_text) < len(old_text) * 0.1
+                print(f"  {dv.red('WARNING')}: {rel} already exists ({len(old_text)} bytes).")
+                print("  " + dv.red("Existing files should be changed with line-range edits "
+                                    "(action edit), not rewritten."))
+                if collapse:
+                    print("  " + dv.red(
+                        f"This write would shrink it to {len(new_text)} bytes "
+                        f"({int(100 * len(new_text) / max(1, len(old_text)))}%) — "
+                        "likely a hallucinated rewrite."))
+                dv.print_diff(old_text, new_text, rel)
                 if auto_accept or not confirm_write:
-                    skipped.append((rel, "collapse guard — type 'yes' to replace"))
+                    skipped.append((rel, "existing file — rewrite requires explicit 'yes'"))
                     continue
                 if not _is_tty():
-                    skipped.append((rel, "declined (collapse guard, no TTY)"))
+                    skipped.append((rel, "declined (no TTY)"))
                     continue
                 try:
                     ans = input(f"  Type 'yes' to REPLACE {rel} anyway? [yes/n/v] ").strip().lower()
@@ -263,32 +265,25 @@ def interactive_apply(plan, project_dir, confirm_write=True):
                     except EOFError:
                         ans = "n"
                 if ans != "yes":
-                    skipped.append((rel, "declined (collapse guard)"))
+                    skipped.append((rel, "declined (rewrite requires 'yes')"))
                     continue
-                target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(new_text, encoding="utf-8")
                 applied += 1
-                msgs.append(f"  wrote {rel}")
+                msgs.append(f"  wrote {rel} (REPLACED with explicit 'yes')")
                 continue
+            # New file: normal flow.
+            dv.print_diff("", new_text, rel)
             if auto_accept:
                 ok = True
             elif not confirm_write:
                 ok = True
             else:
-                ok, view, quit_, all_ = _confirm(f"Apply WRITE {rel}? [y/n/v/a/q]")
+                ok, view, quit_, all_ = _confirm(f"Create {rel}? [y/n/v/a/q]")
                 if all_:
                     auto_accept = True
                 if quit_:
                     skipped.append((rel, "quit"))
                     break
-                if view:
-                    full = old_text if old_text else ""
-                    for line in dv.render_read(new_text.splitlines() if not full else full.splitlines()):
-                        print(f"  {line}")
-                    ok, _, quit_, _ = _confirm(f"Apply WRITE {rel}? [y/n/a/q]")
-                    if quit_:
-                        skipped.append((rel, "quit"))
-                        break
             if not ok:
                 skipped.append((rel, "declined"))
                 continue
@@ -312,17 +307,34 @@ def interactive_apply(plan, project_dir, confirm_write=True):
         line_edit = f.get("lines")
         if line_edit is not None:
             # Line-range edit: [lo, hi] 1-based inclusive, replace with text.
+            # INSERT form: [x] or [x, null] inserts new lines BEFORE line x.
             try:
-                lo, hi = int(line_edit[0]), int(line_edit[1])
+                lo = int(line_edit[0])
             except (TypeError, ValueError, IndexError):
                 skipped.append((rel, "bad lines range"))
                 continue
-            if lo < 1 or hi < lo or hi > len(old_lines):
-                skipped.append((rel, f"lines {lo}-{hi} out of range "
-                                     f"(file has {len(old_lines)} lines)"))
-                continue
-            new_lines = old_lines[:lo - 1] + f.get("replace", "").splitlines() \
-                        + old_lines[hi:]
+            if len(line_edit) > 1 and line_edit[1] is not None:
+                try:
+                    hi = int(line_edit[1])
+                except (TypeError, ValueError):
+                    hi = None
+            else:
+                hi = None
+            if hi is None:
+                # insert before line lo
+                if lo < 1 or lo > len(old_lines) + 1:
+                    skipped.append((rel, f"insert line {lo} out of range "
+                                         f"(file has {len(old_lines)} lines)"))
+                    continue
+                new_lines = old_lines[:lo - 1] + f.get("replace", "").splitlines() \
+                            + old_lines[lo - 1:]
+            else:
+                if lo < 1 or hi < lo or hi > len(old_lines):
+                    skipped.append((rel, f"lines {lo}-{hi} out of range "
+                                         f"(file has {len(old_lines)} lines)"))
+                    continue
+                new_lines = old_lines[:lo - 1] + f.get("replace", "").splitlines() \
+                            + old_lines[hi:]
             new_text = "\n".join(new_lines)
             if old_text.endswith("\n"):
                 new_text += "\n"

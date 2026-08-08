@@ -95,10 +95,11 @@ def ollama_models(timeout=5):
 
 # ── Unified chat request ────────────────────────
 
-def chat_request(provider, base_url, api_key, model, messages, timeout=120):
+def chat_request(provider, base_url, api_key, model, messages, timeout=300):
     """Send a chat completion. Returns (text, error).
     provider: openai|anthropic|ollama (all use the OpenAI-compatible /chat/
-    completions shape except anthropic which uses /v1/messages)."""
+    completions shape except anthropic which uses /v1/messages).
+    Default timeout 300s — local models can be slow to warm up."""
     provider = (provider or "custom").lower()
 
     if provider == "anthropic":
