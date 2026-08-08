@@ -37,9 +37,15 @@ Rules:
 - paths are ALWAYS relative to the project root, use forward slashes.
 - "read" displays a file's content to the user (no changes are made);
   use start/end for line ranges.
-- "edit" uses exact search/replace pairs; each search must match exactly once
-  in the file as it currently exists; keep pairs small and precise.
-- "write" replaces the entire file; include the complete content.
+- "edit" accepts EITHER:
+    a) "lines": [startLine, endLine] (1-based, inclusive — the context shows
+       files with line numbers like "1525 | def do_help(args):") plus
+       "replace": "the exact new lines for that range", OR
+    b) "edits": [ {"search": "exact existing text", "replace": "replacement"} ]
+  Prefer (a) line ranges whenever the context shows the target lines — it is
+  far more reliable. Keep ranges small and precise.
+- "write" replaces the entire file; include the complete content. Only use it
+  for NEW files; for existing files prefer line-range edits.
 - "delete" removes the file (the user is always asked to confirm) — only use
   it when truly required.
 - "commands" may run harmless commands like 'python tests/x.py' or
@@ -80,15 +86,37 @@ def safe_path(project_dir, rel_path):
     return target
 
 
+def _fix_json_escapes(s):
+    """Drop backslashes before characters that are not valid JSON escapes
+    (models write Python-regex escapes like \\[ inside JSON strings)."""
+    out = []
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch == "\\" and i + 1 < len(s):
+            nxt = s[i + 1]
+            if nxt in '"\\/bfnrtu':
+                out.append(ch)
+                out.append(nxt)
+            else:
+                out.append(nxt)
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def parse_plan(text):
     """Parse the model's JSON plan from its reply. Tolerates markdown fences,
-    leading/trailing prose, reasoning text and Python raw-string prefixes
-    (r\"...\") in JSON values. Returns dict or None."""
+    leading/trailing prose, reasoning text, Python raw-string prefixes
+    (r\"...\") and Python-regex escapes (\\[) in JSON values."""
     s = (text or "").strip()
     s = re.sub(r"^```(?:json)?\s*", "", s, flags=re.I)
     s = re.sub(r"\s*```$", "", s)
     s = re.sub(r'\br"', '"', s)  # r"..." → "..." (common small-model slip)
     s = re.sub(r"\br'", "'", s)
+    s = _fix_json_escapes(s)
     start = s.find("{")
     if start < 0:
         return None
@@ -278,26 +306,45 @@ def interactive_apply(plan, project_dir, confirm_write=True):
             skipped.append((rel, "is a directory — cannot edit it"))
             continue
         old_text = target.read_text(encoding="utf-8", errors="replace")
+        old_lines = old_text.splitlines()
         new_text = old_text
         edits = f.get("edits") or []
-        if not edits:
-            skipped.append((rel, "no edits provided"))
-            continue
-        failed = False
-        for pair in edits:
-            search, replace = pair.get("search", ""), pair.get("replace", "")
-            if not search:
-                skipped.append((rel, "empty search block"))
-                failed = True
-                break
-            if new_text.count(search) != 1:
-                skipped.append((rel, f"search block not unique/missing "
-                                     f"({new_text.count(search)} matches)"))
-                failed = True
-                break
-            new_text = new_text.replace(search, replace)
-        if failed:
-            continue
+        line_edit = f.get("lines")
+        if line_edit is not None:
+            # Line-range edit: [lo, hi] 1-based inclusive, replace with text.
+            try:
+                lo, hi = int(line_edit[0]), int(line_edit[1])
+            except (TypeError, ValueError, IndexError):
+                skipped.append((rel, "bad lines range"))
+                continue
+            if lo < 1 or hi < lo or hi > len(old_lines):
+                skipped.append((rel, f"lines {lo}-{hi} out of range "
+                                     f"(file has {len(old_lines)} lines)"))
+                continue
+            new_lines = old_lines[:lo - 1] + f.get("replace", "").splitlines() \
+                        + old_lines[hi:]
+            new_text = "\n".join(new_lines)
+            if old_text.endswith("\n"):
+                new_text += "\n"
+        else:
+            if not edits:
+                skipped.append((rel, "no edits provided"))
+                continue
+            failed = False
+            for pair in edits:
+                search, replace = pair.get("search", ""), pair.get("replace", "")
+                if not search:
+                    skipped.append((rel, "empty search block"))
+                    failed = True
+                    break
+                if new_text.count(search) != 1:
+                    skipped.append((rel, f"search block not unique/missing "
+                                         f"({new_text.count(search)} matches)"))
+                    failed = True
+                    break
+                new_text = new_text.replace(search, replace)
+            if failed:
+                continue
         dv.print_diff(old_text, new_text, rel)
         if auto_accept:
             ok = True

@@ -755,15 +755,28 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
 
         # 2. Files — review the colored diff and apply
         files = plan.get("files") or []
+        applied_any = False
         if files:
             for f in files:
                 print(f"    {f.get('action', '?'):6s} {f.get('path', '?')}")
             applied, skipped, msgs = llm_agent.interactive_apply(
                 plan, project_dir, confirm_write=confirm_write)
+            applied_any = applied > 0
             for m in msgs:
                 print(m)
             for rel, why in skipped:
                 print(f"  {dv.dim('skipped')} {rel}: {why}")
+        # Auto syntax check: any edited/written .py must still parse.
+        if applied_any:
+            for f in files:
+                rel = f.get("path", "")
+                if not rel.endswith(".py"):
+                    continue
+                ok, reason = _syntax_check(project_dir, rel)
+                if ok:
+                    print(f"  {dv.dim(f'syntax ok: {rel}')}")
+                else:
+                    print(f"  {dv.red(f'syntax error in {rel}: {reason}')}")
 
         # 3. Multi-agent verification: daughter agent reviews the result
         if (state.get("agents_enabled") and (files or cmds)
@@ -821,6 +834,17 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
         request = f"Continue: {request}"
 
     print(f"\n  Finished after {steps} step(s).")
+
+
+def _syntax_check(project_dir, rel):
+    """Compile-check a .py file with the project interpreter. Returns
+    (ok, detail)."""
+    from . import exec as safe_exec
+    res = safe_exec.run_command(
+        f"{sys.executable} -m py_compile {rel}", project_dir, timeout=30)
+    if res.get("ok"):
+        return True, ""
+    return False, (res.get("output") or res.get("error") or "compile failed")[:400]
 
 
 def _daughter_verify(api, state, request, project_dir):

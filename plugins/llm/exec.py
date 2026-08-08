@@ -73,6 +73,10 @@ def run_command(cmd, project_dir, timeout=TIMEOUT):
         return {"ok": False, "output": "", "exit_code": None,
                 "duration_s": 0.0, "error": reason, "blocked": True}
     parts = shlex.split(cmd)
+    # `python`/`python3`/`py` → the interpreter running HELLFORGE (the
+    # project venv), so the model's python commands see numpy/mido etc.
+    if parts and parts[0] in ("python", "python3", "py"):
+        parts[0] = sys.executable
     t0 = time.time()
     try:
         r = subprocess.run(parts, cwd=project_dir, capture_output=True,

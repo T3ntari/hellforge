@@ -700,6 +700,72 @@ def test_reproduce_skips_unknown():
     assert llm._reproduce(d, "lib.py has a bug") == ""
 test("Reproduce: library file skipped", test_reproduce_skips_unknown)
 
+
+
+# ── venv python rewrite + line-range edits + syntax check ──
+
+def test_exec_uses_project_interpreter():
+    from plugins.llm import exec as safe_exec
+    d = tempfile.mkdtemp()
+    res = safe_exec.run_command("python -c 'import sys; print(sys.executable)'", d)
+    # -c is blocked; use a script file instead
+    with open(os.path.join(d, "whichpy.py"), "w") as f:
+        f.write("import sys\nprint(sys.executable)\n")
+    res = safe_exec.run_command("python whichpy.py", d)
+    assert res["ok"], res
+    assert res["output"].strip() == sys.executable, res
+test("Exec: python commands run the project interpreter", test_exec_uses_project_interpreter)
+
+
+def test_line_range_edit():
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("a = 1\nb = 2\nc = 3\n")
+    plan = {"summary": "line edit", "files": [
+        {"path": "x.py", "action": "edit", "lines": [2, 2], "replace": "b = 42\nb2 = 43"}]}
+    applied, skipped, _ = ag.interactive_apply(plan, d, confirm_write=False)
+    assert applied == 1, skipped
+    assert open(os.path.join(d, "x.py")).read() == "a = 1\nb = 42\nb2 = 43\nc = 3\n"
+test("Edit: line-range replacement works", test_line_range_edit)
+
+
+def test_line_range_out_of_bounds():
+    from plugins.llm import agent as ag
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("a = 1\n")
+    plan = {"summary": "bad", "files": [
+        {"path": "x.py", "action": "edit", "lines": [5, 9], "replace": "x"}]}
+    applied, skipped, _ = ag.interactive_apply(plan, d, confirm_write=False)
+    assert applied == 0 and skipped and "out of range" in skipped[0][1]
+test("Edit: out-of-range lines skipped", test_line_range_out_of_bounds)
+
+
+def test_syntax_check():
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "ok.py"), "w") as f:
+        f.write("x = 1\n")
+    with open(os.path.join(d, "bad.py"), "w") as f:
+        f.write("def broken(:\n")
+    ok, _ = llm._syntax_check(d, "ok.py")
+    assert ok
+    ok, detail = llm._syntax_check(d, "bad.py")
+    assert not ok and detail
+test("Syntax: auto py_compile check flags broken files", test_syntax_check)
+
+
+
+def test_parse_plan_regex_escapes():
+    from plugins.llm import agent as ag
+    raw = ('{"summary": "s", "files": [{"path": "x.py", "action": "edit", '
+           '"edits": [{"search": r"sys.argv\\[1\\] == \'hello\'", "replace": "y"}]}]}')
+    plan = ag.parse_plan(raw)
+    assert plan is not None
+    assert plan["files"][0]["edits"][0]["search"] == "sys.argv[1] == 'hello'"
+test("Plan: Python regex escapes sanitized", test_parse_plan_regex_escapes)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
