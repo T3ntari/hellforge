@@ -1171,6 +1171,217 @@ def test_plan_tests_key_flow():
     assert tr.plan_test_targets(plan3) is None
 test("Integration: plan tests key targets", test_plan_tests_key_flow)
 
+# ── session.py — session persistence + resume ──
+
+def test_session_roundtrip():
+    from plugins.llm import session as sess
+    d = tempfile.mkdtemp()
+    history = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "add a tempo command"},
+        {"role": "assistant", "content": '{"done": true, "summary": "ok"}'},
+    ]
+    meta = {"model": "deepseek-chat", "provider": "deepseek",
+            "started": "2026-08-09T10:00:00"}
+    sid = sess.save_session(d, history, meta)
+    loaded = sess.load_session(d, sid)
+    assert loaded is not None
+    assert loaded["history"] == history
+    assert loaded["meta"]["model"] == "deepseek-chat"
+    assert loaded["meta"]["provider"] == "deepseek"
+    assert loaded["meta"]["started"] == "2026-08-09T10:00:00"
+    assert loaded["meta"]["turns"] == 1, "user turns counted from history"
+test("Session: save/list/load round-trip", test_session_roundtrip)
+
+
+def test_session_ids_unique_newest_first():
+    from plugins.llm import session as sess
+    d = tempfile.mkdtemp()
+    a = sess.save_session(d, [{"role": "user", "content": "one"}],
+                          {"model": "m1", "provider": "p"})
+    b = sess.save_session(d, [{"role": "user", "content": "two"}],
+                          {"model": "m2", "provider": "p"})
+    assert a != b, "ids must be unique (timestamp-based)"
+    entries = sess.list_sessions(d)
+    assert len(entries) == 2
+    assert [e["id"] for e in entries] == [b, a], "newest first"
+test("Session: timestamp ids unique, newest first", test_session_ids_unique_newest_first)
+
+
+def test_session_list_fields_and_summary():
+    from plugins.llm import session as sess
+    d = tempfile.mkdtemp()
+    h = [{"role": "system", "content": "s"},
+         {"role": "user", "content": "first user question"},
+         {"role": "user", "content": "second question"},
+         {"role": "assistant", "content": "a reply"}]
+    sid = sess.save_session(d, h, {"model": "gemma3:4b", "provider": "ollama"})
+    entries = sess.list_sessions(d)
+    assert len(entries) == 1
+    e = entries[0]
+    assert e["id"] == sid
+    assert e["model"] == "gemma3:4b"
+    assert e["turns"] == 2
+    assert e["summary"] == "first user question"
+    assert sess.summarize(h, 1) == "first user question"
+    assert sess.summarize(h) == "first user question | second question"
+    assert sess.summarize([]) == ""
+test("Session: list card fields + summarize first user msg", test_session_list_fields_and_summary)
+
+
+def test_session_corrupt_skipped():
+    from plugins.llm import session as sess
+    d = tempfile.mkdtemp()
+    good = sess.save_session(d, [{"role": "user", "content": "hi"}], {})
+    p = sess.sessions_dir(d)
+    (p / "111.json").write_text("{not json!!!", encoding="utf-8")
+    (p / "222.json").write_text("[]", encoding="utf-8")
+    entries = sess.list_sessions(d)
+    assert len(entries) == 1 and entries[0]["id"] == good
+    assert sess.load_session(d, "111") is None
+    assert sess.load_session(d, "222") is None
+    assert sess.load_session(d, "missing") is None
+    assert sess.load_session(d, "") is None
+test("Session: corrupt/missing files skipped gracefully", test_session_corrupt_skipped)
+
+
+# ── costs.py: token + cost accounting ──
+
+def test_costs_token_estimate():
+    from plugins.llm import costs
+    assert costs.estimate_tokens("abcd" * 4) == 4
+    msgs = [{"role": "user", "content": "abcd" * 4}]
+    assert costs.estimate_tokens(msgs) == 4
+    msgs2 = [{"role": "user", "content": "abcd" * 8},
+             {"role": "assistant", "content": "efgh" * 4}]
+    assert costs.estimate_tokens(msgs2) == 12
+test("Costs: chars/4 heuristic for text and message lists", test_costs_token_estimate)
+
+
+def test_costs_price_table():
+    from plugins.llm import costs
+    assert costs.price_for("deepseek", "deepseek-chat") == (0.27, 1.10)
+    assert costs.price_for("openai", "gpt-4o") == (2.50, 10.00)
+    assert costs.price_for("claude", "claude-sonnet-4-5") == (3.00, 15.00)
+    assert costs.price_for("ollama", "gemma3:4b") == (0.0, 0.0)
+    assert costs.price_for("custom", "anything") == (0.0, 0.0)
+    assert costs.price_for("DEEPSEEK", None) == (0.27, 1.10), "case-insensitive"
+    assert costs.price_for("unknown-provider", "x") == (0.0, 0.0)
+test("Costs: pricing table incl. local free", test_costs_price_table)
+
+
+def test_costs_recorded_math():
+    from plugins.llm import costs
+    sc = costs.SessionCost(provider="deepseek", model="deepseek-chat")
+    rec = sc.record([{"role": "user", "content": "x" * 1000}], "y" * 2000)
+    assert rec["tokens_in"] == 250 and rec["tokens_out"] == 500
+    expected = 250 * 0.27 / 1e6 + 500 * 1.10 / 1e6
+    assert abs(rec["cost"] - expected) < 1e-9, rec["cost"]
+    t = sc.total()
+    assert t["tokens_in"] == 250 and t["tokens_out"] == 500
+    assert abs(t["cost"] - expected) < 1e-9
+    assert len(t["per_model"]) == 1 and t["per_model"][0]["model"] == "deepseek-chat"
+    text = sc.render()
+    assert "deepseek · deepseek-chat" in text
+    assert "Session cost — 250 tokens in, 500 out" in text
+    assert f"TOTAL: ${expected:.4f}" in text
+test("Costs: recorded exchange cost math + render", test_costs_recorded_math)
+
+
+def test_costs_ollama_free_render():
+    from plugins.llm import costs
+    sc = costs.SessionCost(provider="ollama", model="gemma3:4b")
+    sc.record([{"role": "user", "content": "z" * 4000}], "a" * 8000)
+    assert sc.total()["cost"] == 0.0
+    text = sc.render()
+    assert "ollama · gemma3:4b — $0.0000 (local)" in text
+    assert "TOTAL: $0.0000" in text
+    assert "1.0k tokens in, 2.0k out" in text
+test("Costs: ollama session always $0 (local)", test_costs_ollama_free_render)
+
+
+# ── subagents.py: subagent orchestration ──
+
+def test_plan_subagents_extract():
+    from plugins.llm import subagents
+    plan = {"subagents": [
+        {"task": "review the diff", "context": "files changed: a.py"},
+        {"task": "write tests"},
+        {"junk": True},
+        "not-a-dict",
+    ]}
+    out = subagents.plan_subagents(plan)
+    assert len(out) == 2
+    assert out[0] == {"task": "review the diff", "context": "files changed: a.py"}
+    assert out[1] == {"task": "write tests", "context": ""}
+    assert subagents.plan_subagents(None) == []
+    assert subagents.plan_subagents({}) == []
+test("Subagents: plan_subagents extracts task/context", test_plan_subagents_extract)
+
+
+def test_run_plan_subagents_fake_model():
+    from plugins.llm import subagents
+    plan = {"subagents": [
+        {"task": "check syntax", "context": "x.py"},
+        {"task": "lint pass", "context": ""},
+    ]}
+    seen = []
+
+    def fake_model_fn(messages):
+        seen.append(messages)
+        assert messages[0]["role"] == "system"
+        assert "HELLFORGE Copilot" in messages[0]["content"], "base prompt used"
+        assert "TASK:" in messages[-1]["content"]
+        return "ALL OK"
+
+    results = subagents.run_plan_subagents(plan, fake_model_fn)
+    assert [r["task"] for r in results] == ["check syntax", "lint pass"]
+    assert all(r["result"] == "ALL OK" for r in results)
+    assert len(seen) == 2
+    assert subagents.run_plan_subagents(None, fake_model_fn) == []
+test("Subagents: run_plan_subagents with fake model", test_run_plan_subagents_fake_model)
+
+
+def test_run_subagent_error_paths():
+    from plugins.llm import subagents
+    assert subagents.run_subagent(lambda m: "reply", "t", "c") == "reply"
+    assert subagents.run_subagent(lambda m: ("reply2", None), "t", "c") == "reply2"
+    try:
+        subagents.run_subagent(lambda m: (None, "boom"), "t", "c")
+        raise AssertionError("error tuple must raise")
+    except RuntimeError:
+        pass
+    captured = {}
+    def spy(messages):
+        captured["system"] = messages[0]["content"]
+        return "ok"
+    subagents.run_subagent(spy, "t", "c", system_extra="EXTRA RULES")
+    assert captured["system"].endswith("EXTRA RULES")
+test("Subagents: injected model_fn + system_extra + error", test_run_subagent_error_paths)
+
+
+def test_subagents_error_captured():
+    from plugins.llm import subagents
+    plan = {"subagents": [{"task": "bad task", "context": ""}]}
+    results = subagents.run_plan_subagents(plan, lambda m: (_ for _ in ()).throw(RuntimeError("kaboom")))
+    assert len(results) == 1
+    assert results[0]["task"] == "bad task"
+    assert "kaboom" in results[0]["result"], "failure captured, batch survives"
+test("Subagents: failing subagent captured, no abort", test_subagents_error_captured)
+
+
+def test_subagents_summarize():
+    from plugins.llm import subagents
+    text = subagents.summarize([
+        {"task": "review", "result": "looks good\nno issues"},
+        {"task": "test-fix", "result": "fixed the failure"},
+    ])
+    assert "review" in text and "test-fix" in text
+    assert "looks good" in text and "no issues" in text, "newline collapsed"
+    assert subagents.summarize([]) == "Subagent results (0):"
+test("Subagents: summarize contains task names + results", test_subagents_summarize)
+
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
