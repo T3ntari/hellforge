@@ -3043,6 +3043,56 @@ test("Undo: format_stat green/red on TTY, plain off-TTY",
      test_undo_format_stat_colors)
 
 
+
+
+# ── clipboard + resume replay ──
+
+def test_clipboard_fallback_roundtrip():
+    import plugins.llm.clipboard as cb
+    # Scratch-file path must round-trip deterministically (a real GUI
+    # clipboard may be owned by other apps during tests).
+    ok, src = cb.copy("hello clipboard", scratch_only=True)
+    assert ok and src == "scratch"
+    text, src2 = cb.paste(scratch_only=True)
+    assert text == "hello clipboard", (text, src2)
+test("Clipboard: copy/paste round-trips (scratch)", test_clipboard_fallback_roundtrip)
+
+
+def test_clipboard_cut():
+    import plugins.llm.clipboard as cb
+    ok, src = cb.cut("cut me")
+    assert ok
+    text, _ = cb.paste(scratch_only=True)
+    assert text == "cut me"
+test("Clipboard: cut copies to clipboard", test_clipboard_cut)
+
+
+def test_clipboard_status():
+    import plugins.llm.clipboard as cb
+    line = cb.status_line()
+    assert "clipboard" in line
+test("Clipboard: status line", test_clipboard_status)
+
+
+def test_repl_resume_replay_shows_history():
+    import io
+    import contextlib
+    from plugins.llm import repl
+    d = tempfile.mkdtemp()
+    history = [{"role": "system", "content": "sys"},
+               {"role": "user", "content": "hello there"},
+               {"role": "assistant", "content": "hi back"}]
+    buf = io.StringIO()
+    with _ReplHarness(["/exit"]), contextlib.redirect_stdout(buf):
+        repl.run_repl(_ReplAPI(d), {"mode": "ask", "replay": True},
+                      lambda m: ("ok", None), lambda *a, **k: (0, [], []),
+                      system_prompt="sys", history=history)
+    out = buf.getvalue()
+    assert "hello there" in out, "resumed user message must be replayed"
+    assert "hi back" in out, "resumed assistant message must be replayed"
+    assert "resumed conversation" in out
+test("Repl: resume replays the conversation like a chat", test_repl_resume_replay_shows_history)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:

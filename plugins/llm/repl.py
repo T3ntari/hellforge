@@ -579,14 +579,35 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
             history[0]["content"] = sys_prompt
     else:
         history = ([{"role": "system", "content": sys_prompt}] if sys_prompt else [])
-    if _interactive():  # readline: arrow-key history comes free with input()
+    if _interactive():  # readline: arrow-key history + clipboard bindings
         try:
             import readline  # noqa: F401
+            _bind_clipboard(readline)
         except ImportError:
             pass
 
     def _prompt():
-        return f"{ui.mode_badge(state['mode'])} {ui.prompt('you')}"
+        # Claude-Code style caret prompt with the mode badge
+        return f"{ui.mode_badge(state['mode'])} {ui.prompt()}"
+
+    # Resume replay: show the past conversation like a normal chat before
+    # the prompt (the user asked for it — messages appear as normal chat).
+    if history and len(history) > 1 and state.get("replay", True):
+        try:
+            print(ui.section("resumed conversation"))
+            for m in history[1:][-12:]:
+                role = m.get("role", "")
+                content = str(m.get("content", ""))
+                if not content:
+                    continue
+                if role == "user":
+                    print(ui.prompt("you") + " " + content.split("\n")[0][:100])
+                elif role == "assistant":
+                    for line in content.splitlines()[:6]:
+                        print("  " + line)
+                print()
+        except Exception:
+            pass
 
     def _notify(event):
         if on_turn:
@@ -657,3 +678,45 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
     except KeyboardInterrupt:
         pass
     return state["mode"]
+
+def _bind_clipboard(readline):
+    """Bind Ctrl+V paste / Ctrl+X cut / Ctrl+C copy via readline attribute
+    bindings. Ctrl+C on an EMPTY line keeps the classic interrupt behaviour."""
+    try:
+        from plugins.llm import clipboard as clip_mod
+    except ImportError:
+        return
+
+    def _hf_paste():
+        text, src = clip_mod.paste()
+        if text:
+            readline.insert_text(text)
+            readline.redisplay()
+
+    def _hf_cut():
+        line = readline.get_line_buffer()
+        if line:
+            ok, src = clip_mod.cut(line)
+            readline.delete_text(0, len(line))
+            readline.redisplay()
+            head = line[:60] + ("..." if len(line) > 60 else "")
+            print("\n  " + ui.dim("cut to %s: %s" % (src, head)))
+
+    def _hf_copy():
+        line = readline.get_line_buffer()
+        if line:
+            ok, src = clip_mod.copy(line)
+            head = line[:60] + ("..." if len(line) > 60 else "")
+            print("\n  " + ui.dim("copied to %s: %s" % (src, head)))
+        else:
+            raise KeyboardInterrupt  # empty line → classic interrupt
+
+    readline._hf_paste = _hf_paste
+    readline._hf_cut = _hf_cut
+    readline._hf_copy = _hf_copy
+    try:
+        readline.parse_and_bind(r'"\C-v": _hf_paste')
+        readline.parse_and_bind(r'"\C-x": _hf_cut')
+        readline.parse_and_bind(r'"\C-c": _hf_copy')
+    except Exception:
+        pass
