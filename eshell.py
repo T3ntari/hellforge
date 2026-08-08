@@ -312,6 +312,103 @@ def do_info(args):
     if r.stderr:
         print(f"  {c(r.stderr.strip()[:200], RED)}")
 
+def _print_report(report):
+    """Print a cli_cmds report: header in cyan, ✓ lines green, rest plain."""
+    for i, line in enumerate(report.splitlines()):
+        col = CYAN if i == 0 else (GREEN if line.lstrip().startswith("✓") else "")
+        print(f"  {c(line, col)}")
+
+
+def _out_flag(args):
+    for i, a in enumerate(args):
+        if a in ("-o", "--output") and i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+def do_stats(args):
+    """stats <file> — notes, duration, note range, velocity, polyphony, density, channels."""
+    if not args:
+        print(f"  {c('Usage: stats <file>', D)}"); return
+    from ep_compiler.cli_cmds import CLIError, stats_report
+    try:
+        _print_report(stats_report(strip_path(args[0])))
+    except CLIError as e:
+        print(f"  {c(f'✗ {e}', RED)}")
+
+def do_tracks(args):
+    """tracks <file> — per-channel table (+ per-track when TRK metadata present)."""
+    if not args:
+        print(f"  {c('Usage: tracks <file>', D)}"); return
+    from ep_compiler.cli_cmds import CLIError, tracks_report
+    try:
+        _print_report(tracks_report(strip_path(args[0])))
+    except CLIError as e:
+        print(f"  {c(f'✗ {e}', RED)}")
+
+def do_inspect(args):
+    """inspect <file> [N] — show the first N events (default 12)."""
+    if not args:
+        print(f"  {c('Usage: inspect <file> [N]', D)}"); return
+    n = 12
+    if len(args) > 1:
+        try:
+            n = int(args[1])
+        except ValueError:
+            pass
+    from ep_compiler.cli_cmds import CLIError, inspect_lines
+    try:
+        lines = inspect_lines(strip_path(args[0]), n)
+        for line in lines:
+            print(f"  {c(line, CYAN if line.startswith('HELLFORGE') else '')}")
+    except CLIError as e:
+        print(f"  {c(f'✗ {e}', RED)}")
+
+def do_new(args):
+    """new <name> [-o <dir>] — scaffold a v5 project directory."""
+    if not args:
+        print(f"  {c('Usage: new <name> [-o <dir>]', D)}"); return
+    name = strip_path(args[0])
+    out_dir = _out_flag(args)
+    from ep_compiler.cli_cmds import CLIError, scaffold_project
+    try:
+        root = scaffold_project(name, out_dir)
+        for rel in ("index.ei", "parts/main.e", "README.md"):
+            print(f"  {c('✓', GREEN)} {os.path.join(root, rel)}")
+        print(f"  {c('v5 project scaffolded:', CYAN)} {root}")
+    except CLIError as e:
+        print(f"  {c(f'✗ {e}', RED)}")
+
+def do_transpose(args):
+    """transpose <file> <semitones> [-o out] — shift all notes, write .mid (or .e with -o *.e)."""
+    if len(args) < 2:
+        print(f"  {c('Usage: transpose <file> <semitones> [-o out]', D)}"); return
+    from ep_compiler.cli_cmds import CLIError, transpose_file
+    try:
+        _print_report(transpose_file(strip_path(args[0]), args[1], _out_flag(args)))
+    except CLIError as e:
+        print(f"  {c(f'✗ {e}', RED)}")
+
+def do_tempo(args):
+    """tempo <file> <bpm> [-o out] — recompile at a new tempo, write .mid (or .e with -o *.e)."""
+    if len(args) < 2:
+        print(f"  {c('Usage: tempo <file> <bpm> [-o out]', D)}"); return
+    from ep_compiler.cli_cmds import CLIError, tempo_file
+    try:
+        _print_report(tempo_file(strip_path(args[0]), args[1], _out_flag(args)))
+    except CLIError as e:
+        print(f"  {c(f'✗ {e}', RED)}")
+
+def do_merge(args):
+    """merge <a> <b> [-o out] — concatenate two files, offset b after a, write .mid."""
+    if len(args) < 2:
+        print(f"  {c('Usage: merge <a> <b> [-o out]', D)}"); return
+    from ep_compiler.cli_cmds import CLIError, merge_files
+    try:
+        _print_report(merge_files(strip_path(args[0]), strip_path(args[1]), _out_flag(args)))
+    except CLIError as e:
+        print(f"  {c(f'✗ {e}', RED)}")
+
 def do_lint(args):
     """lint <spec> [--recursive] [--max <N>] — check E files for errors/warnings."""
     if not args:
@@ -1437,6 +1534,13 @@ def do_help(args):
     lines.append(f"  {c('play', CYAN)} <f>       Play file")
     lines.append(f"  {c('gui', CYAN)} <f>        Play in glassmorphism window")
     lines.append(f"  {c('info', CYAN)} <f>       Show file stats")
+    lines.append(f"  {c('stats', CYAN)} <f>       Notes, duration, range, velocity, polyphony, channels")
+    lines.append(f"  {c('tracks', CYAN)} <f>      Per-channel table (+ per-track when TRK metadata present)")
+    lines.append(f"  {c('inspect', CYAN)} <f> [N] Show first N events (default 12)")
+    lines.append(f"  {c('new', CYAN)} <name>      Scaffold a v5 project directory ([-o <dir>])")
+    lines.append(f"  {c('transpose', CYAN)} <f> <n>  Shift notes by semitones ([-o out])")
+    lines.append(f"  {c('tempo', CYAN)} <f> <bpm> Recompile at a new tempo ([-o out])")
+    lines.append(f"  {c('merge', CYAN)} <a> <b>   Concatenate two files into one MIDI ([-o out])")
     lines.append(f"  {c('sign', CYAN)} <f>       Sign file (fentclient) — run 'sign --setup' first")
     lines.append(f"  {c('encrypt', CYAN)} <f>    Encrypt to .ee")
     lines.append(f"  {c('ecc', CYAN)} <f>        Compile + encrypt to .ecc")
@@ -1596,7 +1700,14 @@ def main():
         "run": do_run,
         "shell": do_shell,
         "gui": do_gui, "glass": do_gui,
-        "info": do_info, "stats": do_info,
+        "info": do_info,
+        "stats": do_stats,
+        "tracks": do_tracks,
+        "inspect": do_inspect,
+        "new": do_new,
+        "transpose": do_transpose,
+        "tempo": do_tempo,
+        "merge": do_merge,
         "convert": do_convert,
         "lint": do_lint, "check": do_lint, "lintfile": do_lint,
         "generate": do_generate, "gen": do_generate,
