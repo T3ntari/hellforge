@@ -233,6 +233,9 @@ def _cmd(args, api):
     elif sub == "chat":
         _chat_repl(state, api)
 
+    elif sub in ("agent", "interact", "session"):
+        _agent_repl(api, state)
+
     elif sub == "read":
         if not rest:
             print("  Usage: ai read <file> [start [end]]")
@@ -564,6 +567,95 @@ def _run_request(state, messages):
         return None
     print("  " + text.replace("\n", "\n  "))
     return text
+
+
+def _agent_repl(api, state):
+    """Interactive multi-turn agent session. You talk to the agent like a
+    chat, but it can read files, edit line ranges, create files and run safe
+    commands — every proposed change is reviewed inline (y/n/v/a/q), then
+    the conversation continues. 'quit' / Ctrl-C exits."""
+    project_dir = api.project_dir
+    from . import diffview as dv
+    print("  ── interactive agent session ──")
+    print("  Ask anything. The agent can read files, edit line ranges, create")
+    print("  files, and run safe commands — changes are reviewed inline.")
+    print("  'quit' or Ctrl-C exits.")
+    history = [{"role": "system", "content": llm_agent.SYSTEM_PROMPT}]
+    idx = None
+    if state.get("index_enabled", True):
+        idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
+    try:
+        while True:
+            try:
+                if sys.stdin.isatty():
+                    line = input("  you> ")
+                else:
+                    line = sys.stdin.readline()
+                    if not line:
+                        break
+                    line = line.strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if not line or line.strip().lower() in ("quit", "exit", "bye"):
+                break
+            repro = _reproduce(project_dir, line, timeout=20)
+            prompt = (f"User: {line}\n\n"
+                      f"Project context:\n{_build_context(project_dir, line)}\n\n"
+                      f"{indexer.index_to_text(idx, max_files=25)}\n\n"
+                      + (f"{repro}\n\n" if repro else "")
+                      + "Answer questions in plain text. When changes are needed, "
+                      "reply with the JSON plan format (read/edit/write/commands).")
+            history.append({"role": "user", "content": prompt})
+            text, err = _request(state, history)
+            if err:
+                print(f"  [ai error] {err}")
+                history.pop()
+                continue
+            plan = llm_agent.parse_plan(text)
+            if plan is not None and (plan.get("files") or plan.get("commands")):
+                print(f"  agent plan: {plan.get('summary', 'no summary')}")
+                cmds = plan.get("commands") or []
+                if cmds:
+                    results, chat_lines = llm_agent.execute_plan_commands(plan, project_dir)
+                    for l in chat_lines:
+                        print(f"  {dv.dim(l)}")
+                    cmd_out = "\n".join(
+                        f"$ {r.get('cmd')}\n{r.get('output', '')[:1200]}"
+                        for r in results if not r.get("blocked"))
+                    applied, skipped, msgs = llm_agent.interactive_apply(
+                        plan, project_dir)
+                    for m in msgs:
+                        print(m)
+                    for rel, why in skipped:
+                        print(f"  {dv.dim('skipped')} {rel}: {why}")
+                    note = f"Commands run: {cmd_out[:800] or '(none)'}. Applied: {len(msgs)} changes, skipped: {len(skipped)}."
+                else:
+                    applied, skipped, msgs = llm_agent.interactive_apply(plan, project_dir)
+                    for m in msgs:
+                        print(m)
+                    for rel, why in skipped:
+                        print(f"  {dv.dim('skipped')} {rel}: {why}")
+                    note = (f"Applied {len(msgs)} change(s); "
+                            f"skipped: {', '.join(r for r, _ in skipped) or 'none'}.")
+                if any(m.startswith("  edited") or m.startswith("  wrote")
+                       or m.startswith("  deleted") for m in msgs):
+                    for f in plan.get("files") or []:
+                        rel = f.get("path", "")
+                        if rel.endswith(".py"):
+                            ok, reason = _syntax_check(project_dir, rel)
+                            note += (f" Syntax check {rel}: "
+                                     f"{'ok' if ok else 'FAILED: ' + reason}")
+                history.append({"role": "assistant", "content": text})
+                history.append({"role": "user", "content": f"[tool result] {note}"})
+            elif plan is not None and plan.get("done"):
+                print(f"  done: {plan.get('summary', '')}")
+                history.append({"role": "assistant", "content": text})
+            else:
+                print("  " + (text or "").replace("\n", "\n  "))
+                history.append({"role": "assistant", "content": text})
+    except KeyboardInterrupt:
+        pass
+    print("  session ended")
 
 
 def _chat_repl(state, api=None):

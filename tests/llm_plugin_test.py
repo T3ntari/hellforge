@@ -823,6 +823,45 @@ def test_insert_null_end():
     assert open(os.path.join(d, "x.py")).read() == "a\nmid\nb\n"
 test("Edit: [x, null] also inserts", test_insert_null_end)
 
+
+
+# ── interactive agent session (mocked, multi-turn) ──
+
+def test_agent_repl_multi_turn():
+    import unittest.mock as mock
+    import plugins.llm as llm
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "x.py"), "w") as f:
+        f.write("v = 1\n")
+    replies = iter([
+        '{"summary": "bump", "files": [{"path": "x.py", "action": "edit", '
+        '"lines": [1, 1], "replace": "v = 2"}]}',
+        'The file now has v = 2. Anything else?',
+        '{"done": true, "summary": "done"}',
+    ])
+    llm.providers.chat_request = lambda *a, **k: (next(replies), None)
+    class FakeAPI:
+        project_dir = d
+        def get_config(self, k, default=None):
+            cfg = {"llm_setup_done": True, "llm_index_enabled": False,
+                   "llm_agents_enabled": False, "llm_provider": "deepseek",
+                   "llm_model": "deepseek-chat", "llm_connected": True}
+            return cfg.get(k, default)
+        def set_config(self, k, v): pass
+        def get_auth_token(self, k): return "x"
+    api = FakeAPI()
+    state = llm._get_state(api)
+    turns = iter(["change v to 2", "y", "what now?", "quit"])
+    class _FakeStdin:
+        def isatty(self):
+            return True
+    with mock.patch.object(sys, "stdin", _FakeStdin()), \
+         mock.patch.object(llm.llm_agent, "_is_tty", return_value=True), \
+         mock.patch("builtins.input", side_effect=lambda *a: next(turns)):
+        llm._agent_repl(api, state)
+    assert open(os.path.join(d, "x.py")).read() == "v = 2\n"
+test("Agent repl: multi-turn edits then conversation", test_agent_repl_multi_turn)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
