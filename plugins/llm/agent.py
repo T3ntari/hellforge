@@ -60,6 +60,22 @@ Rules:
   test suite; failures are fed back to you automatically and you must fix
   them — the auto-fix loop keeps retesting until green. Use it whenever you
   change .py files.
+- PREFER TOOLS OVER COMMANDS: make changes with read/edit/write actions, not
+  by proposing shell commands. Commands are for verification only (running
+  tests, git status). Never propose running the application itself as a
+  substitute for editing files.
+- "search": {"query": "...", "top": 5} searches the codebase (top hits with
+  line numbers); prefix queries with ~ for similar-to matching.
+- "memory": [{"point": "...", "action": "add"|"remove"}] maintains long-form
+  MEMORY.md (points worth remembering across sessions).
+- "note": {"text": "..."} appends to NOTES.md (global scratchpad).
+- "tickets": [{"action": "create"|"update", "title", "body", "assignee",
+  "num", "status"}] manages TICKETS.md for other bots.
+- "todo" maintains TODO.md (the project checklist): [{"item": "...",
+  "status": "open"|"done"}] — open adds the item, done checks it off. Track
+  your own work with it.
+- Directories: "write" actions create any missing parent directories
+  automatically — use write for new files in new folders.
 - "todo" maintains TODO.md (the project checklist): [{"item": "...",
   "status": "open"|"done"}] — open adds the item, done checks it off. Track
   your own work with it.

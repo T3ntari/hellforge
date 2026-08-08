@@ -14,6 +14,7 @@ default to binary. Images are never slurped as text — the model gets a note
 that a vision model can view the file."""
 
 import os
+import re
 
 # ── classification ──
 
@@ -115,4 +116,4 @@ def format_for_context(upload):
 
 # ── REPL upload syntax ──
 
-UPLOAD_RE = r'^/\$(.+)$'
+UPLOAD_RE = re.compile(r'^/\$(.+)$')

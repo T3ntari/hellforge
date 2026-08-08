@@ -24,6 +24,10 @@ COMPACT_THRESHOLD = 60000   # history chars before /compact starts to make sense
 RECENT_CHAR_LIMIT = 10000   # a "recent turn" kept under the compaction summary
 MODES = ("plan", "auto", "ask")
 
+# Current model/provider/compact config for the compact engine (set by the
+# orchestrator before run_repl).
+_CURRENT_MODEL = {}
+
 SLASH_HELP = {
     "/help": ("", "show this command list"),
     "/clear": ("", "reset the conversation history (system prompt is kept)"),
@@ -34,8 +38,13 @@ SLASH_HELP = {
     "/cost": ("", "print the session cost"),
     "/memory": ("", "show AGENTS.md / RULES.md / TODO.md heads"),
     "/review": ("", "run a review of the recent changes"),
+    "/undo": ("[N]", "undo the last N applied turns (restores files)"),
+    "/config": ("[key=value]", "show or set copilot config (llm_*)"),
+    "/re-setup": ("", "re-run the full setup wizard"),
+    "/guard": ("", "prompt-guard status"),
     "/exit": ("", "leave the REPL"),
     "/quit": ("", "leave the REPL"),
+    "/$<path>": ("", "upload a file (image / text / code; binary noted)"),
 }
 
 
@@ -260,6 +269,30 @@ def _cmd_memory(project_dir):
 def _cmd_compact(history, get_request):
     """Summarize long history via the model; keep the summary + recent turns."""
     from plugins.llm import ui
+    try:
+        from plugins.llm import compact as compact_mod
+        from plugins.llm import scale as scale_mod
+        model = _CURRENT_MODEL.get("model") or ""
+        provider = _CURRENT_MODEL.get("provider") or "custom"
+        window = compact_mod.context_window(provider, model)
+        threshold = float(_CURRENT_MODEL.get("compact_threshold", 0.9) or 0.9)
+        target = float(_CURRENT_MODEL.get("compact_target", 0.75) or 0.75)
+        new_history, stats = compact_mod.compact_history(
+            history, lambda msgs: get_request(msgs), window,
+            threshold=threshold, target=target)
+        if stats.get("compacted"):
+            history[:] = new_history
+            print(ui.result_line(
+                f"compacted: {stats['tokens_before']} → {stats['tokens_after']} "
+                f"tokens ({stats.get('chunks', 0)} chunk(s), "
+                f"{int(stats.get('ratio', 0) * 100)}%)", "ok"))
+        else:
+            print(ui.result_line(
+                f"history below {int(threshold * 100)}% of the "
+                f"{window} token window — nothing to compact", "info"))
+        return
+    except ImportError:
+        pass
     chars = _history_chars(history)
     if chars <= COMPACT_THRESHOLD:
         print(ui.result_line(
@@ -339,11 +372,100 @@ def _dispatch(api, state, history, cmd, rest, get_request, apply_plan_fn):
         _cmd_review(api, state)
     elif cmd == "/search":
         _cmd_search(api, state, rest)
+    elif cmd == "/undo":
+        _cmd_undo(api, state, rest)
+    elif cmd == "/config":
+        _cmd_config(api, state, rest)
+    elif cmd == "/re-setup":
+        _cmd_resetup(api, state, rest)
+    elif cmd == "/guard":
+        _cmd_guard(api, state, rest)
     elif cmd in ("/exit", "/quit"):
         return False
     else:
         print(ui.warn_line(f"unknown command {cmd} — try /help"))
     return True
+
+
+def _cmd_undo(api, state, rest):
+    from plugins.llm import ui
+    try:
+        from plugins.llm import undo as undo_mod
+    except ImportError:
+        print(ui.warn_line("undo not installed"))
+        return
+    n = 1
+    if rest:
+        try:
+            n = int(rest.split()[0])
+        except ValueError:
+            print(ui.warn_line("usage: /undo [N]"))
+            return
+    undone, count = undo_mod.undo(getattr(api, "project_dir", None), n)
+    if count == 0:
+        print(ui.warn_line("nothing to undo"))
+        return
+    for path, what in undone:
+        print(f"  {ui.result_line(what, 'ok')} {path}")
+    print(f"  {ui.chip('undo', 'done')} {count} turn(s) undone")
+
+
+def _cmd_config(api, state, rest):
+    from plugins.llm import ui
+    keys = ["llm_provider", "llm_model", "llm_mode", "llm_show_thinking",
+            "llm_compact_threshold", "llm_compact_target", "llm_compact_model",
+            "llm_guard", "llm_embed_model", "llm_index_model", "llm_agent_model",
+            "llm_agents_enabled", "llm_connected"]
+    if not rest:
+        print(f"  {ui.chip('config', 'command')} copilot config:")
+        for k in keys:
+            v = api.get_config(k, "")
+            print(f"    {k} = {v}")
+        print("  set: /config <key>=<value>")
+        return
+    if "=" in rest:
+        k, _, v = rest.partition("=")
+        k = k.strip()
+        if k not in keys:
+            print(ui.warn_line(f"unknown key {k} — known: {', '.join(keys)}"))
+            return
+        try:
+            v = v.strip()
+            if v.lower() in ("true", "false"):
+                v = v.lower() == "true"
+            elif v.replace(".", "", 1).isdigit():
+                v = float(v) if "." in v else int(v)
+            api.set_config(k, v)
+            state[k.replace("llm_", "")] = v
+            print(f"  {ui.chip('config', 'done')} {k} = {v}")
+        except Exception as e:
+            print(f"  {ui.chip('error', 'error')} {e}")
+    else:
+        print("  usage: /config <key>=<value>  (or /config to list)")
+
+
+def _cmd_resetup(api, state, rest):
+    from plugins.llm import ui
+    try:
+        from plugins.llm import __init__ as llm_init  # noqa: F401
+    except Exception:
+        pass
+    try:
+        import importlib
+        mod = importlib.import_module("plugins.llm")
+        state["setup_done"] = False
+        mod._setup_wizard(api, state)
+    except Exception as e:
+        print(f"  {ui.chip('error', 'error')} {e}")
+
+
+def _cmd_guard(api, state, rest):
+    from plugins.llm import ui
+    try:
+        from plugins.llm import guard as guard_mod
+        print("  " + guard_mod.status_text())
+    except ImportError:
+        print(ui.warn_line("prompt guard not installed"))
 
 
 # ── turn loop ──
@@ -426,13 +548,19 @@ def _turn(api, state, history, request, context_builder, get_request, apply_plan
 
 
 def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
-             system_prompt=None, context_builder=None):
+             system_prompt=None, context_builder=None, pre_request=None,
+             uploads=None, post_turn=None):
     """Claude-Code-style REPL loop.
 
     Prompts with a mode badge, dispatches slash commands, runs one model
     turn per free-form line and prints the status bar after every turn.
     Returns the mode the session ended in (state is mutated in place, so the
     caller can persist it afterwards).
+    pre_request(history) -> history: called before each model turn (auto-
+    compact hook; may return a compacted history).
+    uploads: dict/list injected by the caller for /$path uploads.
+    post_turn(history, reply_text): called after each completed turn (token
+    meter / explored lines hook).
     """
     from plugins.llm import ui
 
@@ -475,6 +603,26 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
                 continue
             if line.strip().lower() in ("quit", "exit"):
                 break
+            # /$path upload syntax
+            try:
+                from plugins.llm import upload as up_mod
+                m = up_mod.UPLOAD_RE.match(line.strip())
+                if m:
+                    _uploads = uploads if uploads is not None else []
+                    try:
+                        u = up_mod.load_upload(
+                            str(Path(project_dir).resolve() / m.group(1).strip())
+                            if project_dir and not Path(m.group(1).strip()).is_absolute()
+                            else m.group(1).strip())
+                        _uploads.append(u)
+                        print(up_mod.format_for_context(u))
+                        print(f"  {ui.chip('uploaded', 'done')} {u['path']} "
+                              f"({u['kind']}, {u['size']} bytes)")
+                    except Exception as e:
+                        print(f"  {ui.chip('error', 'error')} upload: {e}")
+                    continue
+            except ImportError:
+                pass
             if line.startswith("/"):
                 cmd, _, rest = line.partition(" ")
                 cont = _dispatch(api, state, history, cmd.lower(), rest.strip(),
@@ -483,9 +631,19 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
                 if not cont:
                     break
                 continue
+            if pre_request is not None:
+                try:
+                    history = pre_request(history) or history
+                except Exception:
+                    pass
             _turn(api, state, history, line, context_builder,
                   get_request, apply_plan_fn)
             _notify({"type": "turn", "line": line, "mode": state["mode"]})
+            if post_turn is not None:
+                try:
+                    post_turn(history)
+                except Exception:
+                    pass
     except KeyboardInterrupt:
         pass
     return state["mode"]

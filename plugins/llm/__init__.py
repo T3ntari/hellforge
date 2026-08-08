@@ -327,6 +327,24 @@ def _cmd(args, api):
     elif sub == "context":
         _context_cmd(api, state, rest)
 
+    elif sub == "memory":
+        _memory_cmd(api, rest)
+
+    elif sub == "note":
+        _note_cmd(api, rest)
+
+    elif sub == "ticket":
+        _ticket_cmd(api, rest)
+
+    elif sub == "undo":
+        _undo_cmd(api, rest)
+
+    elif sub == "upload":
+        _upload_cmd(api, rest)
+
+    elif sub == "config":
+        _config_cmd(api, state, rest)
+
     elif sub == "init":
         _init_cmd(api)
 
@@ -693,6 +711,175 @@ def _context_cmd(api, state, rest):
         print(f"  {ui.chip('error', 'error')} scale support missing")
 
 
+def _memory_cmd(api, rest):
+    """ai memory [add|remove|list] — long-form memory (MEMORY.md)."""
+    from pathlib import Path as _P
+    try:
+        from . import memory as mem_mod
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} memory support missing")
+        return
+    path = _P(api.project_dir) / "MEMORY.md"
+    sub = rest[0].lower() if rest else "list"
+    item = " ".join(rest[1:]).strip()
+    if sub == "list":
+        pts = mem_mod.load_memory(path)
+        print(f"  {len(pts)} memory point(s):")
+        for p in pts:
+            print(f"    - {p}")
+    elif sub in ("add", "+"):
+        if not item:
+            print("  usage: ai memory add <point>")
+            return
+        a, r = mem_mod.apply_memory([{"point": item, "action": "add"}], path)
+        print(f"  {ui.chip('memory', 'done')} added: {item}")
+    elif sub in ("remove", "rm", "-"):
+        if not item:
+            print("  usage: ai memory remove <point>")
+            return
+        a, r = mem_mod.apply_memory([{"point": item, "action": "remove"}], path)
+        print(f"  removed: {item}" if r else f"  not found: {item}")
+    else:
+        print("  usage: ai memory list | add <point> | remove <point>")
+
+
+def _note_cmd(api, rest):
+    """ai note <text> — append a global note (NOTES.md)."""
+    from pathlib import Path as _P
+    text = " ".join(rest).strip()
+    if not text:
+        print("  usage: ai note <text>")
+        return
+    try:
+        from . import memory as mem_mod
+        mem_mod.add_note(_P(api.project_dir) / "NOTES.md", text)
+        print(f"  {ui.chip('note', 'done')} NOTES.md updated")
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} memory support missing")
+
+
+def _ticket_cmd(api, rest):
+    """ai ticket list | create <title> --body <text> [--assignee <bot>] | done <n>"""
+    from pathlib import Path as _P
+    try:
+        from . import memory as mem_mod
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} memory support missing")
+        return
+    path = _P(api.project_dir) / "TICKETS.md"
+    sub = rest[0].lower() if rest else "list"
+    if sub == "list":
+        ts = mem_mod.list_tickets(path)
+        if not ts:
+            print("  No tickets.")
+            return
+        for t in ts:
+            print(f"    TICKET-{t['num']} [{t.get('status', 'open')}] "
+                  f"{t['title']} — {t.get('assignee') or 'unassigned'}")
+    elif sub == "create":
+        args = rest[1:]
+        body = ""
+        assignee = ""
+        if "--assignee" in args:
+            i = args.index("--assignee")
+            assignee = args[i + 1] if i + 1 < len(args) else ""
+            args = args[:i]
+        if "--body" in args:
+            i = args.index("--body")
+            body = " ".join(args[i + 1:])
+            args = args[:i]
+        title = " ".join(args).strip()
+        if not title:
+            print("  usage: ai ticket create <title> --body <text> [--assignee <bot>]")
+            return
+        num = mem_mod.create_ticket(path, title, body, assignee)
+        print(f"  {ui.chip('ticket', 'done')} created TICKET-{num}: {title}")
+    elif sub == "done":
+        try:
+            n = int(rest[1])
+        except (ValueError, IndexError):
+            print("  usage: ai ticket done <num>")
+            return
+        mem_mod.update_ticket(path, n, status="done")
+        print(f"  TICKET-{n} marked done")
+    else:
+        print("  usage: ai ticket list | create | done <num>")
+
+
+def _undo_cmd(api, rest):
+    """ai undo [N] — undo the last N applied turns."""
+    n = 1
+    if rest:
+        try:
+            n = int(rest[0])
+        except ValueError:
+            print("  usage: ai undo [N]")
+            return
+    try:
+        from . import undo as undo_mod
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} undo support missing")
+        return
+    undone, count = undo_mod.undo(api.project_dir, n)
+    if count == 0:
+        print("  nothing to undo")
+        return
+    for path, what in undone:
+        print(f"  {ui.result_line(what, 'ok')} {path}")
+    print(f"  {ui.chip('undo', 'done')} {count} turn(s) undone")
+
+
+def _upload_cmd(api, rest):
+    """ai upload <path> — attach a file to the session (image/text/code/binary)."""
+    path = " ".join(rest).strip()
+    if not path:
+        print("  usage: ai upload <path>")
+        return
+    try:
+        from . import upload as up_mod
+        if not os.path.isabs(path):
+            cand = os.path.join(api.project_dir, path)
+            path = cand if os.path.exists(cand) else path
+        u = up_mod.load_upload(path)
+        print(up_mod.format_for_context(u))
+        print(f"  {ui.chip('uploaded', 'done')} {u['path']} "
+              f"({u['kind']}, {u['size']} bytes)")
+    except Exception as e:
+        print(f"  {ui.chip('error', 'error')} upload: {e}")
+
+
+def _config_cmd(api, state, rest):
+    """ai config [key=value] — show or set copilot config (llm_*)."""
+    keys = ["llm_provider", "llm_model", "llm_mode", "llm_show_thinking",
+            "llm_compact_threshold", "llm_compact_target", "llm_compact_model",
+            "llm_guard", "llm_guard_model", "llm_embed_model", "llm_index_model",
+            "llm_agent_model", "llm_agents_enabled", "llm_connected"]
+    if not rest:
+        print(f"  {ui.chip('config', 'command')} copilot config:")
+        for k in keys:
+            print(f"    {k} = {api.get_config(k, '')}")
+        print("  set: ai config <key>=<value>")
+        return
+    if "=" in rest:
+        k, _, v = rest.partition("=")
+        k = k.strip()
+        if k not in keys:
+            print(f"  unknown key {k} — known: {', '.join(keys)}")
+            return
+        try:
+            v = v.strip()
+            if v.lower() in ("true", "false"):
+                v = v.lower() == "true"
+            elif v.replace(".", "", 1).isdigit():
+                v = float(v) if "." in v else int(v)
+            api.set_config(k, v)
+            print(f"  {ui.chip('config', 'done')} {k} = {v}")
+        except Exception as e:
+            print(f"  {ui.chip('error', 'error')} {e}")
+    else:
+        print("  usage: ai config <key>=<value>")
+
+
 def _status(state):
     provider = state["provider"]
     label = providers.PROVIDERS.get(provider, {}).get("label", provider)
@@ -804,8 +991,15 @@ def _agent_cc(state, api, rest):
 
     def _context_builder(request):
         idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
-        return (f"Project context:\n{_build_context(project_dir, request)}\n\n"
-                f"{indexer.index_to_text(idx, max_files=25)}")
+        parts = [f"Project context:\n{_build_context(project_dir, request)}\n\n"
+                 f"{indexer.index_to_text(idx, max_files=25)}"]
+        try:
+            from . import upload as up_mod
+            for u in uploads:
+                parts.append(up_mod.format_for_context(u))
+        except Exception:
+            pass
+        return "\n\n".join(parts)
 
     try:
         from . import repl as repl_mod
@@ -813,18 +1007,115 @@ def _agent_cc(state, api, rest):
     except ImportError:
         print(f"  {ui.chip('error', 'error')} copilot REPL not available")
         return
-    # Seed a session cost tracker so /cost has data
+    # Wire the compact engine's model config into the repl
     try:
-        from . import costs as _c
-        if not hasattr(_c, "session_cost"):
-            _c.session_cost = lambda a, s: _c.SessionCost().render()
+        from . import compact as compact_mod
+        repl_mod._CURRENT_MODEL.update({
+            "model": state.get("model") or "",
+            "provider": state.get("provider") or "custom",
+            "compact_threshold": api.get_config("llm_compact_threshold", 0.9),
+            "compact_target": api.get_config("llm_compact_target", 0.75),
+        })
+        if not api.get_config("llm_compact_model"):
+            print("  " + compact_mod.recommend_line())
     except Exception:
         pass
+
+    # Auto-compact + guard + meter hooks
+    uploads = []
+    undo_pending = []
+
+    def _pre_request(history):
+        try:
+            from . import compact as compact_mod
+            window = compact_mod.context_window(state.get("provider") or "custom",
+                                                state.get("model") or "")
+            threshold = float(api.get_config("llm_compact_threshold", 0.9))
+            target = float(api.get_config("llm_compact_target", 0.75))
+            if compact_mod.should_compact(history, window, threshold):
+                print("  " + ui.thinking(
+                    f"auto-compact at {int(threshold * 100)}% of "
+                    f"{window} tokens..."))
+                def _cmodel(messages):
+                    cm = api.get_config("llm_compact_model")
+                    if cm and cm != state.get("model"):
+                        st2 = dict(state); st2["model"] = cm
+                        return _request(st2, messages)
+                    return _request(state, messages)
+                nh, stats = compact_mod.compact_history(
+                    history, _cmodel, window, threshold=threshold, target=target)
+                if stats.get("compacted"):
+                    print(f"  {ui.chip('compacted', 'done')} "
+                          f"{stats['tokens_before']} → {stats['tokens_after']} "
+                          f"tokens ({stats.get('chunks', 0)} chunks)")
+                    return nh
+        except Exception:
+            pass
+        return history
+
+    def _post_turn(history):
+        try:
+            from . import compact as compact_mod
+            window = compact_mod.context_window(state.get("provider") or "custom",
+                                                state.get("model") or "")
+            print("  " + compact_mod.render_meter(history, window))
+        except Exception:
+            pass
+
+    # guard: wrap user inputs before they reach the model
+    orig_get_request = _get_request
+    def _get_request_guarded(messages):
+        try:
+            from . import guard as guard_mod
+            if guard_mod.get_enabled():
+                def _gmodel(prompt):
+                    gm = api.get_config("llm_guard_model", "prompt-guard")
+                    if state.get("provider") == "ollama" or gm:
+                        st2 = dict(state)
+                        st2["model"] = gm if gm else st2.get("model")
+                        try:
+                            t, e = _request(st2, [{"role": "user", "content": prompt}])
+                            return t or ""
+                        except Exception:
+                            return ""
+                msgs, res = guard_mod.guard_messages(messages, model_fn=_gmodel)
+                if not res.get("ok") and res.get("quarantined"):
+                    print(f"  {ui.warn_line('prompt guard: ' + '; '.join(res.get('reasons', [])))}")
+                messages = msgs
+        except Exception:
+            pass
+        return orig_get_request(messages)
+
+    # undo snapshots around applies + per-message line stats
+    def _apply_plan_undo(plan, pd, confirm_write=True):
+        try:
+            from . import undo as undo_mod
+            paths = [f.get("path", "") for f in (plan.get("files") or [])]
+            undo_mod.begin_turn(pd, paths)
+        except Exception:
+            pass
+        res = _apply_plan(plan, pd, confirm_write=confirm_write)
+        try:
+            from . import undo as undo_mod
+            undo_mod.end_turn(pd)
+        except Exception:
+            pass
+        for f in plan.get("files") or []:
+            act = f.get("action", "")
+            if act == "read":
+                turn_counts["reads"] += 1
+            elif act in ("edit", "write"):
+                turn_counts["edits"] += 1
+        return res
+
     final_mode = repl_mod.run_repl(
-        api, state, _get_request, _apply_plan,
+        api, state, _get_request_guarded, _apply_plan_undo,
         on_turn=_on_turn,
         system_prompt=_system_prompt(project_dir),
         context_builder=_context_builder,
+        pre_request=_pre_request,
+        uploads=uploads,
+        post_turn=_post_turn,
     )
     if final_mode:
         api.set_config("llm_mode", final_mode)
@@ -1324,6 +1615,27 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
                     print(search_mod.run_query(project_dir, q, top_k=tk))
             except Exception as e:
                 print(f"  {ui.chip('error', 'error')} search: {e}")
+
+        # 2e. Memory/notes/tickets plan keys.
+        if plan.get("memory") or plan.get("note") or plan.get("tickets"):
+            try:
+                from . import memory as mem_mod
+                mpath = Path(project_dir) / "MEMORY.md"
+                if plan.get("memory"):
+                    added, removed = mem_mod.apply_memory(
+                        plan["memory"], mpath)
+                    print(f"  {ui.chip('memory', 'done')} MEMORY.md: "
+                          f"{added} added, {removed} removed")
+                if plan.get("note"):
+                    mem_mod.add_note(Path(project_dir) / "NOTES.md",
+                                     plan["note"].get("text", ""))
+                    print(f"  {ui.chip('note', 'done')} NOTES.md updated")
+                if plan.get("tickets"):
+                    n = mem_mod.apply_tickets(
+                        plan["tickets"], Path(project_dir) / "TICKETS.md")
+                    print(f"  {ui.chip('ticket', 'done')} TICKETS.md: {n} applied")
+            except Exception as e:
+                print(f"  {ui.chip('error', 'error')} memory: {e}")
 
         # 2d. Subagents: plan may carry "subagents" — spawn focused child
         # chats; results are fed back to the main loop.
