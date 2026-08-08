@@ -1132,9 +1132,19 @@ def _agent_cc(state, api, rest):
         except Exception:
             pass
 
-    # guard: wrap user inputs before they reach the model
+    # Two-mode router for the classic REPL: chat stays lightweight, only
+    # agent-prefixed inputs get the heavy plan history.
     orig_get_request = _get_request
     def _get_request_guarded(messages):
+        try:
+            last_user = next((m.get("content", "") for m in reversed(messages)
+                              if m.get("role") == "user"), "")
+            if _classify_mode(last_user) == "chat":
+                msgs = [{"role": "system", "content": llm_agent.CHAT_PROMPT}]
+                msgs.extend([m for m in messages if m.get("role") == "user"][-4:])
+                messages = msgs
+        except Exception:
+            pass
         try:
             from . import guard as guard_mod
             if guard_mod.get_enabled():
@@ -1325,6 +1335,21 @@ def _cost_cmd(api, state, rest):
         print(f"  {ui.chip('error', 'error')} {e}")
 
 
+AGENT_PREFIXES = ("/fix", "/edit", "/tool", "/write", "/plugin", "/agent",
+                  "/test", "/search", "/upload", "/review", "/refactor")
+
+
+def _classify_mode(line):
+    """Two-mode router: agent mode only for explicit action prefixes;
+    everything else is lightweight chat (small models choke on JSON)."""
+    l = line.strip().lower()
+    if l.startswith(AGENT_PREFIXES):
+        return "agent"
+    if l.startswith("/"):
+        return "command"   # slash commands handled by the UI, not the model
+    return "chat"
+
+
 def _agent_tui(state, api, rest):
     """Full-screen HELL'S CODE TUI session. The agent logic runs on a
     background thread, talking to the frame loop through a Bridge."""
@@ -1334,6 +1359,7 @@ def _agent_tui(state, api, rest):
         print(f"  {ui.chip('error', 'error')} TUI unavailable — using classic REPL")
         _agent_cc(state, api, rest)
         return
+    _submit_history = {"chat": [], "agent": [], "_agent_done": False}
     project_dir = api.project_dir
     mode = (rest[0].lower() if rest and rest[0] in ("plan", "auto", "ask")
             else api.get_config("llm_mode", "ask"))
@@ -1341,24 +1367,38 @@ def _agent_tui(state, api, rest):
     theme = api.get_config("llm_tui_theme", "hellfire")
 
     def _submit(line, bridge):
-        """Agent thread: one user turn, rendered through the bridge."""
+        """Agent thread: one user turn through the bridge, TWO-MODE:
+        chat (lightweight prompt, no JSON) vs agent (heavy prompt, tools)."""
         try:
-            from . import compact as compact_mod
             from . import session as sess
         except Exception:
             pass
-        history = []
-        hist_lock = threading.Lock()
-        # build context + history per turn (kept simple: per-turn fresh context)
-        repro = _reproduce(project_dir, line, timeout=20)
-        idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
-        context = (f"Project context:\n{_build_context(project_dir, line)}\n\n"
-                   f"{indexer.index_to_text(idx, max_files=20)}"
-                   + (f"\n\n{repro}" if repro else ""))
-        messages = [{"role": "system", "content": _system_prompt(project_dir)}]
-        if context:
-            messages.append({"role": "user", "content": context})
-        messages.append({"role": "user", "content": line})
+        line = llm_agent.strip_ansi(line).strip()
+        if not line:
+            return  # empty-input guard — no ghost submissions
+        mode = _classify_mode(line)
+        hist = _submit_history.setdefault(mode, [])
+        # agent history resets after each completed task (fresh brain)
+        if mode == "agent" and _submit_history.get("_agent_done"):
+            hist = []
+            _submit_history["agent"] = hist
+            _submit_history["_agent_done"] = False
+        if mode == "chat":
+            messages = [{"role": "system", "content": llm_agent.CHAT_PROMPT}]
+            messages.extend(hist[-10:])
+            messages.append({"role": "user", "content": line})
+        else:
+            repro = _reproduce(project_dir, line, timeout=20)
+            idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
+            context = (f"Project context:\n{_build_context(project_dir, line)}\n\n"
+                       f"{indexer.index_to_text(idx, max_files=20)}"
+                       + (f"\n\n{repro}" if repro else ""))
+            messages = [{"role": "system", "content": llm_agent.AGENT_PROMPT}]
+            if context:
+                messages.append({"role": "user", "content": context})
+            messages.append({"role": "user", "content": line})
+        if mode == "chat":
+            messages.append({"role": "user", "content": line})
 
         bridge.thinking(True)
         chunks = []
@@ -1384,45 +1424,59 @@ def _agent_tui(state, api, rest):
         if not text:
             bridge.feed("(no reply)", "dim")
             return
-        # plan handling through the bridge
-        plan = llm_agent.parse_plan(text)
-        if plan is not None and (plan.get("files") or plan.get("commands")
-                                 or plan.get("tests") or plan.get("todo")
-                                 or plan.get("search") or plan.get("memory")):
-            bridge.feed(f"plan: {plan.get('summary', 'no summary')}", "accent2")
-            cmds = plan.get("commands") or []
-            if cmds:
-                try:
-                    from . import exec as safe_exec
-                    for c in cmds:
-                        cmd = c.get("cmd") if isinstance(c, dict) else str(c)
-                        bridge.box_open(f"command: {cmd[:40]}")
-                        def _on_line(ln, bridge=bridge):
-                            bridge.box_line(ln)
-                        res = safe_exec.run_command_streaming(cmd, project_dir, _on_line)
-                        bridge.box_close(f"exit {res.get('exit_code')}")
-                        bridge.feed("  " + safe_exec.chat_line({**res, "cmd": cmd}), "dim")
-                except Exception as e:
-                    bridge.feed(f"[command error] {e}", "err")
-            files = plan.get("files") or []
-            if files:
-                for f in files:
-                    act = f.get("action", "edit")
-                    bridge.feed(f"  {act:6s} {f.get('path', '?')}", "dim")
-                applied, skipped, msgs = _apply_plan_tui(plan, bridge, project_dir)
-                for m in msgs:
-                    bridge.feed(m, "ok" if "wrote" in m or "edited" in m else "dim")
-                for rel, why in skipped:
-                    bridge.feed(f"  skipped {rel}: {why}", "dim")
-        elif plan is not None and plan.get("done"):
-            bridge.feed(f"done: {plan.get('summary', '')}", "ok")
-        else:
+        hist.append({"role": "user", "content": line})
+        hist.append({"role": "assistant", "content": text})
+        if mode == "chat":
             bridge.feed(text, "text")
+            try:
+                sess.save_session(project_dir, hist[-6:],
+                                  {"mode": "chat", "uploads": []})
+            except Exception:
+                pass
+            return
+        # agent mode: plan handling through the bridge
+        plan = llm_agent.parse_plan(text)
+        if plan is not None and plan.get("done"):
+            bridge.feed(f"done: {plan.get('summary', '')}", "ok")
+            _submit_history["_agent_done"] = True
+            hist = []
+            _submit_history["agent"] = hist
+            return
+        if plan is None or not (plan.get("files") or plan.get("commands")
+                                or plan.get("tests") or plan.get("todo")
+                                or plan.get("search") or plan.get("memory")):
+            bridge.feed(text, "text")
+            return
+        bridge.feed(f"plan: {plan.get('summary', 'no summary')}", "accent2")
+        cmds = plan.get("commands") or []
+        if cmds:
+            try:
+                from . import exec as safe_exec
+                for c in cmds:
+                    cmd = c.get("cmd") if isinstance(c, dict) else str(c)
+                    bridge.box_open(f"command: {cmd[:40]}")
+                    def _on_line(ln, bridge=bridge):
+                        bridge.box_line(ln)
+                    res = safe_exec.run_command_streaming(cmd, project_dir, _on_line)
+                    bridge.box_close(f"exit {res.get('exit_code')}")
+                    bridge.feed("  " + safe_exec.chat_line({**res, "cmd": cmd}), "dim")
+            except Exception as e:
+                bridge.feed(f"[command error] {e}", "err")
+        files = plan.get("files") or []
+        if files:
+            for f in files:
+                act = f.get("action", "edit")
+                bridge.feed(f"  {act:6s} {f.get('path', '?')}", "dim")
+            applied, skipped, msgs = _apply_plan_tui(plan, bridge, project_dir)
+            for m in msgs:
+                bridge.feed(m, "ok" if "wrote" in m or "edited" in m else "dim")
+            for rel, why in skipped:
+                bridge.feed(f"  skipped {rel}: {why}", "dim")
         try:
             sess.save_session(project_dir,
                               [{"role": "user", "content": line},
                                {"role": "assistant", "content": text}],
-                              {"mode": state.get("mode"), "uploads": []})
+                              {"mode": "agent", "uploads": []})
         except Exception:
             pass
         bridge.status(f"{state.get('provider')}/{state.get('model') or '?'}")

@@ -12,6 +12,19 @@ from pathlib import Path
 FORBIDDEN_DIRS = {".e_identity", ".fent_cache", ".radical_cache", ".venv",
                   "node_modules", "logs", "__pycache__", ".git"}
 
+CHAT_PROMPT = """You are HELLFORGE. Answer the developer concisely in 1-2
+sentences. No JSON, no tools — just a helpful, direct answer. Reference
+files only if you are certain they exist."""
+
+
+AGENT_PROMPT = """You are HELLFORGE Copilot in AGENT mode.
+START your reply with a thought block:
+[THINK]one short paragraph of reasoning about the task[/THINK]
+THEN output ONLY the JSON plan (no markdown fences, no prose outside it).
+Use empty arrays explicitly: "files": [], "commands": [] when nothing is
+needed — never omit them. When finished, reply {"done": true, "summary": "..."}."""
+
+
 SYSTEM_PROMPT = """You are HELLFORGE Copilot, an AI assistant embedded in the HELLFORGE
 E Language music DSL compiler (Python). You help with the codebase: fixing
 bugs, adding features, writing plugins, explaining code.
@@ -87,6 +100,14 @@ Rules:
   {"done": true, "summary": "..."} instead of an empty plan.
 Never propose edits outside the project. Never fabricate file contents;
 if you cannot see a file, use the project structure the user described."""
+
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def strip_ansi(text):
+    """Remove ANSI escape codes from text (pasted colored input etc.)."""
+    return ANSI_RE.sub("", text or "")
 
 
 def _is_tty():

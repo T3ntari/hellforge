@@ -199,6 +199,9 @@ class HellTui:
         self._red = None
         self._dim = None
         self._ink = None
+        self.palette_open = False
+        self.palette_idx = 0
+        self.palette_items = []
 
     def _init_colors(self, stdscr):
         curses.start_color()
@@ -279,6 +282,21 @@ class HellTui:
             stdscr.move(in_y, 3 + min(self.cursor, w - 5))
         except curses.error:
             pass
+        # command palette: selectable dropdown above the input
+        if self.palette_open:
+            pw = min(w - 12, 44)
+            px = 3
+            py = in_y - len(self.palette_items) - 1
+            try:
+                stdscr.attron(self._border)
+                for i, item in enumerate(self.palette_items):
+                    sel = (i == self.palette_idx)
+                    line = ("▸ " if sel else "  ") + item
+                    color = self._red | self._bold if sel else self._ink
+                    stdscr.addstr(py + i, px, line[:pw], color)
+                stdscr.attroff(self._border)
+            except curses.error:
+                pass
         # footer
         try:
             stdscr.addstr(h - 1, 1,
@@ -323,6 +341,38 @@ class HellTui:
         if key == curses.KEY_DC:
             self.input = self.input[:self.cursor] + self.input[self.cursor + 1:]
             return
+        if key == 27:  # Esc
+            if self.palette_open:
+                self.palette_open = False
+            return
+        if key == curses.KEY_DOWN and self.palette_open:
+            self.palette_idx = (self.palette_idx + 1) % len(self.palette_items)
+            return
+        if key == curses.KEY_UP and self.palette_open:
+            self.palette_idx = (self.palette_idx - 1) % len(self.palette_items)
+            return
+        if key == ord("/") and self.input == "":
+            self.palette_open = True
+            self.palette_idx = 0
+            self.palette_items = [
+                "/fix <task>       agentic multi-step task",
+                "/edit <file>      targeted line-range edits",
+                "/search <query>   codebase search (~ for similar)",
+                "/test [file]      run the test suite",
+                "/upload <path>    attach a file",
+                "/model            model picker",
+                "/mode plan|auto|ask",
+                "/memory           long-form memory",
+                "/todo             checklist",
+                "/ticket           tickets for other bots",
+                "/config           settings",
+                "/cost             session cost",
+                "/review           review working-tree diff",
+                "/undo [N]         revert applied turns",
+                "/help             command list",
+                "/exit             leave the session",
+            ]
+            return
         if key == curses.KEY_LEFT:
             self.cursor = max(0, self.cursor - 1)
             return
@@ -336,11 +386,18 @@ class HellTui:
             self.cursor = len(self.input)
             return
         if key == ord("\n") or key == ord("\r") or key == curses.KEY_ENTER:
-            line = self.input
+            if self.palette_open:
+                self.input = self.palette_items[self.palette_idx]
+                self.cursor = len(self.input)
+                self.palette_open = False
+                return
+            line = self.input.strip()
             self.input = ""
             self.cursor = 0
             self.scroll = 0
-            if line.strip().lower() in ("/exit", "/bye", "quit", "exit"):
+            if not line:
+                return  # empty-input guard — no ghost submissions
+            if line.lower() in ("/exit", "/bye", "quit", "exit"):
                 self.bridge.quit()
                 return
             self.feed.append("> " + line, "accent")

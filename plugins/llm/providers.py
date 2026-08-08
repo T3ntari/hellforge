@@ -136,7 +136,7 @@ def chat_request(provider, base_url, api_key, model, messages, timeout=300):
     status, data, err = _http_json(url, {
         "model": model,
         "messages": messages,
-        "temperature": 0.2,
+        "temperature": _temp_for(provider, model),
     }, headers, timeout=timeout)
     if err:
         return None, err
@@ -150,6 +150,16 @@ def chat_request(provider, base_url, api_key, model, messages, timeout=300):
         return data["choices"][0]["message"]["content"], None
     except (KeyError, IndexError, TypeError):
         return None, "Unexpected response shape"
+
+
+def _temp_for(provider, model):
+    """Small/local models need determinism: temperature 0.1."""
+    m = (model or "").lower()
+    if provider == "ollama":
+        return 0.1
+    if any(t in m for t in ("3b", "4b", "0.5b", "1.5b", "tiny", "mini", "small")):
+        return 0.1
+    return 0.2
 
 
 # ── Streaming chat (SSE / NDJSON) ──────────────
@@ -253,7 +263,7 @@ def stream_chat(provider, base_url, api_key, model, messages, on_chunk,
     headers = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    payload = {"model": model, "messages": messages, "temperature": 0.2,
+    payload = {"model": model, "messages": messages, "temperature": _temp_for(provider, model),
                "stream": True}
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={**headers, "Content-Type": "application/json"},
