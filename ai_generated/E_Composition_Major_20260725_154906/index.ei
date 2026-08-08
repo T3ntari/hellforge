@@ -1,9 +1,0 @@
-// E_Composition_Major
-project "E_Composition_Major"
-tempo 120
-
-include "parts/main.e" as main
-
-section "Main" {
-    play main
-}

@@ -42,8 +42,8 @@ def extract_features(events, bpm=120):
     prev_off = np.zeros(n, dtype=np.float32)
     prev_vel = np.zeros(n, dtype=np.float32)
     if n > 1:
-        prev_off[1:] = 0.0  # filled by humanizer (it knows the offsets it applied)
-        prev_vel[1:] = vel[:-1] - vel[:-1]  # zeros placeholder
+        prev_off[1:] = 0.0  # applied offsets unknown pre-humanization; humanizer feeds back its predicted offsets
+        prev_vel[1:] = vel[1:] - vel[:-1]  # velocity delta from previous note
 
     x = np.stack([midi / 127.0, vel / 127.0, pos_in_bar.astype(np.float32),
                   density / 20.0, prev_off / 15.0, prev_vel / 10.0], axis=1)

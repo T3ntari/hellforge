@@ -195,10 +195,25 @@ class V2Compiler:
         self.default_vel = 80
         self.default_dur = 'quarter'
         self.octave = 4
+        self._dyn_remaining = 0   # notes left in active dynamics arc
+        self._dyn_total = 0
+        self._dyn_from = 0
+        self._dyn_target = 0
+        self._dyn_step = 0.0
 
     def set_tempo(self, bpm):
         self.tempo = float(bpm)
         self.beat_ms = 60000.0 / self.tempo
+
+    def _vel_for_note(self):
+        """Velocity for the next emitted note, advancing the active dynamics arc."""
+        if self._dyn_remaining > 0:
+            self._dyn_remaining -= 1
+            if self._dyn_remaining == 0:
+                self.default_vel = self._dyn_target
+            else:
+                self.default_vel = round(self._dyn_from + self._dyn_step * (self._dyn_total - self._dyn_remaining))
+        return self.default_vel
 
     def beats_to_ms(self, beats):
         return beats * self.beat_ms
@@ -299,7 +314,10 @@ class V2Compiler:
         if pm:
             args = self._parse_args(pm.group(1))
             dur = parse_dur(args.get('dur', self.default_dur))
+            explicit_vel = 'vel' in args
             vel = parse_vel(args.get('vel', None))
+            if not explicit_vel:
+                vel = self._vel_for_note()  # dynamics arc applies unless vel= overrides
 
             # Support play(note=C4, ...) — direct note name
             note_str = args.get('note', '')
@@ -449,7 +467,7 @@ class V2Compiler:
                     'timestamp': int(self.cursor),
                     'midi': m,
                     'duration': max(1, int(dur_ms * 0.9)),
-                    'velocity': self.default_vel,
+                    'velocity': self._vel_for_note(),
                 })
                 self.cursor += dur_ms
             return
@@ -467,10 +485,20 @@ class V2Compiler:
             self._set_chord(cm2.group(1).strip())
             return
 
-        # crescendo/decrescendo
+        # crescendo/decrescendo — velocity arc over the next N emitted notes
         dyn = re.match(r'(crescendo|decrescendo)\((.+?)\)', line, re.I)
         if dyn:
-            # Placeholder — dynamics arc
+            args = self._parse_args(dyn.group(2))
+            try:
+                n = max(1, int(str(args.get('_0', '8')).split('_')[0]))
+            except (ValueError, TypeError):
+                n = 8
+            target = 112 if dyn.group(1).lower() == 'crescendo' else 40
+            self._dyn_total = n
+            self._dyn_remaining = n
+            self._dyn_from = self.default_vel
+            self._dyn_target = target
+            self._dyn_step = (target - self.default_vel) / float(n)
             return
 
         # cluster(N_octaves, dur=...)
@@ -553,6 +581,6 @@ class V2Compiler:
                         'timestamp': int(self.cursor),
                         'midi': m,
                         'duration': max(1, int(self.beats_to_ms(dur_beats))),
-                        'velocity': self.default_vel,
+                        'velocity': self._vel_for_note(),
                     })
                 self.cursor += self.beats_to_ms(dur_beats)

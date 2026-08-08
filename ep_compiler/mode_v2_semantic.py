@@ -1,12 +1,9 @@
 """v2 Semantic Syntax — compiles and emits v2 chord/section/degree format."""
 
 import re
-import os
-import sys
 
-# Import the v2 compiler from tools
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
-from v2compiler import (
+# Import the v2 compiler (local copy — legacy tools/v2compiler.py removed)
+from ._v2compiler import (
     V2Compiler,
     KEYS,
     NOTE_TO_SEMI,
@@ -14,7 +11,7 @@ from v2compiler import (
     CHORD_INTERVALS,
     QUALITY_ALIASES,
 )
-from v2compiler import (
+from ._v2compiler import (
     parse_chord_name,
     chord_to_semitones,
     midi_from_note,

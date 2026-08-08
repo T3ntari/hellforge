@@ -1,12 +1,17 @@
-"""Vulkanizer RayTraceAPI — VK_KHR_ray_tracing pipeline, BLAS/TLAS, SBT.
-Game engines use this for hardware-accelerated ray tracing."""
-
-import os
+"""Vulkanizer RayTraceAPI — VK_KHR_ray_tracing capability detection.
+Hardware acceleration is probed on the Vulkan instance; when the
+extensions are absent the API reports available=False and no ray
+tracing surface is exposed (callers must gate on `.available`)."""
 
 
 class RayTraceAPI:
-    """Hardware-accelerated ray tracing via Vulkan (VK_KHR_ray_tracing).
-    Available on NVIDIA RTX (Turing+), AMD RX 6000+, Intel Arc A3+."""
+    """VK_KHR_ray_tracing capability probe for the Vulkan instance.
+    Available on NVIDIA RTX (Turing+), AMD RX 6000+, Intel Arc A3+.
+
+    The probe is the entire API: there is no software fallback, and
+    no BLAS/TLAS/SBT surface is exposed when the extensions are
+    missing. Consumers gate on `.available` before building any
+    acceleration structure."""
 
     def __init__(self, instance):
         self.instance = instance
@@ -27,41 +32,6 @@ class RayTraceAPI:
             self.acceleration_structure = "VK_KHR_acceleration_structure"
             self.ray_tracing_pipeline = "VK_KHR_ray_tracing_pipeline"
             self.ray_query = "VK_KHR_ray_query"
-
-    def create_blas(self, vertices, indices):
-        """Build a Bottom-Level Acceleration Structure from geometry.
-        vertices: list of (x, y, z) tuples
-        indices: list of triangle index tuples
-        Returns BLAS handle or None."""
-        if not self.available:
-            return None
-        # Placeholder — real implementation would create VkAccelerationStructureKHR
-        return {"type": "BLAS", "vertex_count": len(vertices), "index_count": len(indices)}
-
-    def create_tlas(self, instances):
-        """Build a Top-Level Acceleration Structure from instance list.
-        instances: list of (blas_handle, transform_matrix) tuples
-        Returns TLAS handle or None."""
-        if not self.available:
-            return None
-        return {"type": "TLAS", "instance_count": len(instances)}
-
-    def create_sbt(self, raygen_code, miss_code, hit_group_code):
-        """Create a Shader Binding Table for ray tracing dispatch.
-        codes: SPIR-V bytecode for each shader stage.
-        Returns SBT handle or None."""
-        if not self.available:
-            return None
-        return {
-            "raygen": len(raygen_code) if raygen_code else 0,
-            "miss": len(miss_code) if miss_code else 0,
-            "hit": len(hit_group_code) if hit_group_code else 0,
-        }
-
-    def trace_rays(self, cmd_buffer, sbt, width, height, depth=1):
-        """Dispatch ray tracing shaders.
-        Returns rendered image dimensions."""
-        return (width, height)
 
     @property
     def info(self):

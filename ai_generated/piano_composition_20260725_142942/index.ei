@@ -1,9 +1,0 @@
-// "piano_composition"
-project ""piano_composition""
-tempo 120
-
-include "parts/main.e" as main
-
-section "Main" {
-    play main
-}
