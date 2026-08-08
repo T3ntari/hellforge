@@ -48,6 +48,32 @@ eshell.py, run.py, ep.py, player.py   Entry points (CLI / shell)
 Key entry points: `ep.py compile|play`, `run.py compile|check`,
 `eshell.py` (interactive shell), `ai.py` (copilot).
 
+## Model documentation (docs/agent/)
+
+Concise, model-consumable docs — read these before touching anything;
+they are the distilled, code-verified versions of SYNTAX.md and the codebase.
+
+- `docs/agent/quickstart.md` — **read first**: 2-minute briefing (what E is,
+  v5 canonical, entry points, layout, the 5 hard rules).
+- `docs/agent/language.md` — **consult before touching syntax**: complete v5
+  reference (machine/human modes, directives, statements, loops, math,
+  piano-performance layer, version detection, event dict).
+- `docs/agent/compiler.md` — compiler pipeline (`compile_source` flow),
+  event dict contract, directives → ll_state, export formats, mode modules.
+- `docs/agent/plugins.md` — plugin API: `register(api)`, `api.on` hooks,
+  add_command/register_directive/register_math_evaluator, eshell integration,
+  mods security model.
+- `docs/agent/testing.md` — test conventions: harness, how to run, what must
+  be green before commit.
+- `docs/agent/copilot.md` — the AI copilot tool protocol: JSON plan keys,
+  actions, modes, safety rules, thinking, search, TODO.md.
+- `docs/agent/architecture.md` — file map + end-to-end data flow
+  (source → events → MIDI → WAV), eshell command routing.
+
+Rule: **read `quickstart.md` first; consult `language.md` before touching
+syntax.** These files must stay accurate — update them whenever the behavior
+they describe changes.
+
 ## The v5 language — essentials
 
 ### Directives
