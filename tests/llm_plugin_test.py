@@ -1885,6 +1885,143 @@ def test_ui_explored():
         line = ui.explored(3, 2, 1)
     assert "explored 3 files" in line and "\033[" in line
 test("UI: explored dim line, plain off-TTY", test_ui_explored)
+# ── search: true inverted index (plugins/llm/search.py) ──
+
+def _search_tmpdir(files):
+    """Write {name: content} into a fresh temp dir; returns str(dir)."""
+    from pathlib import Path
+    d = Path(tempfile.mkdtemp(prefix="esearch_"))
+    for name, content in files.items():
+        p = d / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+    return str(d)
+
+
+def test_search_build_finds_token_and_line():
+    from plugins.llm import search
+    d = _search_tmpdir({
+        "alpha.py": "def velocity_curve():\n"
+                    "    # smooth velocity transitions\n"
+                    "    return velocity_curve()\n",
+        "beta.py": "def unrelated():\n    pass\n",
+    })
+    idx = search.build_search_index(d)
+    assert "alpha.py" in idx["files"] and "beta.py" in idx["files"]
+    assert os.path.exists(os.path.join(d, ".fent_cache", "llm_search_index.json"))
+    res = search.search(d, "velocity")
+    assert res and res[0]["path"] == "alpha.py"
+    assert res[0]["line"] == 1, "first matching line number, 1-based"
+    assert "velocity" in res[0]["text"] and len(res[0]["text"]) <= 120
+    assert res[0]["score"] > 0
+test("Search: build + token/line hit + persisted cache", test_search_build_finds_token_and_line)
+
+
+def test_search_exact_line_ranks_first():
+    from plugins.llm import search
+    scattered = "\n".join(f"value = velocity_{i}" for i in range(10))
+    d = _search_tmpdir({
+        "m.py": scattered,
+        "n.txt": "the velocity curve ramp handles easing here\n",
+    })
+    res = search.search(d, "velocity curve ramp", top_k=5)
+    assert res and res[0]["path"] == "n.txt", \
+        "exact-phrase line beats token scatter"
+    assert res[0]["line"] == 1
+test("Search: exact-line match ranks first", test_search_exact_line_ranks_first)
+
+
+def test_search_snippet_windows():
+    from plugins.llm import search
+    lines = [f"line {i} preamble text here" for i in range(1, 21)]
+    lines[9] = "unique spike needle target here"
+    d = _search_tmpdir({"f.py": "\n".join(lines) + "\n"})
+    snips = search.search_snippet(d, "unique spike", top_k=3, radius=2)
+    assert snips and snips[0]["path"] == "f.py"
+    s = snips[0]
+    assert s["start_line"] == 8, "window starts radius lines before the match"
+    assert len(s["lines"]) == 5, "2*radius + 1 lines"
+    assert any("unique spike" in ln for ln in s["lines"])
+    # window respects the file start
+    snips2 = search.search_snippet(d, "unique spike", top_k=3, radius=20)
+    assert snips2[0]["start_line"] == 1
+    assert len(snips2[0]["lines"]) == 20
+test("Search: snippet line windows around the match", test_search_snippet_windows)
+
+
+def test_search_directive_token():
+    from plugins.llm import search
+    d = _search_tmpdir({
+        "perf.py": "// @curve vel 1 127\n// @bpm 120\n",
+        "plain.py": "x = 1\n",
+    })
+    res = search.search(d, "@curve")
+    assert res and res[0]["path"] == "perf.py", "@directive searched as symbol"
+test("Search: @directive token match", test_search_directive_token)
+
+
+def test_similar_finds_closest_file():
+    from plugins.llm import search
+    token = "qzqxzqxzcxzvzq"
+    d = _search_tmpdir({
+        "a.py": "python file with regular words and functions\n" * 8,
+        "b.py": "a completely different stream about kettle drums and php\n",
+        "c.py": token + "\n",
+    })
+    res = search.similar(d, token, top_k=3)
+    assert res and res[0]["path"] == "c.py", "distinctive 2-grams win"
+    assert res[0]["score"] == 1.0, "identical text → Jaccard 1.0"
+    others = {r["path"]: r["score"] for r in res if r["path"] != "c.py"}
+    assert all(sc < 1.0 for sc in others.values())
+test("Similar: ~ finds the closest file by 2-gram Jaccard", test_similar_finds_closest_file)
+
+
+def test_run_query_dispatches():
+    from plugins.llm import search
+    token = "vqzvqzxyzq"
+    d = _search_tmpdir({
+        "a.py": "def velocity_curve():\n    pass\n",
+        "b.py": token + "\n",
+    })
+    out = search.run_query(d, "velocity curve")
+    assert out.startswith('SEARCH "velocity curve" — top ')
+    assert "a.py:1" in out, "formatted path:line hit"
+    out2 = search.run_query(d, "~" + token)
+    assert out2.startswith('SIMILAR "vqzvqzxyzq" — top ')
+    assert "b.py" in out2 and "(1.0)" in out2
+    out3 = search.run_query(d, "zzz_nothing_here")
+    assert "no matches" in out3
+test("Run query: ~ dispatches to similar, plain to search", test_run_query_dispatches)
+
+
+def test_search_stale_detection():
+    from plugins.llm import search
+    from pathlib import Path
+    d = _search_tmpdir({"a.py": "one = 1\n"})
+    assert search.is_stale(d) is True, "no cache yet → stale"
+    search.build_search_index(d)
+    assert search.is_stale(d) is False
+    f = Path(d) / "a.py"
+    st = f.stat()
+    os.utime(f, (st.st_atime + 10, st.st_mtime + 10))
+    assert search.is_stale(d) is True, "touched file → stale"
+    search.build_search_index(d)
+    assert search.is_stale(d) is False
+    (Path(d) / "new.py").write_text("two = 2\n")
+    assert search.is_stale(d) is True, "new file → stale"
+test("Search: mtime staleness + fresh-cache reuse", test_search_stale_detection)
+
+
+def test_search_fresh_cache_not_rebuilt():
+    from plugins.llm import search
+    d = _search_tmpdir({"a.py": "one = 1\n"})
+    search.build_search_index(d)
+    cache = os.path.join(d, ".fent_cache", "llm_search_index.json")
+    before = os.path.getmtime(cache)
+    res = search.search(d, "one")
+    assert res and res[0]["path"] == "a.py"
+    assert os.path.getmtime(cache) == before, "fresh cache reused, not rewritten"
+test("Search: fresh cache reused across queries", test_search_fresh_cache_not_rebuilt)
 
 
 print(f"\n{'='*50}")
