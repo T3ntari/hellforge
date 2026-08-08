@@ -3239,6 +3239,77 @@ def test_theme_permission_box():
     assert "approve file modification" in pb
 test("Theme: permission boundary box with choice array", test_theme_permission_box)
 
+
+
+# ── HELL'S CODE TUI (pure parts) ──
+
+def test_tui_wrap():
+    from plugins.llm import tui
+    assert tui.wrap("a b c", 3) == ["a b", "c"]
+    assert tui.wrap("hello", 2) == ["he", "ll", "o"]
+    assert tui.wrap("", 10) == [""]
+    assert tui.wrap("a\nb", 5) == ["a", "b"]
+test("TUI: word wrap respects width", test_tui_wrap)
+
+
+def test_tui_feed():
+    from plugins.llm import tui
+    f = tui.Feed()
+    f.append("hello world", "text")
+    f.append("x", "accent")
+    rendered, total, max_scroll = f.render(8, 5, 0)
+    assert total == 3, total  # "hello" + "world" + "x"
+    assert rendered[-1][1] == "x"
+    assert rendered[-1][0] == "accent"
+    # scrolling: more lines than height
+    for i in range(20):
+        f.append(f"line {i} content", "dim")
+    rendered, total, max_scroll = f.render(20, 5, 0)
+    assert len(rendered) == 5
+    assert rendered[-1][1].startswith("line 19")
+    rendered, total, max_scroll = f.render(20, 5, 3)
+    assert rendered[-1][1].startswith("line 16")
+test("TUI: feed renders wrapped + scrollable", test_tui_feed)
+
+
+def test_tui_bridge_ask():
+    from plugins.llm import tui
+    import threading
+    b = tui.Bridge(tui.queue.Queue())
+    results = []
+    def agent():
+        results.append(b.ask("approve?", "x.py"))
+    t = threading.Thread(target=agent, daemon=True)
+    t.start()
+    import time
+    time.sleep(0.3)
+    assert not results, "agent must block until answered"
+    # the frame loop would consume the ask event; simulate its answer
+    ev = b.events.get_nowait()
+    assert ev[0] == "ask"
+    key = ev[1][0]
+    b.answer(key, "y")
+    t.join(timeout=2)
+    assert results == ["y"]
+test("TUI: gatekeeper ask blocks until answered", test_tui_bridge_ask)
+
+
+def test_tui_palette():
+    from plugins.llm import tui
+    p = tui.palette("hellfire")
+    assert p["accent"][0] > 200, "fiery red accent"
+    assert p["accent"][1] < 120, "red, not pink"
+    c = tui.palette("claude")
+    assert c["accent"] != p["accent"]
+test("TUI: hellfire palette is red-themed", test_tui_palette)
+
+
+def test_tui_available_false_headless():
+    from plugins.llm import tui
+    # In the test harness stdin is not a TTY → TUI must not claim availability
+    assert tui.tui_available() is False
+test("TUI: headless env reports unavailable (fallback safe)", test_tui_available_false_headless)
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:

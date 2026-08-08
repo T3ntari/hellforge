@@ -307,7 +307,19 @@ def _cmd(args, api):
         _chat_repl(state, api)
 
     elif sub in ("agent", "interact", "session"):
-        _agent_cc(state, api, rest)
+        use_tui = "--tui" in rest
+        if "--no-tui" not in rest:
+            try:
+                from . import tui as tui_mod
+                if tui_mod.tui_available():
+                    use_tui = True
+            except ImportError:
+                pass
+        rest = [a for a in rest if not a.startswith("--")]
+        if use_tui:
+            _agent_tui(state, api, rest)
+        else:
+            _agent_cc(state, api, rest)
 
     elif sub == "resume":
         _resume_cmd(api, state, rest)
@@ -1311,6 +1323,212 @@ def _cost_cmd(api, state, rest):
         print(costs_mod.SessionCost().render())
     except Exception as e:
         print(f"  {ui.chip('error', 'error')} {e}")
+
+
+def _agent_tui(state, api, rest):
+    """Full-screen HELL'S CODE TUI session. The agent logic runs on a
+    background thread, talking to the frame loop through a Bridge."""
+    try:
+        from . import tui as tui_mod
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} TUI unavailable — using classic REPL")
+        _agent_cc(state, api, rest)
+        return
+    project_dir = api.project_dir
+    mode = (rest[0].lower() if rest and rest[0] in ("plan", "auto", "ask")
+            else api.get_config("llm_mode", "ask"))
+    state["mode"] = mode
+    theme = api.get_config("llm_tui_theme", "hellfire")
+
+    def _submit(line, bridge):
+        """Agent thread: one user turn, rendered through the bridge."""
+        try:
+            from . import compact as compact_mod
+            from . import session as sess
+        except Exception:
+            pass
+        history = []
+        hist_lock = threading.Lock()
+        # build context + history per turn (kept simple: per-turn fresh context)
+        repro = _reproduce(project_dir, line, timeout=20)
+        idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
+        context = (f"Project context:\n{_build_context(project_dir, line)}\n\n"
+                   f"{indexer.index_to_text(idx, max_files=20)}"
+                   + (f"\n\n{repro}" if repro else ""))
+        messages = [{"role": "system", "content": _system_prompt(project_dir)}]
+        if context:
+            messages.append({"role": "user", "content": context})
+        messages.append({"role": "user", "content": line})
+
+        bridge.thinking(True)
+        chunks = []
+        try:
+            from . import providers as prov
+            provider = state.get("provider") or "custom"
+            base = state.get("base_url") or prov.PROVIDERS.get(provider, {}).get("base_url", "")
+            model = state.get("model")
+            if provider == "ollama":
+                base = prov.OLLAMA_HEAD + "/v1"
+                if not model:
+                    model = "llama3.2"
+            text, err, thinking = prov.stream_chat(
+                provider, base, state.get("api_key"), model, messages,
+                lambda t: (chunks.append(t), bridge.stream(t))[1],
+                timeout=600 if provider == "ollama" else 300)
+        except Exception as e:
+            text, err, thinking = None, str(e), ""
+        bridge.thinking(False)
+        if err:
+            bridge.feed(f"[error] {err}", "err")
+            return
+        if not text:
+            bridge.feed("(no reply)", "dim")
+            return
+        # plan handling through the bridge
+        plan = llm_agent.parse_plan(text)
+        if plan is not None and (plan.get("files") or plan.get("commands")
+                                 or plan.get("tests") or plan.get("todo")
+                                 or plan.get("search") or plan.get("memory")):
+            bridge.feed(f"plan: {plan.get('summary', 'no summary')}", "accent2")
+            cmds = plan.get("commands") or []
+            if cmds:
+                try:
+                    from . import exec as safe_exec
+                    for c in cmds:
+                        cmd = c.get("cmd") if isinstance(c, dict) else str(c)
+                        bridge.box_open(f"command: {cmd[:40]}")
+                        def _on_line(ln, bridge=bridge):
+                            bridge.box_line(ln)
+                        res = safe_exec.run_command_streaming(cmd, project_dir, _on_line)
+                        bridge.box_close(f"exit {res.get('exit_code')}")
+                        bridge.feed("  " + safe_exec.chat_line({**res, "cmd": cmd}), "dim")
+                except Exception as e:
+                    bridge.feed(f"[command error] {e}", "err")
+            files = plan.get("files") or []
+            if files:
+                for f in files:
+                    act = f.get("action", "edit")
+                    bridge.feed(f"  {act:6s} {f.get('path', '?')}", "dim")
+                applied, skipped, msgs = _apply_plan_tui(plan, bridge, project_dir)
+                for m in msgs:
+                    bridge.feed(m, "ok" if "wrote" in m or "edited" in m else "dim")
+                for rel, why in skipped:
+                    bridge.feed(f"  skipped {rel}: {why}", "dim")
+        elif plan is not None and plan.get("done"):
+            bridge.feed(f"done: {plan.get('summary', '')}", "ok")
+        else:
+            bridge.feed(text, "text")
+        try:
+            sess.save_session(project_dir,
+                              [{"role": "user", "content": line},
+                               {"role": "assistant", "content": text}],
+                              {"mode": state.get("mode"), "uploads": []})
+        except Exception:
+            pass
+        bridge.status(f"{state.get('provider')}/{state.get('model') or '?'}")
+
+    def _apply_plan_tui(plan, bridge, project_dir):
+        """Apply a plan through the TUI bridge (gatekeeper for approvals)."""
+        applied, skipped, msgs = 0, [], []
+        for f in plan.get("files") or []:
+            rel = f.get("path", "")
+            act = f.get("action", "edit")
+            try:
+                target = llm_agent.safe_path(project_dir, rel)
+            except ValueError as e:
+                skipped.append((rel, str(e)))
+                continue
+            if act == "read":
+                if target.exists():
+                    bridge.feed(f"  read {rel}", "dim")
+                continue
+            if act == "delete":
+                ans = bridge.ask(f"delete {rel}?", "", ("y", "n"))
+                if ans != "y":
+                    skipped.append((rel, "delete declined"))
+                    continue
+                if target.exists():
+                    target.unlink()
+                    applied += 1
+                    msgs.append(f"  deleted {rel}")
+                continue
+            if act == "write":
+                ans = bridge.ask(f"write {rel}?", "", ("y", "n", "e"))
+                if ans == "n":
+                    skipped.append((rel, "declined"))
+                    continue
+                if ans == "e":
+                    # edit block: replace content via a temp file + editor
+                    import tempfile, subprocess as _sp
+                    tmp = tempfile.mktemp(suffix=".txt")
+                    with open(tmp, "w") as fh:
+                        fh.write(f.get("content", ""))
+                    editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "nano"))
+                    try:
+                        _sp.run([editor, tmp])
+                        with open(tmp) as fh:
+                            f["content"] = fh.read()
+                    except Exception:
+                        pass
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(f.get("content", ""), encoding="utf-8")
+                applied += 1
+                msgs.append(f"  wrote {rel}")
+                continue
+            # edit (line ranges / search-replace)
+            if not target.exists():
+                skipped.append((rel, "file does not exist"))
+                continue
+            old_text = target.read_text(encoding="utf-8", errors="replace")
+            new_text = old_text
+            if f.get("lines") is not None:
+                lo = int(f["lines"][0])
+                hi = int(f["lines"][1]) if len(f["lines"]) > 1 and f["lines"][1] is not None else lo
+                lines = old_text.splitlines()
+                if lo < 1 or hi < lo or hi > len(lines):
+                    skipped.append((rel, "lines out of range"))
+                    continue
+                new_text = "\n".join(lines[:lo - 1] + f.get("replace", "").splitlines()
+                                    + lines[hi:])
+            else:
+                edits = f.get("edits") or []
+                ok = True
+                for pair in edits:
+                    search, replace = pair.get("search", ""), pair.get("replace", "")
+                    if new_text.count(search) != 1:
+                        skipped.append((rel, f"search not unique ({new_text.count(search)})"))
+                        ok = False
+                        break
+                    new_text = new_text.replace(search, replace)
+                if not ok:
+                    continue
+            if new_text != old_text:
+                ans = bridge.ask(f"edit {rel}?", "", ("y", "n", "e"))
+                if ans == "n":
+                    skipped.append((rel, "declined"))
+                    continue
+                target.write_text(new_text, encoding="utf-8")
+                applied += 1
+                try:
+                    from . import undo as undo_mod
+                    undo_mod.begin_turn(project_dir, [rel])
+                    undo_mod.end_turn(project_dir)
+                except Exception:
+                    pass
+                msgs.append(f"  edited {rel}")
+        return applied, skipped, msgs
+
+    def _run(stdscr):
+        app = tui_mod.HellTui(palette_name=theme, on_submit=_submit)
+        app.run(stdscr)
+
+    try:
+        import threading as _th
+        threading = _th
+        tui_mod.curses.wrapper(_run)
+    except Exception as e:
+        print(f"  TUI failed ({e}) — falling back to classic REPL")
+        _agent_cc(state, api, rest)
 
 
 def _agent_repl(api, state):
