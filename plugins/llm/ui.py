@@ -207,3 +207,34 @@ def warn_line(text):
 def elapsed(seconds):
     """Dim turn-timing tag, e.g. '(0.8s)'."""
     return dim(f"({seconds:.1f}s)")
+
+
+# ── T13: thinking tags + turn summary chrome ──
+
+
+def thinking_collapsed(seconds):
+    """Dim auto-collapsed thinking one-liner: 'thought for 12.3s'."""
+    try:
+        from plugins.llm import thinking as _thinking
+        line = _thinking.collapse([], seconds)
+    except Exception:
+        line = f"thought for {seconds:.1f}s"
+    return dim(line)
+
+
+def explored(files, edits, commands):
+    """Dim turn-summary line:
+    'explored 3 files · 2 edits · 1 command' (non-zero parts only)."""
+    try:
+        from plugins.llm import thinking as _thinking
+        line = _thinking.explored_line(files, edits, commands)
+    except Exception:
+        parts = []
+        if files:
+            parts.append(f"{files} file" + ("" if files == 1 else "s"))
+        if edits:
+            parts.append(f"{edits} edit" + ("" if edits == 1 else "s"))
+        if commands:
+            parts.append(f"{commands} command" + ("" if commands == 1 else "s"))
+        line = f"explored {' · '.join(parts)}" if parts else ""
+    return dim(line)

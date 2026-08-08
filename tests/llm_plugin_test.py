@@ -1784,6 +1784,109 @@ def test_subagents_summarize():
 test("Subagents: summarize contains task names + results", test_subagents_summarize)
 
 
+# ── T13: thinking tags + turn summary chrome ──
+
+def test_thinking_extract_single():
+    from plugins.llm import thinking
+    blocks, visible = thinking.extract_thinking(
+        "Let me check.\n<thinking>check the parser first</thinking>\nThe answer is 42.")
+    assert len(blocks) == 1
+    assert blocks[0] == "check the parser first"
+    assert "<thinking>" not in visible and "</thinking>" not in visible
+    assert "The answer is 42." in visible
+test("Thinking: single <thinking> block extracted, removed from visible", test_thinking_extract_single)
+
+
+def test_thinking_extract_multi():
+    from plugins.llm import thinking
+    text = "<thinking>first idea</thinking> visible <thinking>second\nidea</thinking> end"
+    blocks, visible = thinking.extract_thinking(text)
+    assert len(blocks) == 2
+    assert blocks[0] == "first idea" and blocks[1] == "second\nidea"
+    assert "first idea" not in visible and "visible" in visible and "end" in visible
+test("Thinking: multiple blocks all extracted", test_thinking_extract_multi)
+
+
+def test_thinking_extract_none():
+    from plugins.llm import thinking
+    blocks, visible = thinking.extract_thinking("plain reply, no tags")
+    assert blocks == []
+    assert visible == "plain reply, no tags"
+test("Thinking: no blocks → empty list, text untouched", test_thinking_extract_none)
+
+
+def test_thinking_extract_reasoning_json():
+    from plugins.llm import thinking
+    text = '{"reasoning_content": "weight the tradeoffs", "content": "go with plan B"}'
+    blocks, visible = thinking.extract_thinking(text)
+    assert len(blocks) == 1
+    assert "weight the tradeoffs" in blocks[0]
+    assert "reasoning_content" not in visible
+    assert "plan B" in visible
+test("Thinking: reasoning_content JSON field extracted", test_thinking_extract_reasoning_json)
+
+
+def test_thinking_collapse_format():
+    from plugins.llm import thinking
+    assert thinking.collapse(["x"], 12.34) == "thought for 12.3s"
+    assert thinking.collapse(["a", "b"], 3) == "thought for 3.0s"
+test("Thinking: collapse one-liner 1 decimal, multi-block same", test_thinking_collapse_format)
+
+
+def test_thinking_render_full():
+    from plugins.llm import thinking
+    out = thinking.render_full(["line one\nline two"])
+    assert "· thinking ·" in out
+    assert "line one" in out and "  line two" in out
+    assert thinking.render_full([]) == ""
+test("Thinking: render_full prefixes + indents blocks", test_thinking_render_full)
+
+
+def test_thinking_explored_line():
+    from plugins.llm import thinking
+    assert thinking.explored_line(3, 2, 1) == "explored 3 files · 2 edits · 1 command"
+    assert thinking.explored_line(1, 0, 0) == "explored 1 file"
+    assert thinking.explored_line(0, 0, 2) == "explored 2 commands"
+    assert thinking.explored_line(0, 0, 0) == ""
+test("Thinking: explored line only non-zero parts", test_thinking_explored_line)
+
+
+def test_thinking_apply_config():
+    from plugins.llm import thinking
+    assert thinking.apply_config({"llm_show_thinking": "on"}) == \
+        {"show_full": True, "explore": False}
+    assert thinking.apply_config({"llm_show_thinking": "auto"}) == \
+        {"show_full": False, "explore": True}
+    assert thinking.apply_config({}) == {"show_full": False, "explore": False}
+    assert thinking.apply_config({}, show_full=True) == \
+        {"show_full": True, "explore": False}
+test("Thinking: apply_config resolves on/off/auto", test_thinking_apply_config)
+
+
+def test_ui_thinking_collapsed():
+    import unittest.mock as mock
+    from plugins.llm import ui
+    with mock.patch.object(ui, "is_tty", return_value=False):
+        line = ui.thinking_collapsed(12.34)
+    assert "thought for 12.3s" in line and "\033[" not in line, repr(line)
+    with mock.patch.object(ui, "is_tty", return_value=True):
+        line = ui.thinking_collapsed(12.34)
+    assert "thought for 12.3s" in line and "\033[" in line
+test("UI: thinking_collapsed dim one-liner, plain off-TTY", test_ui_thinking_collapsed)
+
+
+def test_ui_explored():
+    import unittest.mock as mock
+    from plugins.llm import ui
+    with mock.patch.object(ui, "is_tty", return_value=False):
+        line = ui.explored(3, 2, 1)
+    assert line == "explored 3 files · 2 edits · 1 command", repr(line)
+    with mock.patch.object(ui, "is_tty", return_value=True):
+        line = ui.explored(3, 2, 1)
+    assert "explored 3 files" in line and "\033[" in line
+test("UI: explored dim line, plain off-TTY", test_ui_explored)
+
+
 print(f"\n{'='*50}")
 print(f"LLM PLUGIN TESTS: {passed}/{passed+failed} passed")
 if failed == 0:
