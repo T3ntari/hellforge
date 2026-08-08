@@ -212,13 +212,17 @@ def _cmd(args, api):
 
     elif sub == "model":
         if not rest:
-            models = _known_models(state)
-            if not models:
-                print("  No models configured — 'ai model <name>' to set one.")
-            else:
-                cur = state.get("model") or "(none)"
-                print(f"  Current: {cur}")
-                print("  Available: " + ", ".join(models))
+            try:
+                from . import select as sel
+                sel.pick_model(api, state)
+            except ImportError:
+                models = _known_models(state)
+                if not models:
+                    print("  No models configured — 'ai model <name>' to set one.")
+                else:
+                    cur = state.get("model") or "(none)"
+                    print(f"  Current: {cur}")
+                    print("  Available: " + ", ".join(models))
             return
         state["model"] = rest[0]
         _save_state(api, state)
@@ -263,7 +267,25 @@ def _cmd(args, api):
         _chat_repl(state, api)
 
     elif sub in ("agent", "interact", "session"):
-        _agent_repl(api, state)
+        _agent_cc(state, api, rest)
+
+    elif sub == "resume":
+        _resume_cmd(api, state, rest)
+
+    elif sub == "sessions":
+        _sessions_cmd(api)
+
+    elif sub == "review":
+        _review_cmd(api, state, rest)
+
+    elif sub in ("doctor", "checkup"):
+        _doctor_cmd(api)
+
+    elif sub == "init":
+        _init_cmd(api)
+
+    elif sub == "cost":
+        _cost_cmd(api, state, rest)
 
     elif sub == "todo":
         _todo_cmd(api, rest)
@@ -648,6 +670,167 @@ def _run_request(state, messages):
     return text
 
 
+def _agent_cc(state, api, rest):
+    """Claude-Code-style `ai agent` — the full REPL with slash commands,
+    permission modes, status bar, sessions and cost tracking."""
+    project_dir = api.project_dir
+    mode = (rest[0].lower() if rest and rest[0] in ("plan", "auto", "ask")
+            else api.get_config("llm_mode", "ask"))
+    state["mode"] = mode
+
+    def _get_request(messages):
+        return _request(state, messages)
+
+    def _apply_plan(plan, pd, confirm_write=True):
+        return llm_agent.interactive_apply(plan, pd, confirm_write=confirm_write)
+
+    def _on_turn(history, meta):
+        try:
+            from . import session as sess
+            sess.save_session(project_dir, history, meta)
+        except Exception:
+            pass
+
+    def _context_builder(request):
+        idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
+        return (f"Project context:\n{_build_context(project_dir, request)}\n\n"
+                f"{indexer.index_to_text(idx, max_files=25)}")
+
+    try:
+        from . import repl as repl_mod
+        from . import costs as costs_mod
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} copilot REPL not available")
+        return
+    # Seed a session cost tracker so /cost has data
+    try:
+        from . import costs as _c
+        if not hasattr(_c, "session_cost"):
+            _c.session_cost = lambda a, s: _c.SessionCost().render()
+    except Exception:
+        pass
+    final_mode = repl_mod.run_repl(
+        api, state, _get_request, _apply_plan,
+        on_turn=_on_turn,
+        system_prompt=_system_prompt(project_dir),
+        context_builder=_context_builder,
+    )
+    if final_mode:
+        api.set_config("llm_mode", final_mode)
+        print(f"  mode saved: {final_mode}")
+
+
+def _resume_cmd(api, state, rest):
+    """ai resume [id] — continue a past session (list when no id)."""
+    project_dir = api.project_dir
+    try:
+        from . import session as sess
+        from . import repl as repl_mod
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} session support missing")
+        return
+    sessions = sess.list_sessions(project_dir)
+    if not rest:
+        if not sessions:
+            print("  No past sessions.")
+            return
+        print("  Past sessions (ai resume <id>):")
+        for s in sessions[:10]:
+            print(f"    {s['id']}  {s.get('model', '?')}  "
+                  f"{s.get('turns', 0)} turns  — {s.get('summary', '')[:60]}")
+        return
+    sid = rest[0]
+    data = sess.load_session(project_dir, sid)
+    if not data:
+        print(f"  Session not found: {sid}")
+        return
+    history = data.get("history", [])
+    print(f"  Resuming session {sid} ({len(history)} messages)...")
+    def _get_request(messages):
+        return _request(state, messages)
+    def _apply_plan(plan, pd, confirm_write=True):
+        return llm_agent.interactive_apply(plan, pd, confirm_write=confirm_write)
+    def _on_turn(h, meta):
+        try:
+            sess.save_session(project_dir, h, meta)
+        except Exception:
+            pass
+    repl_mod.run_repl(api, state, _get_request, _apply_plan,
+                      on_turn=_on_turn, history=history,
+                      system_prompt=_system_prompt(project_dir))
+
+
+def _sessions_cmd(api):
+    """ai sessions — list past sessions."""
+    try:
+        from . import session as sess
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} session support missing")
+        return
+    sessions = sess.list_sessions(api.project_dir)
+    if not sessions:
+        print("  No past sessions.")
+        return
+    print(f"  {len(sessions)} session(s):")
+    for s in sessions[:10]:
+        print(f"    {s['id']}  {s.get('model', '?')}  "
+              f"{s.get('turns', 0)} turns  — {s.get('summary', '')[:60]}")
+
+
+def _review_cmd(api, state, rest):
+    """ai review — the model reviews the working-tree diff."""
+    try:
+        from . import review as rev
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} review support missing")
+        return
+    diff = rev.git_diff(api.project_dir)
+    if not diff:
+        print("  No changes to review (git diff HEAD is empty or not a repo).")
+        return
+    print("  Reviewing working-tree diff...")
+    text = rev.review_changes(lambda m: _request(state, m), api.project_dir)
+    print(rev.review_summary(text or "no review produced"))
+
+
+def _doctor_cmd(api):
+    """ai doctor — environment checks."""
+    try:
+        from . import initdocs as doc
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} doctor support missing")
+        return
+    checks = doc.doctor(api.project_dir)
+    print(doc.render(checks))
+
+
+def _init_cmd(api):
+    """ai init — ensure AGENTS.md / RULES.md / TODO.md exist."""
+    try:
+        from . import initdocs as doc
+    except ImportError:
+        print(f"  {ui.chip('error', 'error')} init support missing")
+        return
+    created = doc.ensure_instructions(api.project_dir)
+    if created:
+        for name in created:
+            print(f"  {ui.chip('ok', 'done')} created {name}")
+    else:
+        print("  AGENTS.md / RULES.md / TODO.md already present.")
+
+
+def _cost_cmd(api, state, rest):
+    """ai cost — session cost summary."""
+    try:
+        from . import costs as costs_mod
+        if hasattr(costs_mod, "session_cost"):
+            print(costs_mod.session_cost(api, state))
+            return
+        print(costs_mod.SessionCost().render())
+    except Exception as e:
+        print(f"  {ui.chip('error', 'error')} {e}")
+
+
 def _agent_repl(api, state):
     """Interactive multi-turn agent session. You talk to the agent like a
     chat, but it can read files, edit line ranges, create files and run safe
@@ -1014,6 +1197,21 @@ def _agentic(api, state, request, plugin=False, confirm_write=True, max_steps=5)
                           f"{added} added, {marked} checked off")
             except Exception:
                 pass
+
+        # 2d. Subagents: plan may carry "subagents" — spawn focused child
+        # chats; results are fed back to the main loop.
+        subs = plan.get("subagents")
+        if subs:
+            try:
+                from . import subagents as sub_mod
+                print(f"  {ui.chip('subagent', 'command')} spawning "
+                      f"{len(subs)} subagent(s)...")
+                results = sub_mod.run_plan_subagents(
+                    plan, lambda msgs: _request(state, msgs))
+                summary = sub_mod.summarize(results)
+                print(summary)
+            except Exception as e:
+                print(f"  {ui.chip('error', 'error')} subagents: {e}")
 
         # 3. Multi-agent verification: daughter agent reviews the result
         if (state.get("agents_enabled") and (files or cmds)

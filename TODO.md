@@ -21,3 +21,5 @@ This file is the live checklist maintained by AI agents working in this repo
 - [ ] update this checklist as work proceeds
 
 - [x] verify claude-code ui colors
+
+- [ ] Review TODO.md for any new tasks

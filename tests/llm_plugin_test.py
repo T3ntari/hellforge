@@ -1546,13 +1546,24 @@ test("Repl: /memory prints AGENTS/RULES/TODO heads", test_repl_memory_command)
 def test_repl_lazy_feature_fallbacks():
     import io
     import contextlib
+    import unittest.mock as _mock
     from plugins.llm import repl
     d = tempfile.mkdtemp()
     buf = io.StringIO()
-    with _ReplHarness(["/cost", "/review", "/model", "/exit"]), \
-         contextlib.redirect_stdout(buf):
-        repl.run_repl(_ReplAPI(d), {"mode": "ask"}, lambda m: ("ok", None),
-                      lambda *a, **k: (0, [], []))
+    # Simulate genuinely missing optional modules (they exist in the repo now)
+    def _fake_try_import(name):
+        if name in ("costs", "review", "select"):
+            return None
+        return _orig_try_import(name)
+    _orig_try_import = repl._try_import
+    try:
+        with _mock.patch.object(repl, "_try_import", side_effect=_fake_try_import), \
+             _ReplHarness(["/cost", "/review", "/model", "/exit"]), \
+             contextlib.redirect_stdout(buf):
+            repl.run_repl(_ReplAPI(d), {"mode": "ask"}, lambda m: ("ok", None),
+                          lambda *a, **k: (0, [], []))
+    finally:
+        repl._try_import = _orig_try_import
     out = buf.getvalue()
     assert out
     missing = [s for s in ("cost tracking", "review not installed", "model picker")
