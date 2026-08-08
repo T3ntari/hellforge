@@ -18,7 +18,9 @@ That is a complete piece of music — a C major chord. Compile it, play it.
 
 - **Plain text, many outputs** — `.mid`, `.wav`, `.mp3`, `.ec`, `.eic`, `.ee` from one source
 - **Precision** — millisecond timing, 0–127 velocity, pitch bend, pan, filters, envelopes
-- **v4 syntax** — the canonical, feature-complete version of the language
+- **v5 syntax** — the canonical version (default always). v5 = v4 + piano performance
+  features (sustain pedal, rests, articulations, tuplets, octave shift, velocity
+  curves, ties)
 - **Low-level controllers** — `@vol`, `@master`, `@gain`, `@sr`, `@bit`, `@quality`,
   `@gc`, `@mem`, `@sub`, `@bass_boost`, `@stereo_width`, `@neural` work end-to-end
   from source through MIDI export to WAV rendering
@@ -89,11 +91,12 @@ The full tutorial and reference live in [`SYNTAX.md`](SYNTAX.md) and the
 
 ## Version policy
 
-v4 is the canonical syntax. v1, v2 and v3 sources still compile for
-backward compatibility but emit deprecation warnings. Convert old sources with:
+v5 is the canonical syntax and the default for all sources. v1, v2, v3 and
+v4 sources still compile for backward compatibility but emit deprecation
+warnings. Convert old sources with:
 
 ```bash
-.venv/bin/python run.py compile <old.e> --to v4
+.venv/bin/python run.py compile <old.e> --to v5
 ```
 
 ## Tests

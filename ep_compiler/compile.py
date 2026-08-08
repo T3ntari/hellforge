@@ -104,18 +104,34 @@ _DEPRECATION_WARNED = set()
 
 
 def _warn_deprecated(version):
-    """Print the v1/v2 deprecation banner once per version per process."""
+    """Print the deprecation banner once per version per process.
+    v5 is the canonical syntax; v1-v4 compile for back-compat only."""
     if version in _DEPRECATION_WARNED:
         return
     _DEPRECATION_WARNED.add(version)
-    print(f"WARNING: {version} syntax is deprecated — use v4 (convert with 'run.py compile --to v4')")
+    print(f"WARNING: {version} syntax is deprecated — use v5 (convert with 'run.py compile --to v5')")
 
 
 def detect_syntax_version(text):
     text = strip_comments(text)
     if re.search(r'#compiler\s+\w+\s*:', text, re.I):
         pass
-    # v4 markers (checked first — v4 is a superset)
+    # v5 markers (checked first — v5 is a superset of everything)
+    v5_patterns = [
+        r'Version:\s*v5',               # v5 header
+        r'//\s*v5\b',                   # v5 comment marker
+        r'\bpedal\s+(?:on|off)\b',      # sustain pedal statements
+        r'^\s*(?:rest|R)\s+[whqest0-9]',  # rests
+        r'\bt3\s*\(|\btrip\s*\(|\btup\s*\(',  # tuplets
+        r'@oct\s*:',                    # octave shift directive
+        r'@art\s*:',                    # articulations
+        r'@tie\b',                      # ties (prop)
+        r'[A-Ga-g]#?b?\d\s*~',          # ties (tilde shorthand)
+    ]
+    for p in v5_patterns:
+        if re.search(p, text, re.I | re.MULTILINE):
+            return 'v5'
+    # v4 markers (next superset level)
     v4_patterns = [
         r'E\(\d+\s*,\s*\d+\)',          # Euclidean rhythm
         r'\[[^\]]+\]\s*\(\d+:\d+\)',    # polyrhythm [notes](3:2)
@@ -129,37 +145,32 @@ def detect_syntax_version(text):
         r'<[A-Ga-g]#?b?\d[^>{}]*>',     # angle-bracket note groups
         r'[A-Ga-g]#?b?\d\s*\|',         # pipe-parallel notes
         r'\\\s*$',                      # backslash line continuation
-        r'\bpedal\s+(?:on|off)\b',      # sustain pedal statements
-        r'^\s*(?:rest|R)\s+[whqest0-9]',  # rests
-        r'\bt3\s*\(|\btrip\s*\(|\btup\s*\(',  # tuplets
-        r'@oct\s*:',                    # octave shift directive
-        r'@art\s*:',                    # articulations
-        r'@tie\b',                      # ties (prop)
-        r'[A-Ga-g]#?b?\d\s*~',          # ties (tilde shorthand)
     ]
     for p in v4_patterns:
         if re.search(p, text, re.I | re.MULTILINE):
+            _warn_deprecated('v4')
             return 'v4'
     v3_patterns = [r'@(adagio|allegro|presto)', r'^!\w+\s*=', r'\?\d+\.\d+\s+T',
                    r'V~', r'D~', r'^[A-G]#?b?\d+\s+[whqest]',
                    r'x\d+\s*$', r'&', r'/\*', r'ppp\s*<']
     for p in v3_patterns:
         if re.search(p, text, re.I | re.MULTILINE):
+            _warn_deprecated('v3')
             return 'v3'
     v2_patterns = [r'\[Section:', r'Key:\s*\w+_\w+', r'play\(', r'arpeggio\(', r'chromatic_run\(']
     for p in v2_patterns:
         if re.search(p, text, re.I):
             _warn_deprecated('v2')
             return 'v2'
-    if re.search(r'^T\d+\s+N\d+', text, re.MULTILINE):
-        _warn_deprecated('v1')
-        return 'v1_machine'
-    if re.search(r'play\s+(note|chord)', text, re.I):
-        _warn_deprecated('v1')
-        return 'v1_human'
-    if text.strip():
-        _warn_deprecated('v1')
-    return 'v1'
+    v1_patterns = [r'Version:\s*v1', r'//\s*v1\b', r'#MACHINE', r'#HUMAN']
+    for p in v1_patterns:
+        if re.search(p, text, re.I):
+            _warn_deprecated('v1')
+            return 'v1_machine' if re.search(r'^T\d+\s+N\d+', text, re.MULTILINE) else 'v1_human'
+    # Everything else — including plain machine lines (T0 N60 D500 V80) and
+    # plain human lines (play note(...)) with no version markers — compiles
+    # as v5: the canonical default. No deprecation notice.
+    return 'v5'
 
 
 def apply_scale_quantization(events, ll_state):
@@ -302,7 +313,7 @@ def compile_source(text, bpm=None, strict=False):
                 if _val is not None:
                     _math_scope.set(_name, _val)
 
-    if version in ('v3', 'v4'):
+    if version in ('v3', 'v4', 'v5'):
         try:
             from .punctuation import expand_punctuation
             text = expand_punctuation(text)
@@ -313,7 +324,7 @@ def compile_source(text, bpm=None, strict=False):
             text = preprocess_v3(text)
         except ImportError:
             pass
-        if version == 'v4':
+        if version in ('v4', 'v5'):
             try:
                 from .mode_v4_polyrhythm import process_polyrhythms
                 text = process_polyrhythms(text, bpm)

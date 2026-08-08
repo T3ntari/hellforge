@@ -108,7 +108,7 @@ def cmd_compile(args):
     if "--to" in args:
         idx = args.index("--to")
         if idx + 1 >= len(args):
-            print("  --to requires a version: v1 | v2 | v3 | v4")
+            print("  --to requires a version: v1 | v2 | v3 | v4 | v5 (v5 = canonical, converts to v4 superset)")
             return 1
         target = args[idx + 1].lower()
         rest = [a for a in args if a.startswith("--") or a == args[idx + 1]]
@@ -215,7 +215,7 @@ def _convert_syntax(path, target):
     except ImportError:
         print(f"  portbaby not available — cannot convert {path}")
         return
-    ver_map = {"v1": "v1_machine", "v2": "v2", "v3": "v3", "v4": "v4"}
+    ver_map = {"v1": "v1_machine", "v2": "v2", "v3": "v3", "v4": "v4", "v5": "v4"}
     conv = ver_map.get(target, target)
     try:
         result = convert_file(path, conv, make_project=False, show_report=False)

@@ -153,9 +153,9 @@ _ERRORS.update({
 # Warnings W001–W120
 _WARNINGS = {}
 _WARNINGS.update({
-    "W001": ("warning", "v1 syntax is deprecated — use v4 (see 'convert --to v4')"),
-    "W002": ("warning", "v2 syntax is deprecated — use v4 (see 'convert --to v4')"),
-    "W003": ("warning", "v3 syntax is fully supported but v4 is recommended"),
+    "W001": ("warning", "v1 syntax is deprecated — use v5 (see 'convert --to v5')"),
+    "W002": ("warning", "v2 syntax is deprecated — use v5 (see 'convert --to v5')"),
+    "W003": ("warning", "v3 syntax is deprecated — use v5 (v5 is the canonical default)"),
     "W004": ("warning", "Legacy plugin API used — update to register(api) pattern"),
     "W005": ("warning", "Plugin not signed — integrity unverified"),
     "W006": ("warning", "Plugin signed by an unknown key"),
@@ -172,6 +172,7 @@ _WARNINGS.update({
     "W017": ("warning", "Timestamp exceeds 5 minutes — verify intent"),
     "W018": ("warning", "Note outside comfortable piano range (21-108)"),
     "W019": ("warning", "Float velocity will be rounded to an integer"),
+    "W020": ("warning", "v4 syntax is deprecated — use v5 (v5 is the canonical default)"),
     "W020": ("warning", "Float duration will be rounded to an integer"),
     "W021": ("warning", "Expression result will be rounded"),
     "W022": ("warning", "Duplicate event detected (identical timestamp/note/duration)"),
@@ -201,8 +202,8 @@ for i in range(41, 121):
 # Info I001–I020
 _INFOS = {}
 _INFOS.update({
-    "I001": ("info", "Syntax version v4 (current standard)"),
-    "I002": ("info", "Syntax version v3 (fully supported)"),
+    "I001": ("info", "Syntax version v5 (canonical)"),
+    "I002": ("info", "Syntax version v3 (deprecated)"),
     "I003": ("info", "Syntax version v2 (deprecated)"),
     "I004": ("info", "Syntax version v1 (deprecated)"),
     "I005": ("info", "File is a project index (.ei)"),
@@ -605,6 +606,9 @@ def lint_source(text, path=None, report_only=False):
         elif version == "v3":
             diags.append(_diag("W003", 0))
             diags.append(_diag("I002", 0))
+        elif version == "v4":
+            diags.append(_diag("W020", 0))
+            diags.append(_diag("I001", 0))
         else:
             diags.append(_diag("I001", 0))
 

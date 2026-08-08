@@ -686,7 +686,7 @@ play note(G4) @dur:s @vel:pp            # Very soft fast G
 
 ## 7. Syntax Version Compatibility
 
-E has evolved through four major syntax versions. This document covers **v4 (latest)**. Older versions still compile but are deprecated.
+E has evolved through five major syntax versions. This document covers **v5 (latest — the canonical default)**. v5 = v4 + piano performance features (sustain pedal, rests, articulations, tuplets, octave shift, velocity curves, ties). v1-v4 still compile but are deprecated and emit warnings.
 
 ### Version Table
 
@@ -694,12 +694,12 @@ E has evolved through four major syntax versions. This document covers **v4 (lat
 |---------|--------|-------------|-------------|
 | **v1 #MACHINE** | ✅ Supported | `T{N} N{N} D{N} V{N}` token stream | Precision timing, AI generation, large files |
 | **v1 #HUMAN** | ✅ Supported | `play note(C4) @dur:q @vel:mf` | Readable compositions, teaching |
-| **v2 Semantic** | ⚠️ Legacy | `[Section:]`, chord blocks, scale degrees | Existing v2 projects (migrate to v4 when possible) |
+| **v2 Semantic** | ⚠️ Deprecated | `[Section:]`, chord blocks, scale degrees | Existing v2 projects (migrate to v5) |
 | **v3 Shorthand** | ✅ Supported | `C4 q`, macros `!name`, repeats `xN`, probability `?0.8` | Quick prototyping, concise notation |
 | **v4 Polyrhythm** | ✅ Latest | `[notes]/N`, Euclidean `E(N,M)`, scale quantization, polyrhythms `(X:Y)` | Complex rhythms, modern compositions |
-| **v4 .eci** | ✅ Latest | `@mode machine/human/auto` toggle within one file | Mixed-precision files |
-| **v4 .ei** | ✅ Latest | Project index with `include`, `section`, `play`, `root` inheritance | Multi-part songs, orchestral works |
-| **v4 .enx** | ✅ Latest | Album ordering with `order`, tempo override, delays | Albums, concerts, practice loops |
+| **v4 .eci** | ⚠️ Deprecated | `@mode machine/human/auto` toggle within one file | Mixed-precision files |
+| **v4 .ei** | ⚠️ Deprecated | Project index with `include`, `section`, `play`, `root` inheritance | Multi-part songs, orchestral works |
+| **v4 .enx** | ⚠️ Deprecated | Album ordering with `order`, tempo override, delays | Albums, concerts, practice loops |
 
 ### What's Deprecated in v4
 
