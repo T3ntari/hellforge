@@ -22,4 +22,6 @@ This file is the live checklist maintained by AI agents working in this repo
 
 - [x] verify claude-code ui colors
 
+- [x] T15: docs/agent/ — seven model docs (quickstart, language, compiler,
+      plugins, testing, copilot, architecture) + AGENTS.md section
 - [ ] Review TODO.md for any new tasks
