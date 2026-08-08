@@ -1,0 +1,65 @@
+/* HELLFORGE v1.0.0.0 ALPHA — CORE-EXPANSION: REGAS */
+// ====================================================================
+// suite.ei  —  "Classical Suite No. 1 in C"
+// VERSION STATUS: v4  CURRENT STANDARD  |  E LANGUAGE ALPHA
+// A 3-movement suite using .ei multi-file inheritance.
+// Inherits parts/movement1.e, parts/movement2.e, parts/movement3.e
+//
+// .ei files are the HELLFORGE multi-file composition container.
+// They use inherit statements to reference part files, which are
+// compiled into a single unified composition at build time.
+//
+// Run from project root: py ep.py compile examples/projects/suite.ei
+// ====================================================================
+
+// -------------------------------------------------------------------
+// METADATA — information about this multi-file composition
+// -------------------------------------------------------------------
+title "Classical Suite No. 1 in C"
+composer "HELLFORGE DSL"
+copyright "HELLFORGE v1.0.0.0 ALPHA — Core-Expansion: REGAS"
+description "A three-movement classical suite demonstrating .ei inheritance"
+
+// -------------------------------------------------------------------
+// INHERIT — pull in movement files from the parts/ subdirectory
+// Each inherited file is compiled in order, creating a seamless piece.
+// Inherited files share the same symbol table, so @bpm, @sig, and
+// section names must be coordinated across movements.
+// -------------------------------------------------------------------
+
+// Movement I — Allegro con Brio (C major, @bpm 120, 4/4)
+// Fast, energetic sonata-allegro form with development section
+inherit "parts/movement1.e"
+
+// Movement II — Adagio Sostenuto (F major, @bpm 50, 3/4)
+// Slow, lyrical ternary form as contrast to the outer movements
+inherit "parts/movement2.e"
+
+// Movement III — Presto Furioso (C minor, @bpm 160, 2/4)
+// Blistering rondo form to conclude with virtuosic energy
+inherit "parts/movement3.e"
+
+// -------------------------------------------------------------------
+// GLOBAL END — optional post-processing directives
+// -------------------------------------------------------------------
+@global
+  // Ensure seamless transition between movements by adding
+  // a brief pause (caesura) between inherited parts
+  $transition_pause = 2.0              // 2-beat silence between movements
+  @pause $transition_pause
+end
+
+// -------------------------------------------------------------------
+// The inheritance system works as follows:
+// 1. The .ei parser loads each file listed in inherit statements
+// 2. Files are concatenated in declaration order
+// 3. Each file runs in the same global scope
+// 4. Section names must be unique or use the section keyword
+// 5. @bpm, @sig changes within parts are preserved
+//
+// This enables:
+// - Multi-movement works (suites, sonatas, symphonies)
+// - Collaborative compositions (one file per composer)
+// - Modular arrangements (swap parts for different versions)
+// - Library reuse (build a library of .e parts and inherit them)
+// -------------------------------------------------------------------

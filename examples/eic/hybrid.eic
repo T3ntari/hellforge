@@ -1,0 +1,199 @@
+/* HELLFORGE v1.0.0.0 ALPHA — CORE-EXPANSION: REGAS */
+// ====================================================================
+// hybrid.eic  —  "Cyborg Lullaby"
+// VERSION STATUS: v4  CURRENT STANDARD  |  E LANGUAGE ALPHA
+// .eic toggleable file — mixes machine precision with human
+// readability across sections. Each section selects the mode
+// that best serves its musical intent.
+//
+// The philosophy: use #MACHINE where exact timing and dynamics
+// create the desired effect; use #HUMAN where expression and
+// warmth are paramount. The best compositions use both.
+//
+// Run from project root: py ep.py compile examples/eic/hybrid.eic
+// ====================================================================
+
+// -------------------------------------------------------------------
+// AMBIENT PAD — #MACHINE
+// A shimmering, evolving pad using mathematically exact
+// algorithms to create a beautiful texture. Machine precision
+// allows perfect beat synchronization across layers.
+// -------------------------------------------------------------------
+#MACHINE
+section "Ambient Pad — Machine Precision"
+
+@bpm 70
+@sig 4/4
+
+// Generative pad: perfect layering of sine-wave velocities
+// Machine mode ensures each layer phase-locks exactly
+for $layer 0 to 4
+  $base = C3 + ($layer * 12)           // Layer spread across octaves
+  for $i 0 to 15
+    play $base 4.0
+    @vel 30 + ($layer * 5) + (sin($i * 0.25 + $layer * 1.3) * 8)
+    wait 1
+  end
+end
+
+// Machine-precise panning — alternates exactly 25%, 50%, 75%, 100%
+for $i 0 to 7
+  play C4 G4 C5 G5 C6 2.0
+  @vel 40
+  @pan 0.25                             // Hard left
+  wait 1
+  play C4 G4 C5 G5 C6 2.0
+  @vel 42
+  @pan 0.50                             // Center-left
+  wait 1
+  play C4 G4 C5 G5 C6 2.0
+  @vel 44
+  @pan 0.75                             // Center-right
+  wait 1
+  play C4 G4 C5 G5 C6 2.0
+  @vel 46
+  @pan 1.00                             // Hard right
+  wait 1
+end
+
+// -------------------------------------------------------------------
+// MELODY — #HUMAN
+// The melody enters with natural phrasing, rubato timing,
+// and expressive dynamic shaping. Human mode brings it to life.
+// -------------------------------------------------------------------
+#HUMAN
+section "Melody — Human Expression"
+
+@humanize 0.75                          // Moderate humanization
+
+// Expressive melody with natural rubato and dynamic shaping
+for $i 0 to 15
+  // Phrase 1 — rising with emotion
+  @vel 50 + sin($i * 0.3) * 20          // Natural swell
+  play E4 1.0 + rand(0.15)             // Slight timing variation
+  wait 0.02 + rand(0.06)
+  play G4 0.8 + rand(0.2)
+  wait 0.03 + rand(0.05)
+  play A4 1.2 + rand(0.25)
+  wait 0.04 + rand(0.07)
+  play B4 1.5 + rand(0.3)
+  wait 0.5 + rand(0.1)
+
+  // Phrase 2 — falling, releasing tension
+  @vel 45 + cos($i * 0.4) * 15
+  play A4 0.9 + rand(0.2)
+  wait 0.03 + rand(0.05)
+  play G4 1.1 + rand(0.2)
+  wait 0.02 + rand(0.06)
+  play E4 2.0 + rand(0.4)
+  wait 1.0 + rand(0.2)
+end
+
+// -------------------------------------------------------------------
+// RHYTHM SECTION — #MACHINE
+// Drums and bass need machine precision for groove lock.
+// Even in a hybrid piece, the foundation must be solid.
+// -------------------------------------------------------------------
+#MACHINE
+section "Rhythm — Machine Foundation"
+
+@bpm 100
+
+// Kick — perfectly placed on quarter notes
+for $i 0 to 31
+  play C2 0.1
+  @vel 85 + (($i % 4 == 0) ? 15 : 0)   // Accent beat 1
+  wait 0.25
+end
+
+// Hi-hat — eighth notes, perfectly even
+for $i 0 to 63
+  play E5 0.05
+  @vel 55 + (($i % 2 == 0) ? 8 : 0)
+  wait 0.125
+end
+
+// Bass — syncopated but perfectly locked
+for $i 0 to 15
+  play C2 0.5
+  @vel 70
+  wait 0.5
+  play G1 0.25
+  @vel 68
+  wait 0.25
+  play A1 0.25
+  @vel 72
+  wait 0.25
+  play F1 0.5
+  @vel 66
+  wait 0.5
+  play G1 0.5
+  @vel 70
+  wait 0.5
+end
+
+// -------------------------------------------------------------------
+// UPPER LAYER — #HUMAN
+// Expressive strings with natural portamento and vibrato
+// Human mode gives the upper register its singing quality
+// -------------------------------------------------------------------
+#HUMAN
+section "Strings — Human Warmth"
+
+@humanize 0.80
+
+for $i 0 to 7
+  play G4 2.0
+  @vel 45 + rand(15)
+  @vibrato 0.3                          // Natural vibrato depth
+  wait 0.5 + rand(0.1)
+
+  play B4 2.5
+  @vel 48 + rand(12)
+  @vibrato 0.4
+  wait 0.6 + rand(0.15)
+
+  play D5 2.0
+  @vel 50 + rand(18)
+  @vibrato 0.35
+  wait 0.5 + rand(0.1)
+
+  play G5 3.0
+  @vel 52 + rand(15)
+  @vibrato 0.5
+  wait 1.0 + rand(0.2)
+end
+
+// -------------------------------------------------------------------
+// RESOLUTION — HYBRID COLLABORATION
+// Both modes together: machine holds the pedal point,
+// human plays the final expressive phrase
+// -------------------------------------------------------------------
+section "Resolution — Human + Machine"
+
+#MACHINE
+play C2 8.0                             // Machine holds steady drone
+@vel 30
+
+#HUMAN
+@humanize 0.90                          // Very expressive final phrase
+play C4 1.5
+@vel 40
+wait 0.1
+play E4 1.0
+@vel 35
+wait 0.08
+play G4 2.0
+@vel 38
+wait 0.12
+play A4 1.5
+@vel 32
+wait 0.15
+play G4 3.0
+@vel 28
+wait 2.0
+
+// Silence — the hybrid fades
+wait 4.0
+
+// End of hybrid.eic — machine and human, unified

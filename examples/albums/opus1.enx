@@ -1,0 +1,98 @@
+/* HELLFORGE v1.0.0.0 ALPHA — CORE-EXPANSION: REGAS */
+// ====================================================================
+// opus1.enx  —  "First Light"
+// VERSION STATUS: v4  CURRENT STANDARD  |  E LANGUAGE ALPHA
+// .enx album file — contains 5 tracks, composer metadata,
+// cover art reference, and track ordering.
+//
+// .enx is the HELLFORGE album container format. It defines:
+// - Album metadata (title, composer, year, genre)
+// - Cover art reference (path to image file)
+// - Track listing with order, titles, and source files
+// - Global playback directives
+//
+// Run from project root: py ep.py compile examples/albums/opus1.enx
+// ====================================================================
+
+// -------------------------------------------------------------------
+// ALBUM METADATA
+// -------------------------------------------------------------------
+album "First Light"
+composer "HELLFORGE DSL"
+year 2026
+genre "Contemporary Classical / Ambient"
+description "A debut album exploring light, shadow, and emergence through algorithmic composition"
+
+// -------------------------------------------------------------------
+// COVER ART — referenced as a relative path; rendered at compile time
+// Supported formats: .png, .jpg, .bmp (up to 4096x4096)
+// -------------------------------------------------------------------
+cover_art "assets/first_light_cover.png"
+
+// -------------------------------------------------------------------
+// TRACK LISTING — ordered, with metadata per track
+// Format: track <NUMBER> "<TITLE>" source "<FILEPATH>"
+// -------------------------------------------------------------------
+
+// Track 1: Prelude — a gentle opening in C major
+// Duration: ~3:00 | @bpm 80 | 4/4
+track 1 "Prelude in C" source "tracks/01_prelude.e"
+
+// Track 2: Waltz — a lilting 3/4 dance in G major
+// Duration: ~3:30 | @bpm 120 | 3/4
+track 2 "Waltz of the Fireflies" source "tracks/02_waltz.e"
+
+// Track 3: Nocturne — a dark, introspective piece in E minor
+// Duration: ~4:15 | @bpm 60 | 4/4
+track 3 "Nocturne in E Minor" source "tracks/03_nocturne.e"
+
+// Track 4: Intermezzo — a light, playful scherzo in D major
+// Duration: ~2:45 | @bpm 140 | 2/4
+track 4 "Intermezzo Scherzando" source "tracks/04_intermezzo.e"
+
+// Track 5: Finale — a grand conclusion in C major
+// Duration: ~5:00 | @bpm 100 | 4/4
+track 5 "Emergence" source "tracks/05_finale.e"
+
+// -------------------------------------------------------------------
+// ALBUM PLAYBACK GLOBALS
+// -------------------------------------------------------------------
+@album_playback
+  // Crossfade between tracks (seconds)
+  crossfade 1.5
+
+  // Gap between tracks (seconds) — overridden by crossfade if > 0
+  gap 0.0
+
+  // Normalize volume across all tracks (-12dB headroom)
+  normalize -12.0
+
+  // Output format
+  format "wav"                         // Can be "wav", "mp3", "flac", "ogg"
+  bit_depth 24
+  sample_rate 48000
+end
+
+// -------------------------------------------------------------------
+// COMPILE DIRECTIVES
+// -------------------------------------------------------------------
+@compile
+  // Output file name (without extension — format is appended)
+  output "opus1_first_light"
+
+  // Embed metadata into audio file
+  embed_metadata true
+
+  // Generate a single concatenated album file, plus individual tracks
+  export_individual true
+  export_combined true
+end
+
+// -------------------------------------------------------------------
+// .enx syntax notes:
+// - track numbers must be sequential (1, 2, 3...)
+// - source paths are relative to the .enx file's directory
+// - tracks are compiled individually first, then assembled
+// - cover_art is optional but recommended
+// - crossfade applies between consecutive tracks
+// -------------------------------------------------------------------

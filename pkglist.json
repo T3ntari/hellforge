@@ -1,0 +1,136 @@
+{
+  "version": "1.0.0.0",
+  "updated": "2026-08-04T16:30:07",
+  "url": "https://www.oshonet.in/pkglist.json",
+  "mods": {},
+  "plugins": {
+    "talisman": {
+      "version": "1.0.0",
+      "description": "Audio culling & occlusion engine. Psychoacoustic masking \u00e2\u20ac\u201d removes inaudible notes on compile. Run 'talisman on|off'.",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,culling,occlusion,masking,privacy",
+      "url": "file://plugins/talisman/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "2906ef45b2659ec338ceea0cc56231e697b7775f7f8b3f8a39a80e747f33082c",
+      "verification_domain": "www.oshonet.in"
+    },
+    "fentclient": {
+      "version": "1.0.0",
+      "description": "Performance accelerator + bug fixes for eshell and player. PyPy JIT, FluidSynth, arpeggiator, music theory, DSP, MIDI recording, compilation cache, playback culling, @fent:* syntax directives, file watcher, batch processing, AI composer, theme system, boot progress bar.",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,performance,acceleration,bugfix,soundfont",
+      "url": "file://plugins/fentclient/__init__.py",
+      "update_url": "",
+      "dependencies": [
+        "pygame"
+      ],
+      "verification": "171dc9daa2c51212ee3d9746e19c3e7666747a8a6bfdbd2ccef513b4ad934459",
+      "verification_domain": "www.oshonet.in"
+    },
+    "lure": {
+      "version": "3.0.0",
+      "description": "Lua Runtime Accelerator for E. LuaJIT-powered hot-path parsing, 3-10x speedup on compilation. Batch line parsing, scale quantization, MIDI tick calculation. GIL-free parallel execution via lupa.",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,luajit,jit,compiler,acceleration,async",
+      "url": "file://plugins/lure/__init__.py",
+      "update_url": "",
+      "dependencies": [
+        "lupa"
+      ],
+      "verification": "456862c321e9d4de363c54d8fbdc27a073cba2b2af1432f3891f5b854458d00e",
+      "verification_domain": "www.oshonet.in"
+    },
+    "portbaby": {
+      "version": "1.0.0",
+      "description": "Syntax version porting for E Language. Convert between v1 machine, v1 human, v2 semantic, v3 shorthand, and v4 polyrhythm/generative syntax. Loss percentage reporting. Multi-file project generation with index.ei + parts/ + project.enx.",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,conversion,syntax,porting,v1,v2,v3,v4",
+      "url": "file://plugins/portbaby/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "8b127ffadd985d56c1431936111d3851f7bbf596ae79832decf982ea578f14b2",
+      "verification_domain": "www.oshonet.in"
+    },
+    "eaudio": {
+      "version": "1.0.0",
+      "description": "E Language plugin: eaudio",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,spatial,dsp,effects,3d",
+      "url": "file://plugins/eaudio/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "6706c5503bb03a76d3ef02f9b519d48d21b80287fa1a168b7ceaf20c831541ba",
+      "verification_domain": "www.oshonet.in"
+    },
+    "openapi": {
+      "version": "1.0.0",
+      "description": "E Language plugin: openapi",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,opengl,graphics,rendering,api",
+      "url": "file://plugins/openapi/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "ada8faf6e7ba84e8bde2228eb0a39071ef202648498c266c49d6cba05ebabd5b",
+      "verification_domain": "www.oshonet.in"
+    },
+    "radical": {
+      "version": "1.0.0",
+      "description": "E Language plugin: radical",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,gpu,compute,shader,glsl,math",
+      "url": "file://plugins/radical/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "7b367616baddcc96d715550c199dd86ef3fdb3770ac2049a43df394b1f5fc200",
+      "verification_domain": "www.oshonet.in"
+    },
+    "tensorsharp": {
+      "version": "1.0.0",
+      "description": "E Language plugin: tensorsharp",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,cuda,tensorcore,nvidia,matmul",
+      "url": "file://plugins/tensorsharp/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "2bb28c598c82fb4685b8bc759a7239abf8f0f5b25e5a08ee5a7f920bf13e03fa",
+      "verification_domain": "www.oshonet.in"
+    },
+    "vulkanizer": {
+      "version": "1.0.0",
+      "description": "E Language plugin: vulkanizer",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,vulkan,compute,raytracing,upscaling",
+      "url": "file://plugins/vulkanizer/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "82a7a0823b3d77ac05c49780fba18c9c1d108d414ed4ef7a138bb0f50b045dc8",
+      "verification_domain": "www.oshonet.in"
+    },
+    "launcher": {
+      "version": "1.0.0.0",
+      "description": "New window launching & process management \u2014 open, player, shell, log, ps, kill",
+      "author": "REGAS",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,launcher,window,process,detach",
+      "url": "file://plugins/launcher/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "badf9dd6c2aeb475a991a0eca847376e6bc05303c0816a4078a17a6557368c35",
+      "verification_domain": "www.oshonet.in"
+    },
+    "humanize": {
+      "version": "1.0.0",
+      "description": "MoE humanization - de-robots MIDI with micro-timing + velocity expression (@humanize:nn)",
+      "author": "REGAS",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,humanize,moe,ml,expression,timing",
+      "url": "file://plugins/humanize/__init__.py",
+      "update_url": "",
+      "dependencies": [],
+      "verification": "d92ba9a9b0cd070cf3dbcef0983e075abb6c938bd9b95e2842cc71be2746de5a",
+      "verification_domain": "www.oshonet.in"
+    }
+  },
+  "_description": "Default package list for E Language by Tentari. All plugins backed up in embedded_plugins/*.json and integrity-verified via SHA-256 verification codes. Remote verification: www.oshonet.in",
+  "ecosystem": "HELLFORGE",
+  "core_expansion": "REGAS"
+}

@@ -1,0 +1,49 @@
+/* HELLFORGE v1.0.0.0 ALPHA — CORE-EXPANSION: REGAS */
+// .eic toggleable mode — switch between #MACHINE and #HUMAN
+   File:       toggle_math.eic
+   Version:    v4 (toggleable mode) — .eic extension
+   Status:     CURRENT STANDARD
+   
+   Demonstrates using machine mode for precise algorithmic timing
+   and human mode for readable chord names. Each mode is chosen
+   for its strengths in different sections of the composition.
+
+/* @bpm 140 — Faster tempo for energetic feel. */
+@bpm 140
+
+/* ==================== #MACHINE: ALGORITHMIC SECTION ====================
+   Machine mode is ideal for loops with mathematical note generation.
+   The T/N/D/V tokens are compact and expression-friendly. */
+#MACHINE
+
+/* Algorithmic arpeggio: loop generating precise timing offsets. */
+for $i = 0 to 15 {
+    T{$i * 60} N{60 + $i % 8 * 2} D40 V{70 + $i * 3}
+}
+
+/* ==================== #HUMAN: CHORD SECTION ====================
+   Human mode makes chord progressions readable and maintainable.
+   "play chord(C, major)" is far clearer than listing individual notes. */
+#HUMAN
+
+play chord(C, major)  @dur:h @vel:mf
+play chord(A, minor)  @dur:h @vel:mf
+play chord(F, major)  @dur:h @vel:mf
+play chord(G, dom7)   @dur:w @vel:ff
+
+/* ==================== #MACHINE: PRECISION OUTRO ====================
+   Switch back to machine mode for exact rhythmic control of the ending. */
+#MACHINE
+
+T0 N60 D100 V90
+T0 N60 D100 V70
+T0 N60 D100 V50
+T0 N60 D400 V127   /* Final note, held, max velocity */
+
+/* This composition uses each mode's natural advantages:
+   - Machine: algorithmic patterns, precise durations, expression math
+   - Human: chord symbols, note names, dynamic qualifiers
+
+   The result is both mathematically precise and musically readable. */
+
+// Run from project root: py ep.py compile samples/eic/toggle_math.eic

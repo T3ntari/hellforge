@@ -1,0 +1,48 @@
+/* HELLFORGE v1.0.0.0 ALPHA — CORE-EXPANSION: REGAS */
+// .ei project index — multi-file composition
+   File:       simple_project.ei
+   Version:    v4 (multi-file project) — .ei extension
+   Status:     CURRENT STANDARD
+   
+   .ei files are multi-file project roots that use the **inherit**
+   keyword to compose a larger piece from multiple part files.
+   This is HELLFORGE's module/import system for organized songwriting.
+   
+   The **inherit** keyword imports all content from another .e file
+   as if it were written inline. Inheritance is transitive:
+   inherited files can themselves inherit other files.
+
+/* @title "Simple Project" — Project metadata (optional but recommended).
+   The title is used by the compiler for output naming and logging. */
+@title "Simple Project"
+
+/* @bpm 120 — Global tempo for the entire project.
+   Individual parts can override with their own @bpm if needed. */
+@bpm 120
+
+/* **inherit parts/intro.e** — Import the intro melody.
+   The compiler reads "parts/intro.e", parses all its content,
+   and inserts it at this point in the project timeline.
+   
+   Paths are relative to the .ei file's directory.
+   The inherited file can contain any valid E syntax,
+   including loops, expressions, and even further inherit directives. */
+**inherit parts/intro.e**
+
+/* **inherit parts/verse.e** — Import the verse melody.
+   This plays after the intro content completes.
+   Multiple inherit lines sequence parts one after another. */
+**inherit parts/verse.e**
+
+/* After both parts are inherited, play a final resolution.
+   This code runs after all inherited content. */
+play chord(C, major) @dur:w @vel:ff
+
+/* Inheritance rules:
+   - A file can only be inherited once (no circular inheritance).
+   - Inherited files can themselves use **inherit** (up to 5 levels deep).
+   - Variables ($var) are global across all inherited files.
+   - Channel assignments persist across files.
+   - If no @bpm is set in the .ei, the first part's @bpm is used. */
+
+// Run from project root: py ep.py compile samples/ei/simple_project.ei

@@ -1,0 +1,183 @@
+/* HELLFORGE v1.0.0.0 ALPHA — CORE-EXPANSION: REGAS */
+// ====================================================================
+// duality.eic  —  "Machine / Human"
+// VERSION STATUS: v4  CURRENT STANDARD  |  E LANGUAGE ALPHA
+// .eic toggleable file — starts in #MACHINE for the intro, toggles
+// to #HUMAN for the verse, back to #MACHINE for the bridge.
+//
+// .eic (E Interpretive Container) uses #MACHINE and #HUMAN modes
+// to control whether the compiler outputs strictly deterministic
+// machine-perfect code (#MACHINE) or humanized, slightly imperfect
+// performance data (#HUMAN). Toggling between them mid-composition
+// creates expressive contrast.
+//
+// Run from project root: py ep.py compile examples/eic/duality.eic
+// ====================================================================
+
+// -------------------------------------------------------------------
+// #MACHINE MODE — INTRO
+// Perfect, metronomic, quantized. Like a computer waking up.
+// Every note is exactly on the grid, velocities uniform.
+// -------------------------------------------------------------------
+#MACHINE
+section "Intro — Machine"
+
+@bpm 90
+@sig 4/4
+
+// Machine-perfect arpeggio — identical velocities, exact timing
+for $i 0 to 15
+  play C3 0.25
+  @vel 64                               // Every note exactly 64
+  play E3 0.25
+  @vel 64
+  play G3 0.25
+  @vel 64
+  play C4 0.25
+  @vel 64
+  play E4 0.25
+  @vel 64
+  play G4 0.25
+  @vel 64
+  play C5 0.25
+  @vel 64
+  play G4 0.25
+  @vel 64
+end
+
+// Machine-perfect repeating pattern — identical every bar
+for $i 0 to 7
+  play C2 0.5
+  @vel 80
+  wait 0.5
+  play G2 0.5
+  @vel 80
+  wait 0.5
+  play E2 0.5
+  @vel 80
+  wait 0.5
+  play G2 0.5
+  @vel 80
+  wait 0.5
+end
+
+// -------------------------------------------------------------------
+// TOGGLE → #HUMAN — VERSE
+// Imperfect, expressive, "human" timing and dynamics.
+// Velocity and timing are slightly randomized within ranges.
+// -------------------------------------------------------------------
+#HUMAN
+section "Verse — Human"
+
+@humanize 0.85                          // 85% humanization factor
+                                        // (0=robotic, 1=very loose)
+// Humanized melody — note lengths and velocities vary slightly
+// creating the feel of a living performer
+for $i 0 to 15
+  play C4 0.9 + rand(0.2)              // Slightly varied length
+  @vel 60 + rand(15)                    // Velocity varies 60–75
+  wait 0.05 + rand(0.08)               // Subtle timing drift
+
+  play E4 0.85 + rand(0.25)
+  @vel 58 + rand(18)
+  wait 0.04 + rand(0.1)
+
+  play G4 1.0 + rand(0.3)
+  @vel 62 + rand(12)
+  wait 0.06 + rand(0.08)
+
+  play C5 1.5 + rand(0.4)
+  @vel 65 + rand(20)
+  wait 0.5 + rand(0.15)
+end
+
+// Humanized chord — notes don't all hit at exactly the same time
+play C3 1.0
+@vel 55
+wait 0.02                               // Slight stagger
+play E3 1.0
+@vel 52
+wait 0.015
+play G3 1.0
+@vel 58
+wait 0.03
+play C4 1.0
+@vel 50
+wait 1.5
+
+// -------------------------------------------------------------------
+// TOGGLE → #MACHINE — BRIDGE
+// Back to machine precision: cold, calculating, relentless.
+// Contrast highlights the emotional warmth of the human section.
+// -------------------------------------------------------------------
+#MACHINE
+section "Bridge — Machine Returns"
+
+@bpm 110                                // Faster, mechanical urgency
+
+// Algorithmic pattern at maximum precision — perfect subdivisions
+for $i 0 to 31
+  play C2 0.125                         // 32nd note kick pattern
+  @vel 96
+  wait 0.125
+  play Eb2 0.125
+  @vel 96
+  wait 0.125
+  play Gb2 0.125
+  @vel 96
+  wait 0.125
+  play A2 0.125
+  @vel 96
+  wait 0.125
+end
+
+// Machine-precise octave jumps — impossible for human players
+for $i 0 to 7
+  play C1 0.1
+  @vel 100
+  wait 0.05
+  play C6 0.1
+  @vel 100
+  wait 0.05
+  play C1 0.1
+  @vel 100
+  wait 0.05
+  play C6 0.1
+  @vel 100
+  wait 0.05
+end
+
+// -------------------------------------------------------------------
+// FINAL TOGGLE → #HUMAN — OUTRO
+// End with humanity: a single, imperfect, resonant chord
+// -------------------------------------------------------------------
+#HUMAN
+section "Outro — Human Resolution"
+
+@bpm 60                                // Ritardando
+@humanize 0.95                         // Very loose, expressive
+
+// Staggered chord — like a pianist gently pressing keys
+play C2 3.0
+@vel 40
+wait 0.1
+play E3 3.0
+@vel 35
+wait 0.08
+play G3 3.0
+@vel 38
+wait 0.12
+play C4 3.0
+@vel 33
+wait 0.15
+play E4 3.0
+@vel 30
+wait 3.0
+
+// Final gentle note — a little late, a little soft
+wait 0.3
+play C4 4.0
+@vel 25
+wait 4.0
+
+// End of duality.eic — machine and human in dialogue

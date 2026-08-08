@@ -1,0 +1,27 @@
+// E Index — Minuet in D
+project "Minuet in D"
+composer "AI Composer"
+tempo 110
+description "A classical-style minuet with trio, using multi-file project structure"
+
+include "parts/theme_a.e" as theme_a
+include "parts/theme_b.e" as theme_b
+include "parts/trio.e" as trio
+include "parts/da_capo.e" as da_capo
+include_dir "parts/" as parts
+
+section "Exposition" {
+    play theme_a
+    play theme_b after 500ms
+}
+
+section "Trio" {
+    tempo 90
+    play trio
+}
+
+section "Da Capo" {
+    tempo 110
+    play da_capo
+    play theme_a
+}
