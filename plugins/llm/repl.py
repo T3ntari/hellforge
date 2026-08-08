@@ -13,7 +13,7 @@ imports with graceful fallback when a module is not installed yet.
 Injected callback contract:
 - get_request(messages) -> (text, err)      model call; text may be a JSON plan
 - apply_plan_fn(plan, project_dir, confirm_write=True) -> (applied, skipped, msgs)
-- on_turn(event) -> dict                    fired after every processed line
+- on_turn(history, event)                 fired after every processed line (history: list, event: dict)
 """
 
 import sys
@@ -42,8 +42,9 @@ SLASH_HELP = {
     "/config": ("[key=value]", "show or set copilot config (llm_*)"),
     "/re-setup": ("", "re-run the full setup wizard"),
     "/guard": ("", "prompt-guard status"),
-    "/exit": ("", "leave the REPL"),
-    "/quit": ("", "leave the REPL"),
+    "/exit": ("", "leave the REPL (required to end the session)"),
+    "/bye": ("", "leave the REPL (alias for /exit)"),
+    "/quit": ("", "leave the REPL (alias for /exit)"),
     "/$<path>": ("", "upload a file (image / text / code; binary noted)"),
 }
 
@@ -380,7 +381,7 @@ def _dispatch(api, state, history, cmd, rest, get_request, apply_plan_fn):
         _cmd_resetup(api, state, rest)
     elif cmd == "/guard":
         _cmd_guard(api, state, rest)
-    elif cmd in ("/exit", "/quit"):
+    elif cmd in ("/exit", "/quit", "/bye"):
         return False
     else:
         print(ui.warn_line(f"unknown command {cmd} — try /help"))
@@ -549,7 +550,7 @@ def _turn(api, state, history, request, context_builder, get_request, apply_plan
 
 def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
              system_prompt=None, context_builder=None, pre_request=None,
-             uploads=None, post_turn=None):
+             uploads=None, post_turn=None, history=None):
     """Claude-Code-style REPL loop.
 
     Prompts with a mode badge, dispatches slash commands, runs one model
@@ -570,7 +571,14 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
         context_builder = lambda _request: ""  # noqa: E731
     sys_prompt = system_prompt if system_prompt is not None \
         else _project_instructions(project_dir)
-    history = ([{"role": "system", "content": sys_prompt}] if sys_prompt else [])
+    if history:
+        # Resumed session: ensure the system prompt is in place and up to date
+        if sys_prompt and (not history or history[0].get("role") != "system"):
+            history = [{"role": "system", "content": sys_prompt}] + history
+        elif sys_prompt and history and history[0].get("role") == "system":
+            history[0]["content"] = sys_prompt
+    else:
+        history = ([{"role": "system", "content": sys_prompt}] if sys_prompt else [])
     if _interactive():  # readline: arrow-key history comes free with input()
         try:
             import readline  # noqa: F401
@@ -583,7 +591,7 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
     def _notify(event):
         if on_turn:
             try:
-                on_turn(event)
+                on_turn(history, event)
             except Exception:
                 pass
 
@@ -602,7 +610,9 @@ def run_repl(api, state, get_request, apply_plan_fn, on_turn=None,
             if not line:
                 continue
             if line.strip().lower() in ("quit", "exit"):
-                break
+                # True sessions: leaving requires /exit or /bye (never a bare word)
+                print(ui.warn_line("use /exit or /bye to leave the session"))
+                continue
             # /$path upload syntax
             try:
                 from plugins.llm import upload as up_mod

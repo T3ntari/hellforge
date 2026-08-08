@@ -161,3 +161,58 @@ def format_stat(path, added, removed):
         plus = f"+{added}"
         minus = f"-{removed}"
     return f"{path} {plus} {minus}"
+
+
+# ── Persistence: snapshots survive restarts ──
+
+def save_stack(project_dir, path=None):
+    """Persist the undo stack to .fent_cache/undo_stack.json (bytes → b64)."""
+    import base64
+    import json as _json
+    from pathlib import Path
+    target = path or (Path(project_dir) / ".fent_cache" / "undo_stack.json")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        entries = []
+        for snap in _stack:
+            files = {}
+            for rel, data in snap.get("files", {}).items():
+                if data is ABSENT:
+                    files[rel] = {"absent": True}
+                elif isinstance(data, (bytes, bytearray)):
+                    files[rel] = {"b64": base64.b64encode(bytes(data)).decode()}
+                else:
+                    files[rel] = {"text": str(data)}
+            entries.append({"ts": snap.get("ts", 0), "done": snap.get("done", True),
+                            "files": files})
+        target.write_text(_json.dumps(entries), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def load_stack(project_dir, path=None):
+    """Restore the undo stack from disk. Returns the number of snapshots."""
+    import base64
+    import json as _json
+    from pathlib import Path
+    target = path or (Path(project_dir) / ".fent_cache" / "undo_stack.json")
+    if not target.exists():
+        return 0
+    try:
+        entries = _json.loads(target.read_text(encoding="utf-8"))
+        for entry in entries:
+            files = {}
+            for rel, blob in (entry.get("files") or {}).items():
+                if blob.get("absent"):
+                    files[rel] = ABSENT
+                elif "b64" in blob:
+                    files[rel] = base64.b64decode(blob["b64"])
+                else:
+                    files[rel] = blob.get("text", "")
+            _stack.append({"ts": entry.get("ts", 0),
+                           "done": entry.get("done", True),
+                           "files": files})
+        return len(entries)
+    except Exception:
+        return 0

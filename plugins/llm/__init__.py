@@ -962,6 +962,52 @@ def _agent_cc(state, api, rest):
 
     turn_counts = {"reads": 0, "edits": 0, "commands": 0}
 
+    # ── True persistence: auto-resume the latest session + saved state ──
+    uploads = []
+    resume_history = None
+    resume_id = None
+    try:
+        from . import session as sess
+        sessions = sess.list_sessions(project_dir)
+        if sessions:
+            sid = sessions[0]["id"]
+            want_resume = True
+            if sys.stdin.isatty():
+                try:
+                    ans = input(f"  Resume last session {sid} "
+                                f"({sessions[0].get('turns', 0)} turns)? [Y/n] ").strip().lower()
+                    want_resume = ans != "n"
+                except EOFError:
+                    pass
+            if want_resume:
+                data = sess.load_session(project_dir, sid)
+                if data:
+                    resume_history = data.get("history") or []
+                    resume_id = sid
+                    meta = data.get("meta") or {}
+                    for up in (meta.get("uploads") or [])[:5]:
+                        try:
+                            from . import upload as up_mod
+                            uploads.append(up_mod.load_upload(up))
+                        except Exception:
+                            pass
+                    if meta.get("mode"):
+                        state["mode"] = meta["mode"]
+                    if meta.get("model"):
+                        state["model"] = meta["model"]
+                    print(f"  {ui.chip('resumed', 'done')} session {sid} "
+                          f"({len(resume_history)} messages, "
+                          f"{len(uploads)} upload(s))")
+        try:
+            from . import undo as undo_mod
+            n = undo_mod.load_stack(project_dir)
+            if n:
+                print(f"  {ui.dim(f'undo history restored: {n} snapshot(s)')}")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     def _get_request(messages):
         def _on_thinking(blocks, dt):
             pass
@@ -977,10 +1023,22 @@ def _agent_cc(state, api, rest):
                 turn_counts["edits"] += 1
         return res
 
-    def _on_turn(history, meta):
+    def _on_turn(history, event=None):
         try:
             from . import session as sess
-            sess.save_session(project_dir, history, meta)
+            meta = {}
+            meta["uploads"] = [u.get("path") for u in uploads]
+            meta["mode"] = state.get("mode", "ask")
+            sid = sess.save_session(project_dir, history, meta)
+            try:
+                from . import undo as undo_mod
+                undo_mod.save_stack(project_dir)
+            except Exception:
+                pass
+            try:
+                api.set_config("llm_mode", state.get("mode", "ask"))
+            except Exception:
+                pass
             if any(turn_counts.values()):
                 print("  " + ui.explored(turn_counts["reads"],
                                          turn_counts["edits"],
@@ -1116,6 +1174,7 @@ def _agent_cc(state, api, rest):
         pre_request=_pre_request,
         uploads=uploads,
         post_turn=_post_turn,
+        history=resume_history,
     )
     if final_mode:
         api.set_config("llm_mode", final_mode)
@@ -1152,9 +1211,9 @@ def _resume_cmd(api, state, rest):
         return _request(state, messages)
     def _apply_plan(plan, pd, confirm_write=True):
         return llm_agent.interactive_apply(plan, pd, confirm_write=confirm_write)
-    def _on_turn(h, meta):
+    def _on_turn(h, event=None):
         try:
-            sess.save_session(project_dir, h, meta)
+            sess.save_session(project_dir, h, {"mode": state.get("mode", "ask")})
         except Exception:
             pass
     repl_mod.run_repl(api, state, _get_request, _apply_plan,
