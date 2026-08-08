@@ -21,6 +21,7 @@ DEFAULT_LL_STATE = {
     'master_vol': None, 'gain_db': None,
     'mem': None,
     'key': None, 'scale': None, 'gc_strategy': 'off',
+    'octave': 0, 'sustain_state': 0, 'articulation': None,
 }
 
 # Key signature → semitone map for roman numeral chords
@@ -102,6 +103,9 @@ def parse_directives(text, state=None):
         r'@scale\s+(\w+(?:_(?:Major|minor))?)': lambda m: state.update({'scale': m.group(1)}),
         r'@scale\s+off': lambda m: state.update({'scale': None}),
         r'@key\s+(\w[\w#]*)': lambda m: state.update({'key': parse_key_directive(f"@key {m.group(1)}")}),
+        r'@oct\s*:\s*([+-]?\d+)': lambda m: state.update({'octave': int(m.group(1))}),
+        r'@pedal\s*:\s*(\d+)': lambda m: state.update({'sustain_state': max(0, min(127, int(m.group(1))))}),
+        r'@sustain\s*:\s*(\d+)': lambda m: state.update({'sustain_state': max(0, min(127, int(m.group(1))))}),
     }
 
     for line in text.split('\n'):

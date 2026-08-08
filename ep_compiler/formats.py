@@ -95,24 +95,35 @@ def export_midi(events, bpm, output_path):
             channels_used.add(ch)
         st = int(e["timestamp"] * TICKS_PER_BEAT * bpm / 60000)
         et = int((e["timestamp"] + e["duration"]) * TICKS_PER_BEAT * bpm / 60000)
-        vel = max(1, min(127, round(e["velocity"])))
         ch_actual = ch if ch is not None else 0
-        midi_events.append((st, "note_on", e["midi"], vel, ch_actual))
-        midi_events.append((et, "note_off", e["midi"], 0, ch_actual))
+        is_pedal = (e.get("pedal") is True
+                    or (e.get("sustain") is not None and e.get("midi", 0) == 0))
+        if e.get("sustain") is not None:
+            sustain_val = max(0, min(127, int(e["sustain"])))
+            midi_events.append((st, "control_change", 64, sustain_val, ch_actual))
+        if not is_pedal:
+            vel = max(1, min(127, round(e["velocity"])))
+            midi_events.append((st, "note_on", e["midi"], vel, ch_actual))
+            midi_events.append((et, "note_off", e["midi"], 0, ch_actual))
 
     # Program change for each used channel (instrument 0 = Acoustic Grand Piano)
     for ch in sorted(channels_used):
         track.append(mido.Message("program_change", program=0, channel=ch, time=0))
 
-    midi_events.sort(key=lambda x: (x[0], 0 if x[1] == "note_on" else 1))
+    midi_events.sort(key=lambda x: (x[0], 0 if x[1] == "note_on" else (1 if x[1] == "control_change" else 2)))
 
     cur = 0
-    for tick, etype, note, vel, ch in midi_events:
+    for tick, etype, *args in midi_events:
         delta = max(0, tick - cur)
-        track.append(mido.Message(
-            "note_on" if etype == "note_on" else "note_off",
-            note=note, velocity=vel, channel=ch, time=delta,
-        ))
+        if etype == "control_change":
+            control, value, ch = args
+            track.append(mido.Message("control_change", control=control, value=value, channel=ch, time=delta))
+        elif etype == "note_on":
+            note, vel, ch = args
+            track.append(mido.Message("note_on", note=note, velocity=vel, channel=ch, time=delta))
+        else:
+            note, vel, ch = args
+            track.append(mido.Message("note_off", note=note, velocity=vel, channel=ch, time=delta))
         cur = tick
 
     remaining = max(0, midi_events[-1][0] + TICKS_PER_BEAT * 2 - cur) if midi_events else 480

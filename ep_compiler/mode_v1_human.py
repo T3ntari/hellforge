@@ -86,8 +86,27 @@ def parse_human_props(prop_str, bpm, problems=None, line_no=0, line=""):
                 else:
                     out['timestamp'] = int(val)
             except (ValueError, IndexError): pass
-        elif key in ('note', 'sustain'):
+        elif key in ('note',):
             out['note'] = val
+        elif key == 'sustain':
+            try:
+                out['sustain'] = max(0, min(127, int(val)))
+            except ValueError:
+                out['sustain'] = val
+        elif key == 'pedal':
+            try:
+                out['sustain'] = max(0, min(127, int(val)))
+            except ValueError:
+                pass
+        elif key == 'art':
+            out['art'] = val.lower()
+        elif key == 'oct':
+            try:
+                out['octave'] = int(val)
+            except ValueError:
+                pass
+        elif key == 'tie':
+            out['tie'] = val.lower() not in ('0', 'false', 'off')
         elif key in ('vol', 'volume'):
             try: out['master_vol'] = float(val)
             except ValueError: pass
@@ -103,6 +122,9 @@ def parse_human_props(prop_str, bpm, problems=None, line_no=0, line=""):
                 out['strum'] = {"time": t}
             except ValueError:
                 pass
+    # Flag-style props without a value: @tie
+    if re.search(r'@tie\b', prop_str or ''):
+        out['tie'] = True
     return out
 
 
@@ -148,6 +170,17 @@ def parse_human_line(line, cursor, bpm, ll_state):
             "channel": prop_dict.get("channel"),
             "track": prop_dict.get("track"),
         }
+        if prop_dict.get("sustain") is not None:
+            ev["sustain"] = prop_dict["sustain"]
+        if prop_dict.get("art"):
+            ev["art"] = prop_dict["art"]
+        if prop_dict.get("tie"):
+            ev["tie"] = True
+        if prop_dict.get("octave") is not None:
+            ev["octave"] = prop_dict["octave"]
+        if ev.get("art"):
+            from .mode_v5_performance import apply_articulation
+            apply_articulation(ev, ev["art"])
         new_cursor = ts + int(dur_ms)
         return [ev], max(cursor, new_cursor)
 
@@ -163,14 +196,27 @@ def parse_human_line(line, cursor, bpm, ll_state):
     events = []
     for i, interval in enumerate(intervals):
         offset = i * strum["time"] if strum else 0
-        events.append({
-            "timestamp": ts + offset, "midi": root_midi + interval,
+        chord_midi = root_midi + interval
+        ev = {
+            "timestamp": ts + offset, "midi": chord_midi,
             "duration": max(1, int(dur_ms) - offset), "velocity": vel,
             "pan": prop_dict.get("pan", 0.0), "bend": prop_dict.get("bend", 0),
             "master_vol": prop_dict.get("master_vol", ll_state.get("master_vol")),
             "channel": prop_dict.get("channel"),
             "track": prop_dict.get("track"),
-        })
+        }
+        if prop_dict.get("sustain") is not None:
+            ev["sustain"] = prop_dict["sustain"]
+        if prop_dict.get("art"):
+            ev["art"] = prop_dict["art"]
+        if prop_dict.get("tie"):
+            ev["tie"] = True
+        if prop_dict.get("octave") is not None:
+            ev["octave"] = prop_dict["octave"]
+        if ev.get("art"):
+            from .mode_v5_performance import apply_articulation
+            apply_articulation(ev, ev["art"])
+        events.append(ev)
     new_cursor = ts + int(dur_ms)
     return events, max(cursor, new_cursor)
 

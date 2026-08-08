@@ -345,7 +345,39 @@ def _render_numpy(midi_path, output_wav, sr=44100, bit=16, gain=0.5, params=None
 
     audio = np.zeros(n_samples, dtype=np.float64)
 
+    def _render_note(key, st, vel, end_t):
+        """Render one note from start tick st to end tick end_t into audio."""
+        note = key[0]
+        dt = end_t - st
+        if dt <= 0:
+            return
+        freq = 440.0 * (2.0 ** ((note - 69) / 12.0))
+        start_s = st * sec_per_tick
+        dur_s = dt * sec_per_tick
+        start_n = int(start_s * sr)
+        dur_n = max(1, int(dur_s * sr))
+        if start_n + dur_n > n_samples:
+            dur_n = n_samples - start_n
+        if dur_n <= 0:
+            return
+        t_note = np.arange(dur_n) / sr
+        wave = np.zeros(dur_n)
+        for h, amp, decay_rate in harmonics:
+            hfreq = freq * h
+            hwave = np.sin(2 * np.pi * hfreq * t_note) * amp
+            henv = np.exp(-t_note * decay_rate)
+            attack = np.ones(dur_n)
+            attack[:50] = np.linspace(0, 1, min(50, dur_n))
+            wave += hwave * henv * attack
+        if sub_hz is not None and freq > sub_hz:
+            sub_wave = np.sin(2 * np.pi * (freq / 2.0) * t_note) * np.exp(-t_note * 1.2)
+            wave += sub_wave * 0.25
+        wave *= (vel / 127.0) * 0.4
+        end_n = min(start_n + dur_n, n_samples)
+        audio[start_n:end_n] += wave[:end_n - start_n]
+
     note_starts = {}
+    sustain_active = False
     for track in mid.tracks:
         t = 0
         for msg in track:
@@ -353,42 +385,20 @@ def _render_numpy(midi_path, output_wav, sr=44100, bit=16, gain=0.5, params=None
             if msg.type == "note_on" and msg.velocity > 0:
                 note_starts[(msg.note, msg.channel)] = (t, msg.velocity)
             elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
-                start = note_starts.pop((msg.note, msg.channel), None)
+                key = (msg.note, msg.channel)
+                if sustain_active and key in note_starts:
+                    continue  # hold the note until pedal-up
+                start = note_starts.pop(key, None)
                 if start:
-                    st, vel = start
-                    dt = t - st
-                    if dt <= 0:
-                        continue
-                    freq = 440.0 * (2.0 ** ((msg.note - 69) / 12.0))
-                    start_s = st * sec_per_tick
-                    dur_s = dt * sec_per_tick
-                    start_n = int(start_s * sr)
-                    dur_n = max(1, int(dur_s * sr))
-                    if start_n + dur_n > n_samples:
-                        dur_n = n_samples - start_n
-                    if dur_n <= 0:
-                        continue
-
-                    # Generate note with harmonics and realistic envelope
-                    t_note = np.arange(dur_n) / sr
-                    wave = np.zeros(dur_n)
-                    for h, amp, decay_rate in harmonics:
-                        hfreq = freq * h
-                        hwave = np.sin(2 * np.pi * hfreq * t_note) * amp
-                        henv = np.exp(-t_note * decay_rate)
-                        # Initial attack blip
-                        attack = np.ones(dur_n)
-                        attack[:50] = np.linspace(0, 1, min(50, dur_n))
-                        wave += hwave * henv * attack
-
-                    # Sub-octave reinforcement (pedal-like depth)
-                    if sub_hz is not None and freq > sub_hz:
-                        sub_wave = np.sin(2 * np.pi * (freq / 2.0) * t_note) * np.exp(-t_note * 1.2)
-                        wave += sub_wave * 0.25
-
-                    wave *= (vel / 127.0) * 0.4
-                    end_n = min(start_n + dur_n, n_samples)
-                    audio[start_n:end_n] += wave[:end_n - start_n]
+                    _render_note(key, start[0], start[1], t)
+            elif msg.type == "control_change" and msg.control == 64:
+                if msg.value >= 64 and not sustain_active:
+                    sustain_active = True
+                elif msg.value < 64 and sustain_active:
+                    sustain_active = False
+                    for key, (st, vel) in list(note_starts.items()):
+                        _render_note(key, st, vel, t)
+                    note_starts.clear()
 
     # Master gain (0.0-1.0 → amplitude)
     if gain is not None and gain != 0.5:

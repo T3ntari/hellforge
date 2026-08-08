@@ -109,7 +109,7 @@ def detect_syntax_version(text):
         r'E\(\d+\s*,\s*\d+\)',          # Euclidean rhythm
         r'\[[^\]]+\]\s*\(\d+:\d+\)',    # polyrhythm [notes](3:2)
         r'ritard(?:ando)?\(',           # ritardando
-        r'@curve\s+bpm',                # tempo curves
+        r'@curve\s+(?:bpm|vel)',        # tempo / velocity curves
         r'Version:\s*v4',               # v4 header
         r'//\s*v4\b',                   # v4 comment marker
         r';\s*T\d',                     # semicolon statement separators
@@ -118,6 +118,13 @@ def detect_syntax_version(text):
         r'<[A-Ga-g]#?b?\d[^>{}]*>',     # angle-bracket note groups
         r'[A-Ga-g]#?b?\d\s*\|',         # pipe-parallel notes
         r'\\\s*$',                      # backslash line continuation
+        r'\bpedal\s+(?:on|off)\b',      # sustain pedal statements
+        r'^\s*(?:rest|R)\s+[whqest0-9]',  # rests
+        r'\bt3\s*\(|\btrip\s*\(|\btup\s*\(',  # tuplets
+        r'@oct\s*:',                    # octave shift directive
+        r'@art\s*:',                    # articulations
+        r'@tie\b',                      # ties (prop)
+        r'[A-Ga-g]#?b?\d\s*~',          # ties (tilde shorthand)
     ]
     for p in v4_patterns:
         if re.search(p, text, re.I | re.MULTILINE):
@@ -188,6 +195,16 @@ def apply_ll_controllers(events, ll_state):
             print(f"  > @mem: {len(events)} events exceeds budget {budget} — truncating")
             events = events[:budget]
     return events
+
+
+def apply_performance_post_passes(events, text, bpm, ll_state):
+    """Run v5 piano-performance post-passes: velocity curves, ties,
+    global sustain state, octave shift, legato adjustment."""
+    try:
+        from .mode_v5_performance import apply_performance_post_passes as _v5
+        return _v5(events, text, bpm, ll_state)
+    except Exception:
+        return events
 
 
 def compile_source(text, bpm=None, strict=False):
@@ -286,9 +303,15 @@ def compile_source(text, bpm=None, strict=False):
                 text = process_polyrhythms(text, bpm)
             except Exception:
                 pass
+            try:
+                from .mode_v5_performance import process_performance_pre
+                text = process_performance_pre(text, bpm)
+            except Exception:
+                pass
         events, bp = compile_v1(text, bpm, ll_state, scope=_math_scope, strict=strict)
         events = apply_scale_quantization(events, ll_state)
         events = apply_ll_controllers(events, ll_state)
+        events = apply_performance_post_passes(events, text, bpm, ll_state)
         if strict:
             _raise_strict_if_problems()
         try:
@@ -304,6 +327,7 @@ def compile_source(text, bpm=None, strict=False):
             events = sort_events(events)
             events = apply_scale_quantization(events, ll_state)
             events = apply_ll_controllers(events, ll_state)
+            events = apply_performance_post_passes(events, text, bpm, ll_state)
             return events, bp
         except ImportError:
             pass
@@ -311,6 +335,7 @@ def compile_source(text, bpm=None, strict=False):
     events, bp = compile_v1(text, bpm, ll_state, scope=_math_scope, strict=strict)
     events = apply_scale_quantization(events, ll_state)
     events = apply_ll_controllers(events, ll_state)
+    events = apply_performance_post_passes(events, text, bpm, ll_state)
     try:
         events = _run_post_compile_hooks(events, bp)
     except ImportError:
@@ -454,6 +479,20 @@ def compile_v1(text, bpm, ll_state, scope=None, strict=False):
                     ev["timestamp"] += cursor
 
         # Python fallback
+        if not ev:
+            # v5 performance statements first (pedal/rest/tuplets) so the
+            # machine parser never mis-reports them (E051) into diagnostics.
+            try:
+                from .mode_v5_performance import parse_performance_line
+                ev_list, new_cursor = parse_performance_line(line, cursor, bpm, ll_state)
+                if ev_list is not None or new_cursor > cursor:
+                    if ev_list:
+                        events.extend(ev_list)
+                    cursor = new_cursor
+                    debug("COMPILE", f"Performance parsed: {line[:40]}")
+                    continue
+            except Exception:
+                pass
         if not ev:
             ev = parse_machine(line, ll_state)
         if ev:

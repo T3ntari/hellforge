@@ -39,9 +39,10 @@ CHORD_QUALITIES = {
 }
 CHORD_ALIASES = {"maj": "major", "min": "minor", "m": "minor", "m7": "min7"}
 DIRECTIVE_NAMES = {"bpm", "tempo", "key", "scale", "vol", "volume", "gc", "dur",
-                   "vel", "ch", "prob", "probability", "curve", "mode", "random",
-                   "pan", "reverb", "delay", "time", "ts", "timestamp", "note",
-                   "sustain", "master", "gain", "track", "strict", "mem"}
+                    "vel", "ch", "prob", "probability", "curve", "mode", "random",
+                    "pan", "reverb", "delay", "time", "ts", "timestamp", "note",
+                    "sustain", "master", "gain", "track", "strict", "mem",
+                    "pedal", "art", "oct", "tie"}
 MACHINE_TOKENS = {"T", "N", "D", "V", "CH", "TRK", "P", "S", "F", "E", "Z"}
 MATH_FUNCS = {"sin", "cos", "sqrt", "pow", "round", "floor", "abs", "min",
               "max", "quadratic", "solve_linear"}
@@ -134,6 +135,7 @@ _MACHINE_ANCHORED = re.compile(
     r"(?:\s+Z\[ph:(?P<phase>[\d.]+)\])?"
     r"(?:\s+Z\[pt:(?P<cents>-?\d+)\])?"
     r"(?:\s+Z\[sw:(?P<swing>[\d.]+(?:ms)?)\])?"
+    r"(?:\s+S\[art:(?P<art>\w+)\])?"
     r"\s*$"
 )
 
@@ -265,6 +267,13 @@ def check_machine_line(line, problems, line_no=0, bpm=120):
     g["_midi"] = midi
     g["_dur"] = dur_ms
     g["_vel"] = vel
+    if g.get("art"):
+        art = g["art"].lower()
+        if art not in ("staccato", "legato", "tenuto", "accent"):
+            problems.append(_mk("E191", line_no, _col(s, f"S[art:{g['art']}]"),
+                                len(f"S[art:{g['art']}]"),
+                                f"Unknown articulation: {g['art']}"))
+            g["art"] = None
     return g
 
 
