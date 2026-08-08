@@ -2,6 +2,7 @@
 """LLM Copilot plugin tests — providers, ollama detection, chat client,
 agent plan parsing, safe path handling, apply plan (writes/edits/deletes)."""
 import os
+import re
 import sys
 import tempfile
 
@@ -2179,6 +2180,218 @@ def test_scale_override():
         pass
     assert scale.get_override() is None, "invalid set is rejected, state unchanged"
 test("Scale: override forces profile, auto clears", test_scale_override)
+
+
+# ── memory / notes / tickets (plugins/llm/memory.py) ──
+
+def test_memory_add_dedupe():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "MEMORY.md")
+        assert memory.add_memory(p, ["the velocity bug lives in modes",
+                                     "new syntax goes in the v5 path"]) == 2
+        assert memory.add_memory(p, ["THE VELOCITY BUG LIVES IN MODES",
+                                     "brand new point"]) == 1, "case-insensitive dedupe"
+        pts = memory.load_memory(p)
+        assert len(pts) == 3
+        assert pts[0] == "the velocity bug lives in modes"
+        assert "brand new point" in pts
+        text = open(p, encoding="utf-8").read()
+        assert text.startswith("# MEMORY.md"), "header created"
+        assert text.count("velocity bug") == 1
+        assert memory.add_memory(p, []) == 0, "blank points add nothing"
+test("Memory: add appends bullets, dedupes case-insensitive", test_memory_add_dedupe)
+
+
+def test_memory_remove():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "MEMORY.md")
+        memory.add_memory(p, ["alpha", "beta", "Gamma"])
+        assert memory.remove_memory(p, ["BETA"]) == 1
+        assert memory.remove_memory(p, ["not there"]) == 0
+        assert memory.load_memory(p) == ["alpha", "Gamma"]
+        assert memory.remove_memory(p, ["alpha", "gamma"]) == 2
+        assert os.path.exists(p), "file never deleted"
+        assert memory.load_memory(p) == []
+        assert memory.remove_memory(p, ["x"]) == 0, "missing file → 0"
+test("Memory: remove drops matching bullets, keeps file", test_memory_remove)
+
+
+def test_memory_render_cap():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "MEMORY.md")
+        assert memory.render_memory(p) == "", "missing file renders empty"
+        memory.add_memory(p, ["A" * 100, "B" * 100])
+        full = memory.render_memory(p)
+        assert "A" * 100 in full and "B" * 100 in full
+        short = memory.render_memory(p, cap=80)
+        assert len(short) <= 85, "tail cut at cap"
+        assert short.endswith("...\n"), "truncation marker"
+test("Memory: render bounded by cap", test_memory_render_cap)
+
+
+def test_memory_plan_key():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "MEMORY.md")
+        added, removed = memory.apply_memory([
+            {"point": "one", "action": "add"},
+            {"point": "two"},
+            {"point": "ONE", "action": "add"},
+            {"point": "two", "action": "remove"},
+            {"point": "", "action": "add"},
+        ], p)
+        assert added == 2 and removed == 1
+        assert memory.load_memory(p) == ["one"]
+        assert memory.apply_memory(None, p) == (0, 0)
+test("Memory: apply_memory implements the plan key", test_memory_plan_key)
+
+
+def test_notes_append_timestamp():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "NOTES.md")
+        assert memory.add_note(p, "first scratch") is True
+        assert memory.add_note(p, "second scratch") is True
+        assert memory.add_note(p, "   ") is False, "blank text rejected"
+        text = open(p, encoding="utf-8").read()
+        assert text.startswith("# NOTES.md"), "header created"
+        stamps = re.findall(r"^## (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})$",
+                            text, re.M)
+        assert len(stamps) == 2, "each note gets a timestamp header"
+        assert "first scratch" in text and "second scratch" in text
+        assert text.index("first scratch") < text.index("second scratch"), \
+            "append order preserved"
+test("Notes: append-only with timestamp headers", test_notes_append_timestamp)
+
+
+def test_notes_cap():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "NOTES.md")
+        assert memory.load_notes(p) == "", "missing file renders empty"
+        memory.add_note(p, "Z" * 500)
+        full = memory.load_notes(p)
+        assert "Z" * 500 in full
+        short = memory.load_notes(p, cap=100)
+        assert len(short) <= 105, "cap bounds notes text"
+test("Notes: load_notes bounded by cap", test_notes_cap)
+
+
+def test_notes_plan_key():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "NOTES.md")
+        assert memory.apply_note({"text": "plan-key note"}, p) is True
+        assert memory.apply_note({}, p) is False, "empty note rejected"
+        assert memory.apply_note(None, p) is False
+test("Notes: apply_note implements the plan key", test_notes_plan_key)
+
+
+def test_tickets_create_increments():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "TICKETS.md")
+        n1 = memory.create_ticket(p, "fix parser", "stricter error on bad note", "T7")
+        n2 = memory.create_ticket(p, "add docs", "document the curve directive")
+        assert n1 == 1 and n2 == 2, "numbers increment"
+        ts = memory.list_tickets(p)
+        assert [t["num"] for t in ts] == [1, 2]
+        assert ts[0]["title"] == "fix parser"
+        assert ts[0]["assignee"] == "T7" and ts[1]["assignee"] == ""
+        assert ts[0]["status"] == "open" and ts[1]["status"] == "open"
+        assert ts[0]["body"] == "stricter error on bad note"
+        text = open(p, encoding="utf-8").read()
+        assert text.startswith("# TICKETS.md"), "header created"
+        assert "## TICKET-2: add docs" in text
+        try:
+            memory.create_ticket(p, "", "no title")
+            raise AssertionError("blank title must raise")
+        except ValueError:
+            pass
+test("Tickets: create numbers increment, header ensured", test_tickets_create_increments)
+
+
+def test_tickets_list_filter():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "TICKETS.md")
+        memory.create_ticket(p, "a", "x", "T1")
+        memory.create_ticket(p, "b", "y", "T2")
+        memory.update_ticket(p, 1, status="in_progress")
+        memory.update_ticket(p, 2, status="done")
+        assert [t["num"] for t in memory.list_tickets(p, "open")] == []
+        assert [t["num"] for t in memory.list_tickets(p, "in_progress")] == [1]
+        assert [t["num"] for t in memory.list_tickets(p, "done")] == [2]
+        assert len(memory.list_tickets(p)) == 2, "no filter → all"
+        assert memory.list_tickets(p, "DONE")[0]["num"] == 2, "case-insensitive filter"
+        assert memory.list_tickets(p, "bogus") == []
+        assert memory.list_tickets(p) != memory.list_tickets(p, "open")
+test("Tickets: list filters by status", test_tickets_list_filter)
+
+
+def test_tickets_update_rewrites():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "TICKETS.md")
+        memory.create_ticket(p, "orig title", "orig body", "T9")
+        memory.update_ticket(p, 1, status="in_progress", assignee="T3",
+                             body="new body text")
+        t = memory.list_tickets(p)[0]
+        assert t["status"] == "in_progress"
+        assert t["assignee"] == "T3"
+        assert t["body"] == "new body text"
+        assert t["title"] == "orig title", "title untouched"
+        memory.update_ticket(p, 1, status="done")
+        assert memory.list_tickets(p)[0]["status"] == "done"
+        try:
+            memory.update_ticket(p, 99, status="done")
+            raise AssertionError("missing ticket must raise")
+        except ValueError:
+            pass
+        try:
+            memory.update_ticket(p, 1, status="bogus")
+            raise AssertionError("invalid status must raise")
+        except ValueError:
+            pass
+        assert memory.list_tickets(p)[0]["status"] == "done", "failed update unchanged"
+test("Tickets: update rewrites block, missing/invalid raises", test_tickets_update_rewrites)
+
+
+def test_tickets_render_cap():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "TICKETS.md")
+        assert memory.render_tickets(p) == "", "missing file renders empty"
+        memory.create_ticket(p, "t1", "Q" * 200)
+        full = memory.render_tickets(p)
+        assert "## TICKET-1: t1" in full
+        assert "1 ticket(s)" in full
+        short = memory.render_tickets(p, cap=60)
+        assert len(short) <= 65, "cap bounds ticket text"
+test("Tickets: render bounded by cap", test_tickets_render_cap)
+
+
+def test_tickets_plan_key():
+    from plugins.llm import memory
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "TICKETS.md")
+        created, updated = memory.apply_tickets([
+            {"action": "create", "title": "task one", "body": "do it", "assignee": "T1"},
+            {"action": "create", "title": ""},
+            {"action": "update", "num": 1, "status": "in_progress"},
+            {"action": "update", "num": 99, "status": "done"},
+            {"action": "update", "num": "x", "status": "done"},
+            {"action": "bogus", "title": "noop"},
+        ], p)
+        assert created == 1 and updated == 1
+        t = memory.list_tickets(p)[0]
+        assert t["title"] == "task one" and t["assignee"] == "T1"
+        assert t["status"] == "in_progress"
+        assert memory.apply_tickets(None, p) == (0, 0)
+test("Tickets: apply_tickets implements the plan key", test_tickets_plan_key)
 
 
 print(f"\n{'='*50}")
