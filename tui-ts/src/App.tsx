@@ -6,16 +6,19 @@
  *  bridge prop (from index.ts, see tickets-ts-bridge): a typed emitter
  *  with `on<Event>(type, handler)` subscriptions per PyToTs type plus
  *  submit()/answer()/quit() senders (see BridgeLike below). */
-import { Box, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput } from "ink";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { AskState, Color, FeedItem, PyToTs } from "./protocol.js";
 import { feedReducer, type ToolAction } from "./frame.js";
+import { useInputEditor } from "./input.js";
+import { checkOllama, checkPython, currentBranch, type BootCheck } from "./boot.js";
+import { tokenHex } from "./theme.js";
 import ChatFeed from "./components/ChatFeed.js";
-import CommandPalette from "./components/CommandPalette.js";
+import { CommandPalette } from "./components/CommandPalette.js";
 import Footer from "./components/Footer.js";
-import Gatekeeper from "./components/Gatekeeper.js";
+import { Gatekeeper } from "./components/Gatekeeper.js";
 import Header from "./components/Header.js";
-import ModelPicker from "./components/ModelPicker.js";
+import { ModelPicker } from "./components/ModelPicker.js";
 import Splash from "./components/Splash.js";
 import StatusBar from "./components/StatusBar.js";
 import SubWindow from "./components/SubWindow.js";
@@ -61,22 +64,82 @@ export default function App({ bridge }: AppProps): JSX.Element {
   const [model, setModel] = useState("?");
   const [ready, setReady] = useState(false);
   const boxCounter = useRef(0);
+  const [checks, setChecks] = useState<BootCheck[]>([]);
+  const [version, setVersion] = useState("");
+  const [branch, setBranch] = useState("");
+  const [files, setFiles] = useState<string[]>([]);
+  const tokensRef = useRef(0);
+  const [tokens, setTokens] = useState(0);
+
+  useEffect(() => {
+    setBranch(currentBranch());
+    setChecks([
+      checkPython(),
+      { id: "bridge", label: "bridge", state: "pending" },
+      { id: "model", label: "model", state: "pending" },
+      { id: "ollama", label: "ollama", state: "pending" },
+    ]);
+    checkOllama().then((o) => setChecks((c) => c.map((x) => (x.id === "ollama" ? o : x))));
+  }, []);
+
+  const submit = useCallback(
+    (line: string) => {
+      if (!line.trim()) return;
+      bridge.submit(line);
+    },
+    [bridge],
+  );
+
+  // Input line. The feed agent's ChatFeed does not host an editor, so the
+  // line lives here in App (raw keys via ../input.ts). A leading "/" opens
+  // the command palette; Esc/Enter inside the palette are its own.
+  const editorActive = ready && !ask && !paletteOpen && !pickerOpen;
+  const editor = useInputEditor({
+    isActive: editorActive,
+    onSubmit: (line) => {
+      submit(line);
+      editor.clear();
+    },
+  });
+  const slashWasOn = useRef(false);
+  useEffect(() => {
+    const on = editor.state.buffer.startsWith("/");
+    if (!slashWasOn.current && on) setPaletteOpen(true);
+    slashWasOn.current = on;
+  }, [editor.state.buffer]);
 
   useEffect(() => {
     bridge.on("system", (m) => {
       const text = m.text ?? "";
-      setModel(parseModel(text));
+      const v = /v\d+\.\d+(?:\.\d+)?/.exec(text);
+      if (v) setVersion(v[0]);
+      const mod = parseModel(text);
+      setModel(mod);
       dispatch({ type: "append", item: { color: "dim", text } });
+      setChecks((c) =>
+        c.map((x) =>
+          x.id === "bridge"
+            ? { ...x, state: "ok", detail: "ready" }
+            : x.id === "model"
+              ? { ...x, state: mod !== "?" ? "ok" : "fail", detail: mod }
+              : x,
+        ),
+      );
       setReady(true);
     });
     bridge.on("chunk", (m) => {
+      tokensRef.current += (m.text ?? "").length / 4;
+      setTokens(Math.round(tokensRef.current));
       dispatch({ type: "chunk", text: m.text ?? "", color: null });
       setReady(true);
     });
     bridge.on("feed", (m) => {
+      const t = m.text ?? "";
+      const fm = /^\s{2}(read|write|edit|delete)\s+(\S+)/.exec(t);
+      if (fm) setFiles((f) => [...new Set([...f, fm[2]])].slice(-4));
       dispatch({
         type: "append",
-        item: { color: (m.color as Color | null) ?? null, text: m.text ?? "" },
+        item: { color: (m.color as Color | null) ?? null, text: t },
       });
       setReady(true);
     });
@@ -120,14 +183,6 @@ export default function App({ bridge }: AppProps): JSX.Element {
     bridge.on("done", () => exit());
   }, [bridge, exit]);
 
-  const submit = useCallback(
-    (line: string) => {
-      if (!line.trim()) return;
-      bridge.submit(line);
-    },
-    [bridge],
-  );
-
   const handleAnswer = useCallback(
     (key: string, value: "y" | "n" | "e") => {
       bridge.answer(key, value);
@@ -147,9 +202,11 @@ export default function App({ bridge }: AppProps): JSX.Element {
         bridge.quit();
         return;
       }
-      submit(command);
+      // Insert the picked command into the input line so the user can
+      // append arguments (e.g. "/fix <task>") — Enter submits the line.
+      editor.setState({ buffer: command, cursor: command.length });
     },
-    [bridge, submit],
+    [bridge, editor],
   );
 
   const handleModelPick = useCallback((_provider: string, _model: string) => {
@@ -161,6 +218,9 @@ export default function App({ bridge }: AppProps): JSX.Element {
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
+      // While the input editor is active, Ctrl+C is copy (input.ts); quit
+      // only when no editor is taking keys (ask/palette/picker up).
+      if (editorActive) return;
       // Ink intercepts Ctrl+C by default (exitOnCtrlC) — this branch only
       // runs if index.ts renders with exitOnCtrlC: false.
       bridge.quit();
@@ -178,22 +238,37 @@ export default function App({ bridge }: AppProps): JSX.Element {
   return (
     <Box flexDirection="column" height="100%">
       {!ready ? (
-        <Splash />
+        <Splash status="starting agent bridge..." version={version} checks={checks} />
       ) : (
         <>
           <Header />
-          <StatusBar model={model} mode={mode} status={status} />
-          <ChatFeed
-            items={items}
-            thinking={thinking}
-            onSubmit={submit}
-            onOpenPalette={() => setPaletteOpen(true)}
+          <StatusBar
+            model={model}
+            mode={mode}
+            status={status}
+            branch={branch}
+            files={files}
+            tokens={tokens}
           />
-          <ToolPanel actions={actions} />
+          <ChatFeed items={items} thinking={thinking} />
+          <ToolPanel
+            actions={actions.map((a) => ({
+              title: a.title,
+              status: (a.done ? "done" : "running") as "done" | "running",
+            }))}
+          />
+          <Box>
+            <Text color={tokenHex("accent")}>❯ </Text>
+            <Text color={tokenHex("text")}>
+              {editor.state.buffer.slice(0, editor.state.cursor)}
+              <Text inverse>{editor.state.buffer[editor.state.cursor] ?? " "}</Text>
+              {editor.state.buffer.slice(editor.state.cursor + 1)}
+            </Text>
+          </Box>
         </>
       )}
       {box ? <SubWindow title={box.title} lines={box.lines} /> : null}
-      {ask ? <Gatekeeper ask={ask} onAnswer={handleAnswer} /> : null}
+      {ask ? <Gatekeeper ask={ask} onAnswer={(v) => handleAnswer(ask!.key, v)} /> : null}
       {paletteOpen ? (
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={handlePick} />
       ) : null}

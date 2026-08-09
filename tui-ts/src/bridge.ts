@@ -10,6 +10,7 @@ export class Bridge {
   private ready = false;
   private handlers = new Map<string, Handler[]>();
   private pending: TsToPy[] = [];
+  private eventLog: PyToTs[] = [];
 
   constructor(
     private pythonBin = "python",
@@ -20,6 +21,18 @@ export class Bridge {
     const list = this.handlers.get(event) ?? [];
     list.push(handler as Handler);
     this.handlers.set(event, list);
+    // replay any events of this type that arrived before this subscriber
+    if (this.eventLog.length > 0) {
+      for (const m of this.eventLog) {
+        if (m.type === event) {
+          try {
+            (handler as Handler)(m);
+          } catch {
+            /* noop */
+          }
+        }
+      }
+    }
     return () => {
       const l = this.handlers.get(event) ?? [];
       this.handlers.set(event, l.filter((h) => h !== handler));
@@ -27,6 +40,10 @@ export class Bridge {
   }
 
   private emit(msg: PyToTs) {
+    this.eventLog.push(msg);
+    if (this.eventLog.length > 500) {
+      this.eventLog = this.eventLog.slice(-500);
+    }
     (this.handlers.get(msg.type) ?? []).forEach((h) => h(msg));
   }
 

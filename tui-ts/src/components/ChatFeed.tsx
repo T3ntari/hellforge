@@ -8,9 +8,12 @@
  *  Layout notes:
  *  - The root Box flexes to fill whatever space the App gives it; the
  *    viewport (width/height) is measured with `measureElement` after layout.
- *  - The message content is an absolutely-positioned inner column so the
- *    root's measured height equals the flex-allocated height (an in-flow
- *    child would grow the root with its content and break the measurement).
+ *  - The message content is an in-flow inner column with an EXPLICIT height
+ *    (the measured viewport, or a terminal-derived fallback). A fixed
+ *    height means the content can never grow the root and break the
+ *    measurement; overflow is clipped by the root's `overflow="hidden"`.
+ *    (Previously the inner column was `position="absolute"`, which does not
+ *    render in Ink 5.x — the feed was invisible.)
  *  - Scrollback: `scrollTop` is the index of the first visible row. Live
  *    mode follows the newest rows (scrollTop = rows - height); PgUp/PgDn
  *    move by a page and PgDn returns to live. */
@@ -19,6 +22,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, measureElement, useInput, useStdout } from "ink";
 import type { DOMElement } from "ink";
 import type { Color, FeedItem } from "../protocol.js";
+import { tokenHex } from "../theme.js";
 
 interface Row {
   text: string;
@@ -159,7 +163,7 @@ export default function ChatFeed({ items, thinking }: ChatFeedProps) {
 
   return (
     <Box flexGrow={1} overflow="hidden" ref={outerRef}>
-      <Box position="absolute" flexDirection="column" width={innerWidth}>
+      <Box flexDirection="column" width={innerWidth} height={height}>
         {slice.map((row, i) => (
           <Text key={i} color={row.color === null ? undefined : tokenHex(row.color)}>
             {row.text}
