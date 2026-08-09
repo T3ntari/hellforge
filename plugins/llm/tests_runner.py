@@ -36,12 +36,23 @@ def _as_text(chunk):
     return chunk
 
 
+def _interpreter(project_dir):
+    """Prefer the project venv python — the bridge can run under a bare
+    system python (no numpy/mido), which makes every test file crash on
+    import with '0/0 passed (exit 1)'."""
+    from pathlib import Path
+    venv = Path(project_dir) / ".venv" / "bin" / "python"
+    if venv.exists():
+        return str(venv)
+    return sys.executable
+
+
 def run_test_file(project_dir, rel_path, timeout=180):
     """Run one harness file in project_dir; parse its summary line. Returns
     {file, total, passed, failed, exit_code, output, ok}. Output capped at
     4000 chars (keeps the tail, where the summary lives)."""
     try:
-        proc = subprocess.run([sys.executable, rel_path], cwd=project_dir,
+        proc = subprocess.run([_interpreter(project_dir), rel_path], cwd=project_dir,
                               capture_output=True, text=True, timeout=timeout)
         exit_code = proc.returncode
         output = (_as_text(proc.stdout) + _as_text(proc.stderr))[-OUTPUT_CAP:]

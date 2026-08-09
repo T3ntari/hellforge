@@ -179,10 +179,19 @@ def _handle(api, state, bridge, history, line):
         base = providers.OLLAMA_HEAD + "/v1"
         if not model:
             model = "llama3.2"
+    # Agent mode: BUFFER the reply — raw JSON plans must never stream into
+    # the chat feed. Chat mode keeps live streaming.
+    def _on_chunk(t):
+        if mode == "chat":
+            bridge.chunk(t)
+        else:
+            _buf.append(t)
+
+    _buf = []
     try:
         text, err, thinking = providers.stream_chat(
             provider, base, state.get("api_key"), model, messages,
-            bridge.chunk, timeout=600 if provider == "ollama" else 300)
+            _on_chunk, timeout=600 if provider == "ollama" else 300)
     except Exception as e:
         text, err = None, str(e)
     bridge.thinking(False)
@@ -213,6 +222,10 @@ def _handle(api, state, bridge, history, line):
     if plan is None or not (plan.get("files") or plan.get("commands")
                             or plan.get("tests") or plan.get("todo")
                             or plan.get("search") or plan.get("memory")):
+        # Not a plan → show the buffered text as a normal reply (agent mode
+        # buffered it, so it hasn't been displayed yet).
+        if text:
+            bridge.feed(text, "text")
         # Model didn't act (weak model, generic reply). For bug-check /
         # verify intents, the ENGINE runs the suite regardless — real value
         # even when the model just shrugs.
