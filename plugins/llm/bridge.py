@@ -123,7 +123,18 @@ def _handle(api, state, bridge, history, line):
         history["_agent_done"] = False
     bridge.mode(mode)
     if mode == "chat":
-        messages = [{"role": "system", "content": llm_agent.CHAT_PROMPT}]
+        idx = indexer.load_index(api.project_dir) or indexer.build_index(api.project_dir)
+        system = (llm_agent.CHAT_PROMPT
+                  + "\n\nThis conversation happens inside a real project. "
+                    "Names like 'eshell', 'run.py', 'ep.py', 'player.py', "
+                    "'plugins/llm' refer to THIS project's files (see the index). "
+                    "Never answer with Emacs/other tools. For edits or agentic "
+                    "tasks, the user will prefix /fix."
+                  + "\n\nProject index:\n"
+                  + indexer.index_to_text(idx, max_files=40)
+                  + "\n\nRelevant file content for this question:\n"
+                  + llm._build_context(api.project_dir, line, max_lines=120, budget=8000))
+        messages = [{"role": "system", "content": system}]
         messages.extend(hist[-10:])
         messages.append({"role": "user", "content": line})
     else:

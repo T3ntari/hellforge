@@ -1140,7 +1140,15 @@ def _agent_cc(state, api, rest):
             last_user = next((m.get("content", "") for m in reversed(messages)
                               if m.get("role") == "user"), "")
             if _classify_mode(last_user) == "chat":
-                msgs = [{"role": "system", "content": llm_agent.CHAT_PROMPT}]
+                idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
+                system = (llm_agent.CHAT_PROMPT
+                          + "\n\nThis conversation happens inside a real project. "
+                            "Names like 'eshell', 'run.py', 'ep.py' refer to THIS "
+                            "project's files (see the index). Never answer with "
+                            "Emacs/other tools. For edits or agentic tasks, prefix /fix."
+                          + "\n\nProject index:\n"
+                          + indexer.index_to_text(idx, max_files=40))
+                msgs = [{"role": "system", "content": system}]
                 msgs.extend([m for m in messages if m.get("role") == "user"][-4:])
                 messages = msgs
         except Exception:
@@ -1384,7 +1392,18 @@ def _agent_tui(state, api, rest):
             _submit_history["agent"] = hist
             _submit_history["_agent_done"] = False
         if mode == "chat":
-            messages = [{"role": "system", "content": llm_agent.CHAT_PROMPT}]
+            idx = indexer.load_index(project_dir) or indexer.build_index(project_dir)
+            system = (llm_agent.CHAT_PROMPT
+                      + "\n\nThis conversation happens inside a real project. "
+                        "Names like 'eshell', 'run.py', 'ep.py', 'player.py', "
+                        "'plugins/llm' refer to THIS project's files (see the index). "
+                        "Never answer with Emacs/other tools. For edits or agentic "
+                        "tasks, the user will prefix /fix."
+                      + "\n\nProject index:\n"
+                      + indexer.index_to_text(idx, max_files=40)
+                      + "\n\nRelevant file content for this question:\n"
+                      + _build_context(project_dir, line, max_lines=120, budget=8000))
+            messages = [{"role": "system", "content": system}]
             messages.extend(hist[-10:])
             messages.append({"role": "user", "content": line})
         else:
