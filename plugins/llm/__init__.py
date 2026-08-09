@@ -1346,15 +1346,29 @@ def _cost_cmd(api, state, rest):
 AGENT_PREFIXES = ("/fix", "/edit", "/tool", "/write", "/plugin", "/agent",
                   "/test", "/search", "/upload", "/review", "/refactor")
 
+# Task-intent phrases: plain-language requests that need the agent (tools,
+# files, edits). Routed to agent mode automatically instead of chat.
+AGENT_INTENT = (
+    "find a bug", "find bugs", "look for a bug", "spot the bug", "debug",
+    "search the codebase", "search the project", "analyze", "inspect",
+    "refactor", "fix the", "fix a", "fix it", "fix this", "fix that",
+    "create a", "create an", "write a", "write an", "add a", "add an",
+    "implement", "review", "explain the code", "explain how", "how does",
+    "what does", "where is", "find the", "look at", "check the",
+)
+
 
 def _classify_mode(line):
-    """Two-mode router: agent mode only for explicit action prefixes;
-    everything else is lightweight chat (small models choke on JSON)."""
+    """Two-mode router: explicit /fix-style prefixes and task-intent phrases
+    run in agent mode (tools, files, edits); everything else is lightweight
+    chat (small models choke on JSON for chit-chat)."""
     l = line.strip().lower()
     if l.startswith(AGENT_PREFIXES):
         return "agent"
     if l.startswith("/"):
         return "command"   # slash commands handled by the UI, not the model
+    if any(k in l for k in AGENT_INTENT):
+        return "agent"
     return "chat"
 
 
