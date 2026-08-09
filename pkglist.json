@@ -1,19 +1,18 @@
 {
   "version": "1.0.0.0",
   "updated": "2026-08-08T22:14:24",
-  "url": "https://www.oshonet.in/pkglist.json",
+  "url": "",
   "mods": {},
   "plugins": {
     "talisman": {
       "version": "1.0.0",
-      "description": "Audio culling & occlusion engine. Psychoacoustic masking \u00e2\u20ac\u201d removes inaudible notes on compile. Run 'talisman on|off'.",
+      "description": "Audio culling & occlusion engine. Psychoacoustic masking â€” removes inaudible notes on compile. Run 'talisman on|off'.",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,culling,occlusion,masking,privacy",
       "url": "file://plugins/talisman/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "84ae3d5e0b49d63ddbb5d319c9e0b65fcd16da92b9a332dc0a3a9f7917fb2154",
-      "verification_domain": "www.oshonet.in"
+      "verification": "84ae3d5e0b49d63ddbb5d319c9e0b65fcd16da92b9a332dc0a3a9f7917fb2154"
     },
     "fentclient": {
       "version": "1.0.0",
@@ -25,8 +24,7 @@
       "dependencies": [
         "pygame"
       ],
-      "verification": "99e7cb19ee90ddd51300c85cb409cf311094b4d2c231b4a5d99d4f5d82d06ee2",
-      "verification_domain": "www.oshonet.in"
+      "verification": "99e7cb19ee90ddd51300c85cb409cf311094b4d2c231b4a5d99d4f5d82d06ee2"
     },
     "lure": {
       "version": "3.0.0",
@@ -38,8 +36,7 @@
       "dependencies": [
         "lupa"
       ],
-      "verification": "d8f3945ffc4f07badd749be70a518f39b2fb0a3552b4244840491109220a4a43",
-      "verification_domain": "www.oshonet.in"
+      "verification": "d8f3945ffc4f07badd749be70a518f39b2fb0a3552b4244840491109220a4a43"
     },
     "portbaby": {
       "version": "1.0.0",
@@ -49,8 +46,7 @@
       "url": "file://plugins/portbaby/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "a512c4f272d014c9e608ad5ec7d057777000029953ae4573544c83e220867aea",
-      "verification_domain": "www.oshonet.in"
+      "verification": "a512c4f272d014c9e608ad5ec7d057777000029953ae4573544c83e220867aea"
     },
     "eaudio": {
       "version": "1.0.0",
@@ -60,8 +56,7 @@
       "url": "file://plugins/eaudio/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "2195a35fb1ef00b6d7fc1db4c90976398afa4643e5d82d386a193fb757b453d6",
-      "verification_domain": "www.oshonet.in"
+      "verification": "2195a35fb1ef00b6d7fc1db4c90976398afa4643e5d82d386a193fb757b453d6"
     },
     "openapi": {
       "version": "1.0.0",
@@ -71,8 +66,7 @@
       "url": "file://plugins/openapi/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "7316234d9e6a10be809a7b8664813f781af3bb42136abf9824dd2302cfec6b10",
-      "verification_domain": "www.oshonet.in"
+      "verification": "7316234d9e6a10be809a7b8664813f781af3bb42136abf9824dd2302cfec6b10"
     },
     "radical": {
       "version": "1.0.0",
@@ -82,8 +76,7 @@
       "url": "file://plugins/radical/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "473aa6bce3c101baf9ff511f117d53f62bf49b2b8ef7751deddfffc46f827705",
-      "verification_domain": "www.oshonet.in"
+      "verification": "473aa6bce3c101baf9ff511f117d53f62bf49b2b8ef7751deddfffc46f827705"
     },
     "tensorsharp": {
       "version": "1.0.0",
@@ -93,8 +86,7 @@
       "url": "file://plugins/tensorsharp/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "ce173db3f98b6560ac0f3c2e95b59dbec4e0fb17bbc895d9a2c53e60155be5a2",
-      "verification_domain": "www.oshonet.in"
+      "verification": "ce173db3f98b6560ac0f3c2e95b59dbec4e0fb17bbc895d9a2c53e60155be5a2"
     },
     "vulkanizer": {
       "version": "1.0.0",
@@ -104,19 +96,17 @@
       "url": "file://plugins/vulkanizer/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "a7127ff67959c25a54ddb21385080841c9de21e6ac6f6a20e6c1c86d3795b7be",
-      "verification_domain": "www.oshonet.in"
+      "verification": "a7127ff67959c25a54ddb21385080841c9de21e6ac6f6a20e6c1c86d3795b7be"
     },
     "launcher": {
       "version": "1.0.0.0",
-      "description": "New window launching & process management \u2014 open, player, shell, log, ps, kill",
+      "description": "New window launching & process management — open, player, shell, log, ps, kill",
       "author": "REGAS",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,launcher,window,process,detach",
       "url": "file://plugins/launcher/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "4a9db3291b3471b65c0ce491a4a364fb85848f59e9e90ec9cb3a73dfcf97bab4",
-      "verification_domain": "www.oshonet.in"
+      "verification": "4a9db3291b3471b65c0ce491a4a364fb85848f59e9e90ec9cb3a73dfcf97bab4"
     },
     "humanize": {
       "version": "1.0.0",
@@ -126,12 +116,11 @@
       "url": "file://plugins/humanize/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "7208cc0c0f7a7769727deeb673055a039c9036bb2d21b22dd9ba9520dcdf2cfc",
-      "verification_domain": "www.oshonet.in"
+      "verification": "7208cc0c0f7a7769727deeb673055a039c9036bb2d21b22dd9ba9520dcdf2cfc"
     },
     "llm": {
       "version": "1.11.0",
-      "description": "LLM copilot \u2014 OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation",
+      "description": "LLM copilot — OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation",
       "verification": "b105945ef4ac2f1ec5b25a28fb00ea8458f49f87a20c9bd9cc7095a34ffdff76"
     }
   },

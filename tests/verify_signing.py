@@ -27,7 +27,7 @@ from ep_core import (
     TRUST_UNKNOWN,
     TRUST_UNSIGNED,
 )
-from plugins.fentclient.security import (
+from ep_compiler.plugin_security import (
     compute_plugin_hash,
     load_pkglist_verifications,
 )
@@ -227,20 +227,21 @@ def test_strict_2():
     assert get_strict_signing() == 0
 check("strict: set/get 2 (reset to 0)", test_strict_2)
 
-# 22. pkglist verification codes present
+# 22. pkglist verification codes present (fentclient removed from the
+# open-source release — remaining plugins only)
 def test_pkglist_codes():
     codes = load_pkglist_verifications()
-    for name in ("fentclient", "lure", "portbaby", "talisman"):
+    for name in ("lure", "portbaby", "talisman"):
         assert name in codes, f"{name} missing from pkglist"
-check("pkglist: verification codes for 4 plugins", test_pkglist_codes)
+check("pkglist: verification codes for plugins", test_pkglist_codes)
 
-# 23. fentclient + talisman hashes match
+# 23. talisman hash matches
 def test_pkglist_hashes_1():
     codes = load_pkglist_verifications()
-    for name in ("fentclient", "talisman"):
+    for name in ("talisman",):
         h = compute_plugin_hash(name=name)
         assert h == codes[name], f"{name}: {h[:16]} vs {codes[name][:16]}"
-check("pkglist: fentclient + talisman hashes match", test_pkglist_hashes_1)
+check("pkglist: talisman hash matches", test_pkglist_hashes_1)
 
 # 24. lure + portbaby hashes match
 def test_pkglist_hashes_2():
@@ -252,7 +253,7 @@ check("pkglist: lure + portbaby hashes match", test_pkglist_hashes_2)
 
 # 25. Plugin files may be unsigned at strict 0 (load anything)
 def test_plugin_unsigned_ok():
-    init_path = os.path.join(PROJECT_DIR, "plugins", "fentclient", "__init__.py")
+    init_path = os.path.join(PROJECT_DIR, "plugins", "talisman", "__init__.py")
     v, level, author, detail = verify_signature(init_path)
     assert isinstance(v, bool) and level in (TRUST_UNSIGNED, TRUST_UNKNOWN, TRUST_TENTARI)
     assert detail, "no detail message"

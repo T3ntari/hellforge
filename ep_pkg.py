@@ -20,7 +20,8 @@ PROJECT_DIR = Path(__file__).parent.resolve()
 MODS_DIR = PROJECT_DIR / "mods"
 PLUGINS_DIR = PROJECT_DIR / "plugins"
 PKGLIST_PATH = PROJECT_DIR / "pkglist.json"
-REGISTRY_BASE = "https://www.oshonet.in"
+import os
+REGISTRY_BASE = os.environ.get("HF_REGISTRY", "")
 VERSION = "2.0.0"
 
 SECURITY_BLOCKLIST = [
@@ -276,7 +277,7 @@ def list_available(pkg_type, detail=False):
     # Try to fetch from remote registry
     try:
         import urllib.request as _ur
-        _url = "https://www.oshonet.in/e_identity/plugins"
+        _url = (os.environ.get("HF_REGISTRY") or "") + "/e_identity/plugins"
         _req = _ur.Request(_url, headers={"User-Agent": "E-Lang/1.0"})
         _resp = _ur.urlopen(_req, timeout=10)
         _data = json.loads(_resp.read())

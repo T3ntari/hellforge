@@ -879,6 +879,9 @@ def do_pkglist(args):
     elif sub == "update":
         if len(args) == 1:
             # pkglist update (no args) — fetch from default oshonet.in URL
+            if not pkg.REGISTRY_BASE:
+                return print(f"  {c('⚠', YELLOW)} no default registry (set"
+                             " HF_REGISTRY) — use: pkglist update url <url>")
             default_url = f"{pkg.REGISTRY_BASE}/pkglist.json"
             print(f"  {c('⟳', YELLOW)} fetching default pkglist from {c(default_url, D)}")
             pkg.sync_from_url(default_url)
@@ -1288,16 +1291,21 @@ def do_sys(args):
 
         # Check remote API
         try:
-            req = urllib.request.Request(
-                "https://www.oshonet.in/.e_verify.json",
-                headers={"User-Agent": "E-Lang/Check/1.0"}
-            )
-            resp = urllib.request.urlopen(req, timeout=10)
-            codes = json.loads(resp.read())
-            expected = {"fentclient", "lure", "portbaby"}
-            found = set(codes.keys())
-            if expected.issubset(found):
-                checks_passed += 1
+            base = os.environ.get("HF_REGISTRY", "")
+            if not base:
+                print(f"  {c('⚠', YELLOW)} no remote registry configured"
+                      " (set HF_REGISTRY) — skipping remote check")
+            else:
+                req = urllib.request.Request(
+                    base + "/.e_verify.json",
+                    headers={"User-Agent": "E-Lang/Check/1.0"}
+                )
+                resp = urllib.request.urlopen(req, timeout=10)
+                codes = json.loads(resp.read())
+                expected = {"fentclient", "lure", "portbaby"}
+                found = set(codes.keys())
+                if expected.issubset(found):
+                    checks_passed += 1
             else:
                 print(f"  {c('⚠', YELLOW)} Remote verification: missing {expected - found}")
                 issues += 1
