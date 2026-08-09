@@ -50,7 +50,7 @@ def load_state():
         return {"tool": None, "dir": PROJECT_DIR, "agent": None}
 
 
-def ensure_provider(state, stream_out=print):
+def ensure_provider(state, stream_out=print, input_fn=input):
     """Resolve the provider for a launch: state > default. Returns the
     provider dict, or None when unavailable (caller aborts)."""
     pid = state.get("provider")
@@ -65,9 +65,15 @@ def ensure_provider(state, stream_out=print):
         stream_out(f"  provider '{prov['id']}' not configured — "
                    "$provider to pick another (ollama is one option)")
         return None
-    m = state.get("model", {}).get(prov["id"]) or prov["model"]
-    if prov["id"] == "ollama" and P.installed_models():
-        if m not in P.installed_models():
+    explicit = state.get("model", {}).get(prov["id"])
+    m = explicit or prov["model"]
+    if prov["id"] == "ollama":
+        if not explicit:
+            # ollama became the provider without a chosen model — always ask.
+            select_ollama_model(state, stream_out, input_fn)
+            explicit = state.get("model", {}).get("ollama")
+            m = explicit or m
+        if P.installed_models() and m not in P.installed_models():
             fixed = P.ollama_default_model()
             stream_out(f"  model '{m}' is not installed on ollama — using '{fixed}'")
             m = fixed
@@ -157,7 +163,7 @@ def picker(state, stream_out=print, prompt_input=input):
         stream_out("  pick a number or q.")
 
 
-def run_tool(tid, state, stream_out=print):
+def run_tool(tid, state, stream_out=print, input_fn=input):
     """Launch one tool, confining it to state['dir']. Returns exit code."""
     tool = T.by_id(tid)
     if tool is None:
@@ -167,7 +173,7 @@ def run_tool(tid, state, stream_out=print):
         stream_out(f"  {tool['name']} is not installed — run: {tool.get('install_cmd') or 'see docs'}")
         return 1
     prepare_knowledge(stream_out)
-    provider = ensure_provider(state, stream_out)
+    provider = ensure_provider(state, stream_out, input_fn)
     if provider is None:
         return 1
     P.write_provider_json(state["dir"], provider)
@@ -202,7 +208,7 @@ def run(api, tool_name=None):
             return 1
         state["tool"] = tid
         save_state(state)
-        return run_tool(tid, state, stream_out)
+        return run_tool(tid, state, stream_out, input_fn)
 
     # Always ask on open — the picker IS the launcher (per spec). $change
     # switches later, in the session REPL.
@@ -213,7 +219,7 @@ def run(api, tool_name=None):
     save_state(state)
 
     while True:
-        run_tool(state["tool"], state, stream_out)
+        run_tool(state["tool"], state, stream_out, input_fn)
         # Session REPL — seamless $change / $new / $dir / $agent.
         try:
             raw = input_fn("hellgate> ").strip()

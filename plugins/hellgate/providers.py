@@ -111,7 +111,10 @@ def available(provider=None):
             return bool(os.environ.get(p["env_key"]))
         if p["id"] == "ollama":
             return _ollama_up(os.environ.get("HELLGATE_OLLAMA_URL", p["base_url"]))
-        return True  # custom
+        if p["id"] == "custom":
+            return bool(os.environ.get("HELLGATE_CUSTOM_BASE_URL")
+                        or os.environ.get("HELLGATE_CUSTOM_API_KEY"))
+        return True
     return [(p, available(p["id"])) for p in PROVIDERS]
 
 
