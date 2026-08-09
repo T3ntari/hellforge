@@ -466,6 +466,7 @@ def main():
     if mode in ("merge",):
         return cmd_merge(args)
     if mode in ("hellgate", "gate", "hg"):
+        from ep_core import _plugin_api
         from plugins.hellgate import _cmd as _hellgate_cmd
         return _hellgate_cmd(args, _plugin_api)
     if mode in ("--help", "-h", "help"):

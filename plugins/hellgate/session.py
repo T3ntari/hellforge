@@ -82,7 +82,7 @@ def picker(state, stream_out=print, prompt_input=input):
         stream_out("HELLFORGE hellgate — pick an agent TUI:")
         for i, t in enumerate(tools, 1):
             mark = "ok" if t["installed"] else "missing"
-            note = f"  ({t['notes']})" if (t["notes"] and not t["installed"]) else ""
+            note = f"  ({t['notes'][:60]})" if (t["notes"] and not t["installed"]) else ""
             stream_out(f"  {i}. {t['name']:<10} [{mark}]{note}")
         stream_out(f"  q. quit")
         stream_out(f"  current: {state.get('tool') or 'none'} | dir: {state.get('dir') or PROJECT_DIR}"
@@ -143,12 +143,13 @@ def run(api, tool_name=None):
         save_state(state)
         return run_tool(tid, state, stream_out)
 
-    if not state.get("tool"):
-        tid = picker(state, stream_out, input_fn)
-        if tid is None:
-            return 0
-        state["tool"] = tid
-        save_state(state)
+    # Always ask on open — the picker IS the launcher (per spec). $change
+    # switches later, in the session REPL.
+    tid = picker(state, stream_out, input_fn)
+    if tid is None:
+        return 0
+    state["tool"] = tid
+    save_state(state)
 
     while True:
         run_tool(state["tool"], state, stream_out)
