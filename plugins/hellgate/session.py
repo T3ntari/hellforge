@@ -77,6 +77,32 @@ def ensure_provider(state, stream_out=print):
     return prov
 
 
+def select_ollama_model(state, stream_out=print, input_fn=input):
+    """Interactive select list of installed ollama models. Returns True when
+    a model was chosen (persisted), False when left unchanged."""
+    models = P.installed_models()
+    if not models:
+        stream_out("  ollama unreachable — no models to list (start `ollama serve`)")
+        return False
+    stream_out("  ollama models on this machine:")
+    for i, m in enumerate(models, 1):
+        stream_out(f"    {i}. {m}")
+    stream_out("  0 / Enter = keep current default")
+    try:
+        raw = input_fn("  pick model> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    if raw.isdigit():
+        i = int(raw)
+        if 1 <= i <= len(models):
+            state.setdefault("model", {})["ollama"] = models[i - 1]
+            save_state(state)
+            stream_out(f"  ollama model set: {models[i - 1]}")
+            return True
+    stream_out("  keeping current default")
+    return False
+
+
 def save_state(state):
     os.makedirs(os.path.dirname(state_path()), exist_ok=True)
     with open(state_path(), "w") as f:
@@ -269,17 +295,21 @@ def run(api, tool_name=None):
             state.setdefault("model", {})
             save_state(state)
             prov = P.by_id(pid)
-            stream_out(f"  provider set: {prov['name']} ({prov['id']})"
-                       + (f" — model: {state.get('model', {}).get(pid) or prov['model'] or '(unset)'}"))
+            stream_out(f"  provider set: {prov['name']} ({prov['id']})")
+            if pid == "ollama":
+                select_ollama_model(state, stream_out, input_fn)
             continue
         if low.startswith("$model") or low.startswith("model "):
             parts = low.split(maxsplit=1)
             pid = state.get("provider") or P.resolve_default()["id"]
             prov = P.by_id(pid)
             if len(parts) < 2:
-                m = state.get("model", {}).get(pid) or prov["model"]
-                stream_out(f"  provider {pid}: model = {m or '(unset)'}  "
-                           f"($model <name> to set)")
+                if pid == "ollama" and P.installed_models():
+                    select_ollama_model(state, stream_out, input_fn)
+                else:
+                    m = state.get("model", {}).get(pid) or prov["model"]
+                    stream_out(f"  provider {pid}: model = {m or '(unset)'}  "
+                               f"($model <name> to set)")
                 continue
             state.setdefault("model", {})[pid] = parts[1]
             save_state(state)
