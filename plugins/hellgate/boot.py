@@ -182,6 +182,16 @@ def run_boot(project_dir, version, stream_out=print):
     with lock:
         progress["units"] = 640
 
+    from ep_compiler.security_hash import verify as _sec_verify
+    try:
+        _sec = _sec_verify()
+        if not _sec["ok"]:
+            ok = False
+    except Exception:
+        pass
+    with lock:
+        progress["units"] = 768
+
     try:
         providers.installed_models()
         import shutil

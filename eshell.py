@@ -1590,6 +1590,13 @@ def main():
     import time
     import threading as _threading
 
+    # ── Core integrity digest — recomputed on every CLI start ──
+    try:
+        from ep_compiler.security_hash import boot_check
+        boot_check(print)
+    except Exception:
+        pass
+
     # ── Project directory resolution: --project flag > HELLFORGE_PROJECT env > cwd ──
     project_dir = None
     if "--project" in sys.argv:

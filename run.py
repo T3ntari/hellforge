@@ -14,6 +14,7 @@ Usage:
     run.py tempo <file> <bpm> [-o out]  Recompile at a new tempo (default <file>_tempo.mid)
     run.py merge <a> <b> [-o out]       Concatenate two files (default <a>_merged.mid)
     run.py hellgate                     HellGate boot -> OpenCode, focused in this repo
+    run.py integrity [--github]        Verify core digest vs committed + GitHub copy
 
 Modes:
     --window   Open a dedicated console window (CREATE_NEW_CONSOLE on Windows)
@@ -465,6 +466,20 @@ def main():
         return cmd_tempo(args)
     if mode in ("merge",):
         return cmd_merge(args)
+    if mode in ("integrity", "hash", "sec", "security"):
+        from ep_compiler.security_hash import verify, check_github, status_line
+        r = verify()
+        print(status_line(r))
+        print(f"  digest : {r['bundle'][:64]}... ({len(r['bundle'])//2} bytes)")
+        print(f"  expected: {r['committed'][:64] if r['committed'] else '(none)'}...")
+        if "--github" in args:
+            ok, remote, note = check_github()
+            if remote:
+                print(f"  github : {'MATCH' if ok else 'MISMATCH'} "
+                      f"({remote[:64]}...)")
+            else:
+                print(f"  github : {note}")
+        return 0 if r["ok"] else 1
     if mode in ("hellgate", "gate", "hg"):
         from ep_core import _plugin_api
         from plugins.hellgate import _cmd as _hellgate_cmd
