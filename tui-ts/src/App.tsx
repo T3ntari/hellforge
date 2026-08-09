@@ -96,6 +96,8 @@ export default function App({ bridge }: AppProps): JSX.Element {
         process.exit(0);
         return;
       }
+      // Echo the user's message into the feed (their side of the chat).
+      dispatch({ type: "append", item: { color: "accent", text: `> ${trimmed}` } });
       bridge.submit(trimmed);
     },
     [bridge],
