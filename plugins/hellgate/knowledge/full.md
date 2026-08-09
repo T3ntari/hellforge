@@ -109,14 +109,18 @@ math expressions.
   solve_linear pick rand`.
 - Comments: `//` line, `/* */` block, `#` legacy (outside headers).
 
-### Legacy carry-overs still valid in v5 (deprecated paths)
+### Legacy syntax — HARD BAN in new files
 
-From `docs/agent/language.md`: `[C4 D4 E4 F4 G4] (5:4)` polyrhythm,
-`CH0 3:2 C4|E4 e` shorthand polyrhythm, Euclidean `E(5,4)` / `[C4 E4 G4]
-E(5,4)`, `ritard(2 bars)->100`, v3 shorthand `C4 q`, `!name` v3 macros,
-`?0.8` probability gates, `x4` repeat suffix, `chord(I)`/`chord(V7)` roman
-numerals (key-aware via `@key`), `N60-72` random note ranges. These compile
-but the canonical path is the v5 statement set above.
+The following DO compile (for old material) but must NEVER appear in files
+you write: `T0 N60 D500 V80` machine lines, `N60`/`N60-72` v1 shorthand,
+`[C4 E4 G4](5:4)` / `CH0 3:2 C4|E4 e` polyrhythms, Euclidean `E(5,4)`,
+`ritard(2 bars)->100`, v3 shorthand `C4 q`, `!name` v3 macros, `?0.8`
+probability gates, `x4` repeat suffix, `chord(I)`/`chord(V7)` roman
+numerals, `while` loops, `for $i = 0 to N step S` loops, `@curve bpm from`
+v4 curves. They are deprecated paths — writing them makes a file v1–v4 and
+it compiles with deprecation warnings. ALWAYS write the v5 statement set
+above (play note/chord with `@dur/@vel/@art`, pedal/rest, !fn, prog, perc,
+for-in loops, repeat, print/assert, @seed/pick/rand, @curve vel ... over).
 
 ### Version detection & conversion
 

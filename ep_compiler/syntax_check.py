@@ -74,7 +74,10 @@ def resolve_duration(word):
 
 
 def resolve_velocity(word):
-    """word -> velocity int or None. Accepts codes, words, numerics."""
+    """word -> velocity int or None. Accepts codes, words, numerics, and
+    v5 variable references ($var — resolved later by the compiler)."""
+    if word.startswith("$"):
+        return 64  # variable reference: value checked at compile time
     w = word.lower()
     if w in VEL_CODES:
         return VEL_CODES[w]

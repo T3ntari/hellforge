@@ -21,8 +21,16 @@ sources, never fragments or placeholders.
   `@seed 42` + `pick(...)`/`rand(...)`, plus the performance layer
   `pedal on/off`, `rest q`, `@art:staccato|legato|tenuto|accent`,
   `t3(...)` tuplets, `@oct:+1`, `@curve vel 60 115`, ties `C4~ q q`).
-- Never write v1–v4 syntax in new files — v1–v4 are deprecated and compile
-  with warnings; convert legacy material with `run.py compile <file> --to v5`.
+- NEVER write legacy syntax in new files — no machine lines
+  (`T0 N60 D500 V80`), no `N60`/`N60-72`, no `E(5,4)`/`(5:4)` polyrhythms,
+  no v3 shorthand `C4 q`, no `chord(I)` roman numerals, no `while`, no
+  `for $i = 0 to N step S`, no `?0.8`, no `@curve bpm from` — these are
+  v1–v4 paths that compile only with deprecation warnings; writing them
+  makes a file legacy. Convert old material with
+  `run.py compile <file> --to v5`.
+- `run.py check <file>` is authoritative: a pure v5 file reports at most the
+  I001 info line (syntax version). Any deprecation warning means the file is
+  NOT v5 — rewrite it.
 - Work inside the project root only; never write to protected directories
   (`.e_identity/`, `.venv/`, `.fent_cache/`, `logs/`, `.git/`).
 - Verify before claiming done: run `run.py check <file>` (lint) and

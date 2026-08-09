@@ -58,7 +58,7 @@ _ERRORS.update({
 # Errors E011–E050: directives
 _DIRECTIVE_NAMES = ("bpm", "tempo", "key", "scale", "vol", "volume", "gc", "dur",
                     "vel", "ch", "prob", "probability", "curve", "mode", "random",
-                    "pan", "reverb", "delay")
+                    "pan", "reverb", "delay", "seed", "master", "oct", "art", "tie")
 for i, name in enumerate(_DIRECTIVE_NAMES):
     _ERRORS[f"E{11+i:03d}"] = ("error", f"@{'name'} directive: invalid value")
 _ERRORS["E035"] = ("error", "Unknown @directive")
@@ -441,7 +441,8 @@ def lint_source(text, path=None, report_only=False):
             m = re.search(r"@pan\s+(-?[\d.]+)", s)
             if m and not (-1.0 <= float(m.group(1)) <= 1.0):
                 diags.append(_diag("E040", i, char=m.start(), length=len(m.group(0))))
-        if "@curve" in s and not re.search(r"@curve\s+\w+\s+from\s+[\d.]+\s+to\s+[\d.]+\s+over\s+\d+", s):
+        if "@curve" in s and not re.search(
+                r"@curve\s+\w+\s+(?:from\s+)?[\d.]+\s+(?:to\s+)?[\d.]+\s+over\s+\S+", s):
             diags.append(_diag("E037", i, char=_col(s, "@curve"), length=6))
         if "@ch" in s:
             m = re.search(r"@ch\s+(\d+)", s)
@@ -544,9 +545,17 @@ def lint_source(text, path=None, report_only=False):
         for vm in re.finditer(r"\$([a-zA-Z_]\w*)", s):
             used_vars.add(vm.group(1))
 
-        # loops
+        # loops — v4 form: for $i = 1 to N [step S]; v5 forms below
         m = _FOR_RE.match(s)
         if m:
+            continue
+        if s.startswith("for ") and any(
+                re.match(k, s) for k in (
+                    r"^for\s+\$[a-zA-Z_]\w*\s+in\s+\[[^\]]*\]\s*\{?.*$",
+                    r"^for\s+\$[a-zA-Z_]\w*\s+in\s+-?\d+\.\.-?\d+\s*\{?.*$",
+                    r"^for\s+\$[a-zA-Z_]\w*\s+in\s+scale\s*\([^)]*\)\s*\{?.*$",
+                    r"^for\s+\$[a-zA-Z_]\w*\s+in\s+run\s*\([^)]*\)\s*\{?.*$",
+                )):
             continue
         if s.startswith("for "):
             diags.append(_diag("E131", i, extra=s[:40], char=0, length=len(s)))
@@ -590,7 +599,8 @@ def lint_source(text, path=None, report_only=False):
 
         # unknown line
         if not s.startswith(("}", "{", "@", "#", "$", "!", "?")):
-            if not re.match(r"^(project|composer|title|artist|album|genre|section|include|tempo|Key|arpeggio|chromatic_run|play|File:|Version:|Status:)", s, re.I):
+            if not re.match(r"^(project|composer|title|artist|album|genre|section|include|tempo|Key|arpeggio|chromatic_run|play|File:|Version:|Status:|print|assert|pedal|rest|perc|prog|pick|rand|t3|scale|run|break|continue)", s, re.I) \
+                    and not re.match(r"^[A-Ga-g]#?b?\d\s*~", s):
                 if "play mvmt" not in s and not s.startswith("section") and "{" not in s and "}" not in s:
                     diags.append(_diag("E056", i, extra=s[:40], char=0, length=len(s)))
 
