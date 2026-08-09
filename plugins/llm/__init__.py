@@ -1427,7 +1427,7 @@ def _agent_tui(state, api, rest):
         hist.append({"role": "user", "content": line})
         hist.append({"role": "assistant", "content": text})
         if mode == "chat":
-            bridge.feed(text, "text")
+            # the reply already streamed as chunks — no duplicate feed
             try:
                 sess.save_session(project_dir, hist[-6:],
                                   {"mode": "chat", "uploads": []})
@@ -1445,8 +1445,7 @@ def _agent_tui(state, api, rest):
         if plan is None or not (plan.get("files") or plan.get("commands")
                                 or plan.get("tests") or plan.get("todo")
                                 or plan.get("search") or plan.get("memory")):
-            bridge.feed(text, "text")
-            return
+            return  # already streamed as chunks — no duplicate feed
         bridge.feed(f"plan: {plan.get('summary', 'no summary')}", "accent2")
         cmds = plan.get("commands") or []
         if cmds:

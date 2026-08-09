@@ -160,8 +160,7 @@ def _handle(api, state, bridge, history, line):
     hist.append({"role": "user", "content": line})
     hist.append({"role": "assistant", "content": text})
     if mode == "chat":
-        bridge.feed(text, "text")
-        return
+        return  # the reply already streamed as chunk events — no duplicate feed
     plan = llm_agent.parse_plan(text)
     if plan is not None and plan.get("done"):
         bridge.feed(f"done: {plan.get('summary', '')}", "ok")
@@ -171,8 +170,7 @@ def _handle(api, state, bridge, history, line):
     if plan is None or not (plan.get("files") or plan.get("commands")
                             or plan.get("tests") or plan.get("todo")
                             or plan.get("search") or plan.get("memory")):
-        bridge.feed(text, "text")
-        return
+        return  # already streamed as chunks — no duplicate feed
     bridge.feed(f"plan: {plan.get('summary', 'no summary')}", "accent2")
     cmds = plan.get("commands") or []
     if cmds:
