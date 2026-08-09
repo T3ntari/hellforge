@@ -6,26 +6,37 @@ generated under <project>/hellgate-state/aider/ and passed with --config
 Aider's session files (.aider.chat.history.md etc.) are written into the
 cwd — the project root — which is inside the confinement boundary.
 
+The active provider is read from <project>/hellgate-state/provider.json
+(written by the session before every launch); each provider id maps to its
+own model prefix / env key (see _aider_cfg). When provider.json is absent
+(older setups) it falls back to the ollama provider and streams a note
+about it.
+
 Verified against aider 0.86.2 (this version has NO --system-prompt flag):
   - persona is injected via --model-settings-file with `system_prompt_prefix`
     (verified with --show-prompts)
   - knowledge is fed with --read full.md --read samples-index.md
-  - the local model is used as `ollama_chat/<model>` with OLLAMA_API_BASE
-    and --openai-api-base pointed at the ollama server (round-trip verified:
-    model answered PONG)
+  - the ollama model is used as `ollama_chat/<model>` with OLLAMA_API_BASE
+    and --openai-api-base pointed at the ollama server; the other provider
+    ids use their native model prefixes (anthropic/, openai/, openrouter/,
+    gemini/) which aider validates at startup (a bad prefix aborts with a
+    provider-parse error before any API call)
 """
 
 import os
 import shutil
 import subprocess
 
+from .. import providers as P
 from .. import util
 
-MODEL = os.environ.get(
+DEFAULT_MODEL = os.environ.get(
     "HELLGATE_MODEL",
     "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
 )
-OLLAMA_URL = os.environ.get("HELLGATE_OLLAMA_URL", "http://127.0.0.1:11434/v1")
+DEFAULT_OLLAMA_URL = os.environ.get("HELLGATE_OLLAMA_URL", "http://127.0.0.1:11434/v1")
+
+PROVIDER_IDS = ("ollama", "openai", "anthropic", "openrouter", "google", "custom")
 
 TOOL = {
     "id": "aider",
@@ -35,7 +46,8 @@ TOOL = {
                    "hellgate-state/.venvs/aider/bin/pip install aider-chat",
     "confined": True,
     "notes": "Installed into hellgate-state/.venvs/aider (aider-chat needs "
-             "Python 3.11, not 3.14). Config via --config; persona via "
+             "Python 3.11, not 3.14). Config via --config; provider/model "
+             "from hellgate-state/provider.json; persona via "
              "--model-settings-file system_prompt_prefix (0.86.x removed "
              "--system-prompt).",
 }
@@ -56,11 +68,6 @@ def _bin(project_dir):
             or shutil.which("aider"))
 
 
-def _root():
-    return os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))))
-
-
 def detect():
     if shutil.which("aider"):
         return True
@@ -70,6 +77,74 @@ def detect():
 
 def _state_dir(project_dir):
     return os.path.join(project_dir, "hellgate-state", "aider")
+
+
+def _fallback_ollama():
+    return {"id": "ollama", "name": "Ollama (local)",
+            "model": DEFAULT_MODEL, "base_url": DEFAULT_OLLAMA_URL, "api_key": None}
+
+
+def _provider(project_dir, stream_out):
+    """Provider dict from hellgate-state/provider.json, or ollama fallback."""
+    prov = P.read_provider_json(project_dir)
+    if prov is None:
+        stream_out("hellgate: no provider.json — falling back to ollama")
+        return _fallback_ollama()
+    if prov.get("id") not in PROVIDER_IDS:
+        stream_out(f"hellgate: unknown provider '{prov.get('id')}' in provider.json "
+                   "— falling back to ollama")
+        return _fallback_ollama()
+    return prov
+
+
+def _ollama_model_url(prov):
+    """Ollama model + base URL; HELLGATE_MODEL / HELLGATE_OLLAMA_URL override
+    the provider.json values when set."""
+    model = os.environ.get("HELLGATE_MODEL", prov.get("model") or DEFAULT_MODEL)
+    url = os.environ.get("HELLGATE_OLLAMA_URL", prov.get("base_url") or DEFAULT_OLLAMA_URL)
+    return model, url
+
+
+def _aider_cfg(prov):
+    """provider.json -> (model string, extra launch args, extra env).
+
+    api_key is omitted when null (aider then reads its own env)."""
+    pid = prov["id"]
+    model = prov.get("model") or DEFAULT_MODEL
+    url = prov.get("base_url")
+    key = prov.get("api_key")
+    args = []
+    env = {}
+    if pid == "ollama":
+        model, url = _ollama_model_url(prov)
+        args = ["--model", "ollama_chat/" + model, "--openai-api-base", url]
+        env["OLLAMA_API_BASE"] = url[:-3] if url.endswith("/v1") else url
+    elif pid == "anthropic":
+        args = ["--model", "anthropic/" + model]
+        if key:
+            env["ANTHROPIC_API_KEY"] = key
+    elif pid == "openai":
+        args = ["--model", "openai/" + model]
+        if url:
+            args += ["--openai-api-base", url]
+        if key:
+            env["OPENAI_API_KEY"] = key
+    elif pid == "openrouter":
+        args = ["--model", "openrouter/" + model]
+        if key:
+            env["OPENROUTER_API_KEY"] = key
+    elif pid == "google":
+        args = ["--model", "gemini/" + model]
+        if key:
+            env["GEMINI_API_KEY"] = key
+    elif pid == "custom":
+        args = ["--model", "openai/" + model]
+        if url:
+            args += ["--openai-api-base", url]
+        if key:
+            env["OPENAI_API_KEY"] = key
+    model_str = args[args.index("--model") + 1]
+    return model_str, args, env
 
 
 def _load_agents(knowledge_dir):
@@ -134,8 +209,9 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     with open(conf_path, "w", encoding="utf-8") as f:
         f.write("no-auto-commits: true\n")
 
-    cmd = [exe, "--config", conf_path, "--model", "ollama_chat/" + MODEL,
-           "--openai-api-base", OLLAMA_URL]
+    prov = _provider(project_dir, stream_out)
+    model_str, args, extra_env = _aider_cfg(prov)
+    cmd = [exe, "--config", conf_path] + args
 
     persona = None
     match = util.pick_agent(_load_agents(knowledge_dir), agent)
@@ -143,7 +219,7 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     if persona:
         ms_path = os.path.join(state, "model-settings.yml")
         with open(ms_path, "w", encoding="utf-8") as f:
-            f.write("- name: ollama_chat/%s\n" % MODEL)
+            f.write("- name: %s\n" % model_str)
             f.write("  edit_format: diff\n")
             f.write("  system_prompt_prefix: %s\n"
                     % persona.replace("\n", "\n    ").rstrip())
@@ -159,9 +235,9 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     cmd += [str(a) for a in (extra_args or [])]
 
     env = dict(os.environ)
-    env["OLLAMA_API_BASE"] = OLLAMA_URL[:-3] if OLLAMA_URL.endswith("/v1") else OLLAMA_URL
+    env.update(extra_env)
 
-    util.say(f"aider (ollama_chat/{MODEL}) in {project_dir}", stream_out)
+    util.say(f"aider ({model_str}) in {project_dir}", stream_out)
     p = subprocess.Popen(cmd, cwd=project_dir, env=env)
     try:
         return p.wait()

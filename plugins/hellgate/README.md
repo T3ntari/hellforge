@@ -17,7 +17,8 @@ run.py hellgate opencode        # launch one tool directly
 | `$new` | start a fresh chat in the current tool |
 | `$dir [path]` | show / add a project directory (default: the root) |
 | `$agent [name]` | Music-Composer, Music-Refiner, or default |
-| `$model` | show the active model (env `HELLGATE_MODEL`) |
+| `$provider [name]` | show / switch provider — Anthropic, OpenAI, OpenRouter, Gemini, custom, or Ollama (last option, never the default) |
+| `$model [name]` | show / set the model for the current provider |
 | `$help`, `quit` | help / exit |
 
 ## How it works
@@ -37,9 +38,14 @@ run.py hellgate opencode        # launch one tool directly
 - **Agents** — Music-Composer (writes v5 songs from scratch) and
   Music-Refiner (fixes/refines existing `.ec` files, converts v1–v4 → v5),
   each fed with the v5 statement set from `tests/v5_statements_test.py`.
-- **Model** — local ollama at `http://127.0.0.1:11434/v1`, default
-  `hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest`;
-  override with `HELLGATE_MODEL` / `HELLGATE_OLLAMA_URL`.
+- **Providers** — `hellgate-state/provider.json` drives every launch.
+  Registry order: Anthropic, OpenAI, OpenRouter, Google Gemini, custom
+  (OpenAI-compatible), Ollama LAST. The default is the first provider whose
+  API key is set in the environment; with no keys anywhere, Ollama is the
+  last-resort local option (only when `ollama serve` is actually running).
+  Keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`,
+  `GEMINI_API_KEY`; `HELLGATE_MODEL` / `HELLGATE_OLLAMA_URL` still override
+  the ollama path.
 
 ## Licensing
 

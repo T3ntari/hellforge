@@ -2,18 +2,26 @@
 
 Runs the opencode TUI focused inside the project root. All launch-time
 config lives under <project>/hellgate-state/opencode/: the opencode.json
-(providers.ollama + model + knowledge instructions) is passed via
-OPENCODE_CONFIG, and XDG_CONFIG/XDG_DATA/XDG_STATE_HOME are redirected into
-hellgate-state so opencode never touches ~/.config or ~/.local/share.
+(provider block for the active provider + model + knowledge instructions)
+is passed via OPENCODE_CONFIG, and XDG_CONFIG/XDG_DATA/XDG_STATE_HOME are
+redirected into hellgate-state so opencode never touches ~/.config or
+~/.local/share.
+
+The active provider is read from <project>/hellgate-state/provider.json
+(written by the session before every launch); each provider id maps to its
+own opencode provider block (see _opencode_cfg). When provider.json is
+absent (older setups) it falls back to the ollama provider and streams a
+note about it.
 
 Agent presets (Music-Composer / Music-Refiner) are written as project
 agents to <project>/.opencode/agents/<id>.md (never overwriting an existing
 file) and selected with `--agent <id>`.
 
-Verified against opencode 1.18.15: `opencode models ollama` lists the model
-from OPENCODE_CONFIG; `opencode run --agent music-composer -m ollama/<model>`
-answers with the local ollama model; with XDG_* redirected, the session db,
-logs and locks all land inside hellgate-state.
+Verified against opencode 1.18.15: `opencode models` parses OPENCODE_CONFIG
+generated for provider=ollama (lists the local model) and for
+provider=anthropic with a dummy key (lists the anthropic models) without
+calling any API; with XDG_* redirected, the session db, logs and locks all
+land inside hellgate-state.
 """
 
 import json
@@ -21,13 +29,16 @@ import os
 import shutil
 import subprocess
 
+from .. import providers as P
 from .. import util
 
-MODEL = os.environ.get(
+DEFAULT_MODEL = os.environ.get(
     "HELLGATE_MODEL",
     "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
 )
-OLLAMA_URL = os.environ.get("HELLGATE_OLLAMA_URL", "http://127.0.0.1:11434/v1")
+DEFAULT_OLLAMA_URL = os.environ.get("HELLGATE_OLLAMA_URL", "http://127.0.0.1:11434/v1")
+
+PROVIDER_IDS = ("ollama", "openai", "anthropic", "openrouter", "google", "custom")
 
 TOOL = {
     "id": "opencode",
@@ -36,7 +47,8 @@ TOOL = {
     "install_cmd": "npm i -g opencode-ai",
     "confined": True,
     "notes": "Config via OPENCODE_CONFIG + XDG_* redirected into hellgate-state; "
-             "local ollama model; sessions/logs stay in hellgate-state.",
+             "provider/model from hellgate-state/provider.json (ollama is one "
+             "option); sessions/logs stay in hellgate-state.",
 }
 
 
@@ -50,6 +62,93 @@ def detect():
 
 def _state_dir(project_dir):
     return os.path.join(project_dir, "hellgate-state", "opencode")
+
+
+def _fallback_ollama():
+    return {"id": "ollama", "name": "Ollama (local)",
+            "model": DEFAULT_MODEL, "base_url": DEFAULT_OLLAMA_URL, "api_key": None}
+
+
+def _provider(project_dir, stream_out):
+    """Provider dict from hellgate-state/provider.json, or ollama fallback."""
+    prov = P.read_provider_json(project_dir)
+    if prov is None:
+        stream_out("hellgate: no provider.json — falling back to ollama")
+        return _fallback_ollama()
+    if prov.get("id") not in PROVIDER_IDS:
+        stream_out(f"hellgate: unknown provider '{prov.get('id')}' in provider.json "
+                   "— falling back to ollama")
+        return _fallback_ollama()
+    return prov
+
+
+def _ollama_model_url(prov):
+    """Ollama model + base URL; HELLGATE_MODEL / HELLGATE_OLLAMA_URL override
+    the provider.json values when set."""
+    model = os.environ.get("HELLGATE_MODEL", prov.get("model") or DEFAULT_MODEL)
+    url = os.environ.get("HELLGATE_OLLAMA_URL", prov.get("base_url") or DEFAULT_OLLAMA_URL)
+    return model, url
+
+
+def _opencode_cfg(prov):
+    """provider.json -> opencode.json contents for the active provider.
+
+    Keys live under provider.<id>.options (verified against opencode
+    1.18.15: a top-level provider.<id>.apiKey is ignored — the binary's
+    config loader merges the `options` object into the provider config).
+    api_key is omitted when null (opencode then reads its own auth)."""
+    pid = prov["id"]
+    model = prov.get("model") or DEFAULT_MODEL
+    url = prov.get("base_url")
+    key = prov.get("api_key")
+    cfg = {"autoupdate": False}
+    if pid == "ollama":
+        model, url = _ollama_model_url(prov)
+        cfg["model"] = "ollama/" + model
+        cfg["provider"] = {
+            "ollama": {
+                "options": {"baseURL": url},
+                "models": {model: {"name": "HELLFORGE local (ollama)"}},
+            }
+        }
+    elif pid == "anthropic":
+        cfg["model"] = "anthropic/" + model
+        if key:
+            cfg["provider"] = {"anthropic": {"options": {"apiKey": key}}}
+    elif pid == "openai":
+        cfg["model"] = "openai/" + model
+        opts = {}
+        if key:
+            opts["apiKey"] = key
+        if url:
+            opts["baseURL"] = url
+        if opts:
+            cfg["provider"] = {"openai": {"options": opts}}
+    elif pid == "openrouter":
+        cfg["model"] = "openrouter/" + model
+        opts = {}
+        if key:
+            opts["apiKey"] = key
+        if url:
+            opts["baseURL"] = url
+        if opts:
+            cfg["provider"] = {"openrouter": {"options": opts}}
+    elif pid == "google":
+        cfg["model"] = "google/" + model
+        if key:
+            cfg["provider"] = {"google": {"options": {"apiKey": key}}}
+    elif pid == "custom":
+        # opencode requires the provider prefix in the model string; custom
+        # endpoints ride on the openai provider block.
+        cfg["model"] = "openai/" + model
+        opts = {}
+        if url:
+            opts["baseURL"] = url
+        if key:
+            opts["apiKey"] = key
+        if opts:
+            cfg["provider"] = {"openai": {"options": opts}}
+    return cfg
 
 
 def _write_knowledge(state_dir, knowledge_dir):
@@ -70,7 +169,7 @@ def _write_knowledge(state_dir, knowledge_dir):
     return path
 
 
-def _agent_md(project_dir, persona, agent_name):
+def _agent_md(project_dir, persona, agent_name, model):
     """Write .opencode/agents/<slug>.md under the project root (never clobber).
 
     Returns the agent id to pass as --agent, or None when the file already
@@ -85,7 +184,7 @@ def _agent_md(project_dir, persona, agent_name):
         "---\n"
         f"description: {persona.splitlines()[0][:90]}\n"
         "mode: primary\n"
-        f"model: ollama/{MODEL}\n"
+        f"model: {model}\n"
         "---\n"
         + persona
     )
@@ -104,16 +203,8 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     os.makedirs(os.path.join(state, "xdg", "data"), exist_ok=True)
     os.makedirs(os.path.join(state, "xdg", "state"), exist_ok=True)
 
-    cfg = {
-        "model": "ollama/" + MODEL,
-        "autoupdate": False,
-        "provider": {
-            "ollama": {
-                "options": {"baseURL": OLLAMA_URL},
-                "models": {MODEL: {"name": "HELLFORGE local (ollama)"}},
-            }
-        },
-    }
+    prov = _provider(project_dir, stream_out)
+    cfg = _opencode_cfg(prov)
     kfile = _write_knowledge(state, knowledge_dir)
     if kfile:
         cfg["instructions"] = [kfile]
@@ -122,7 +213,7 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     match = util.pick_agent(_load_agents(knowledge_dir), agent)
     persona = match["prompt"] if match else _inline_persona(agent)
     if persona:
-        agent_id = _agent_md(project_dir, persona, agent)
+        agent_id = _agent_md(project_dir, persona, agent, cfg["model"])
         if agent_id:
             agent_args = ["--agent", agent_id]
             stream_out(f"hellgate: opencode agent '{agent_id}' from .opencode/agents/")
@@ -138,7 +229,7 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     env["XDG_STATE_HOME"] = os.path.join(state, "xdg", "state")
 
     cmd = [exe] + agent_args + [str(a) for a in (extra_args or [])]
-    util.say(f"opencode (ollama/{MODEL}) in {project_dir}", stream_out)
+    util.say(f"opencode ({cfg['model']}) in {project_dir}", stream_out)
     p = subprocess.Popen(cmd, cwd=project_dir, env=env)
     try:
         return p.wait()

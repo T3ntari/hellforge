@@ -22,6 +22,7 @@ import sys
 from . import tools as T
 from . import util
 from . import knowledge as K
+from . import providers as P
 
 HELLGATE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = util.PROJECT_DIR
@@ -31,7 +32,8 @@ $change            switch to another tool (back to the picker)
 $new               start a fresh chat in the current tool
 $dir [path]        show or change the project directory (default: project root)
 $agent [name]      show or switch agent (Music-Composer / Music-Refiner / default)
-$model             show the active model (env HELLGATE_MODEL)
+$provider [name]   show or switch provider (ollama is only one option)
+$model [name]      show or set the model for the current provider
 $help              this list
 quit / exit        leave the session"""
 
@@ -46,6 +48,28 @@ def load_state():
             return json.load(f)
     except Exception:
         return {"tool": None, "dir": PROJECT_DIR, "agent": None}
+
+
+def ensure_provider(state, stream_out=print):
+    """Resolve the provider for a launch: state > default. Returns the
+    provider dict, or None when unavailable (caller aborts)."""
+    pid = state.get("provider")
+    prov = P.by_id(pid) if pid else None
+    if prov is None:
+        prov = P.resolve_default()
+        if prov["id"] == "ollama" and not P.available("ollama"):
+            stream_out("  no provider configured and Ollama is not reachable — "
+                       "set one with $provider (or start ollama serve)")
+            return None
+    if not P.available(prov["id"]):
+        stream_out(f"  provider '{prov['id']}' not configured — "
+                   "$provider to pick another (ollama is one option)")
+        return None
+    m = state.get("model", {}).get(prov["id"]) or prov["model"]
+    prov = dict(prov)
+    prov["model"] = m
+    stream_out(f"  provider: {prov['name']} ({prov['id']}) — model: {m or '(unset)'}")
+    return prov
 
 
 def save_state(state):
@@ -85,8 +109,10 @@ def picker(state, stream_out=print, prompt_input=input):
             note = f"  ({t['notes'][:60]})" if (t["notes"] and not t["installed"]) else ""
             stream_out(f"  {i}. {t['name']:<10} [{mark}]{note}")
         stream_out(f"  q. quit")
+        prov = P.by_id(state.get("provider") or "") or P.resolve_default()
         stream_out(f"  current: {state.get('tool') or 'none'} | dir: {state.get('dir') or PROJECT_DIR}"
-                   f" | agent: {state.get('agent') or 'default'}")
+                   f" | agent: {state.get('agent') or 'default'}"
+                   f" | provider: {prov['name']}")
         try:
             raw = prompt_input("hellgate> ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -110,6 +136,10 @@ def run_tool(tid, state, stream_out=print):
         stream_out(f"  {tool['name']} is not installed — run: {tool.get('install_cmd') or 'see docs'}")
         return 1
     prepare_knowledge(stream_out)
+    provider = ensure_provider(state, stream_out)
+    if provider is None:
+        return 1
+    P.write_provider_json(state["dir"], provider)
     agent = state.get("agent")
     if agent:
         stream_out(f"  agent: {agent}")
@@ -214,9 +244,41 @@ def run(api, tool_name=None):
             save_state(state)
             stream_out(f"  agent set: {state.get('agent') or 'default'}")
             continue
-        if low.startswith("$model"):
-            stream_out(f"  model: {os.environ.get('HELLGATE_MODEL') or 'default (ollama Qwen2.5-Coder-3B)'}"
-                       f"  url: {os.environ.get('HELLGATE_OLLAMA_URL') or 'http://127.0.0.1:11434/v1'}")
+        if low.startswith("$provider") or low.startswith("provider "):
+            parts = low.split(maxsplit=1)
+            if len(parts) < 2:
+                prov = P.by_id(state.get("provider") or "") or P.resolve_default()
+                stream_out(f"  provider: {prov['name']} ({prov['id']}) — model: "
+                           f"{prov.get('model') or '(unset)'}")
+                for p, ok in P.available():
+                    mark = "ok" if ok else "key missing"
+                    stream_out(f"    {p['id']:<11} {p['name']:<28} [{mark}]")
+                stream_out("  set one with: $provider <id>  (ollama is just one option)")
+                continue
+            pid = parts[1].lower()
+            if P.by_id(pid) is None:
+                stream_out(f"  unknown provider: {pid} — options: "
+                           f"{', '.join(p['id'] for p in P.PROVIDERS)}")
+                continue
+            state["provider"] = pid
+            state.setdefault("model", {})
+            save_state(state)
+            prov = P.by_id(pid)
+            stream_out(f"  provider set: {prov['name']} ({prov['id']})"
+                       + (f" — model: {state.get('model', {}).get(pid) or prov['model'] or '(unset)'}"))
+            continue
+        if low.startswith("$model") or low.startswith("model "):
+            parts = low.split(maxsplit=1)
+            pid = state.get("provider") or P.resolve_default()["id"]
+            prov = P.by_id(pid)
+            if len(parts) < 2:
+                m = state.get("model", {}).get(pid) or prov["model"]
+                stream_out(f"  provider {pid}: model = {m or '(unset)'}  "
+                           f"($model <name> to set)")
+                continue
+            state.setdefault("model", {})[pid] = parts[1]
+            save_state(state)
+            stream_out(f"  provider {pid}: model set to {parts[1]}")
             continue
         stream_out("  try: $help | $change | $new | $dir [path] | $agent [name] | quit")
 
