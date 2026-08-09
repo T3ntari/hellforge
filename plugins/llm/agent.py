@@ -207,7 +207,8 @@ def parse_plan(text):
         except Exception:
             end -= 1
             continue
-        if isinstance(plan, dict) and ("files" in plan or plan.get("done")):
+        if isinstance(plan, dict) and ("files" in plan or "done" in plan
+                                        or "summary" in plan):
             return plan
         end -= 1
     return None

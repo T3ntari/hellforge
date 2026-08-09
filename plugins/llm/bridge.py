@@ -7,6 +7,7 @@ brain (two-mode router, streaming, plans) and streams events back."""
 
 import json
 import os
+import re
 import sys
 import threading
 
@@ -208,7 +209,15 @@ def _handle(api, state, bridge, history, line):
     if mode == "chat":
         return  # the reply already streamed as chunk events — no duplicate feed
     plan = llm_agent.parse_plan(text)
-    bug_intent = any(k in line.lower() for k in ("bug", "check", "test", "debug", "verify"))
+    # Suite auto-run ONLY for explicit bug/verify checks — "check the code
+    # and debloat it" must NOT trigger it.
+    ll = line.lower()
+    bug_intent = bool(
+        re.search(r"\b(bugs?|issues?)\b", ll)
+        or "check for" in ll or "look for" in ll
+        or "run the tests" in ll or "run tests" in ll
+        or "test the" in ll or "verify the" in ll
+    )
     if plan is not None and plan.get("done"):
         # A 'done' shrug is not enough for bug-check requests — the engine
         # still verifies the codebase and reports.
@@ -224,13 +233,15 @@ def _handle(api, state, bridge, history, line):
     if plan is None or not (plan.get("files") or plan.get("commands")
                             or plan.get("tests") or plan.get("todo")
                             or plan.get("search") or plan.get("memory")):
-        # Not a plan → show the buffered text as a normal reply (agent mode
-        # buffered it, so it hasn't been displayed yet).
-        if text:
-            bridge.feed(text, "text")
-        # Model didn't act (weak model, generic reply). For bug-check /
-        # verify intents, the ENGINE runs the suite regardless — real value
-        # even when the model just shrugs.
+        # Actionless plan or plain reply: show the summary (never the raw
+        # JSON), or the buffered text.
+        summary = (plan or {}).get("summary") if isinstance(plan, dict) else None
+        bridge.feed(summary if summary else (text or ""), "text")
+        if plan is not None and isinstance(plan, dict) and plan.get("done") is False:
+            bridge.feed("the model proposed no concrete edits — "
+                        "try '/fix <specific file>' for targeted changes.", "dim")
+        # Bug-check / verify intents: the ENGINE runs the suite regardless —
+        # real value even when the model just shrugs.
         if bug_intent:
             _run_suite_and_report(bridge, api.project_dir, history)
         return
