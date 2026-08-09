@@ -111,17 +111,25 @@ export function applyEditorKey(state: EditorState, input: string, key: EditorKey
   if (key.rightArrow) {
     return move(state, 1);
   }
-  // Raw-byte backspace: some terminals send 0x08 (Ctrl-H) instead of 0x7f,
-  // and Ink's parseKeypress only maps 0x7f to key.backspace.
-  if (key.backspace || input === "\x7f" || input === "\x08") {
+  // Backspace: raw 0x08 (Ctrl-H) or Ink's key.backspace.
+  if (key.backspace || input === "\x7f" || input === "\x08" || input === "\b") {
     if (state.cursor <= 0) {
       return { kind: "none" };
     }
     return change(state.buffer.slice(0, state.cursor - 1) + state.buffer.slice(state.cursor), state.cursor - 1);
   }
+  // Delete. Ink parses the PHYSICAL BACKSPACE key (0x7f) as 'delete', so
+  // when the cursor sits at the end of the line (the usual case), delete
+  // acts as backspace — otherwise it deletes forward.
   if (key.delete || input === "\x1b[3~") {
     if (state.cursor >= state.buffer.length) {
-      return { kind: "none" };
+      if (state.cursor <= 0) {
+        return { kind: "none" };
+      }
+      return change(
+        state.buffer.slice(0, state.cursor - 1) + state.buffer.slice(state.cursor),
+        state.cursor - 1,
+      );
     }
     return change(state.buffer.slice(0, state.cursor) + state.buffer.slice(state.cursor + 1), state.cursor);
   }
