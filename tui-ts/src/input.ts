@@ -111,13 +111,15 @@ export function applyEditorKey(state: EditorState, input: string, key: EditorKey
   if (key.rightArrow) {
     return move(state, 1);
   }
-  if (key.backspace) {
+  // Raw-byte backspace: some terminals send 0x08 (Ctrl-H) instead of 0x7f,
+  // and Ink's parseKeypress only maps 0x7f to key.backspace.
+  if (key.backspace || input === "\x7f" || input === "\x08") {
     if (state.cursor <= 0) {
       return { kind: "none" };
     }
     return change(state.buffer.slice(0, state.cursor - 1) + state.buffer.slice(state.cursor), state.cursor - 1);
   }
-  if (key.delete) {
+  if (key.delete || input === "\x1b[3~") {
     if (state.cursor >= state.buffer.length) {
       return { kind: "none" };
     }
