@@ -1,11 +1,18 @@
-/** PLACEHOLDER — owned by tickets-ts-chrome (Splash.tsx). Replace wholesale.
- *  Contract: no props. Boot screen; App renders it until the first bridge event. */
+import React from "react";
 import { Box, Text } from "ink";
+import { tokenHex } from "../theme.js";
 
-export default function Splash(): JSX.Element {
+export interface SplashProps {
+  status?: string;
+}
+
+/** Boot screen shown while the agent bridge spawns. */
+export default function Splash({ status = "starting agent bridge..." }: SplashProps): React.ReactElement {
   return (
-    <Box>
-      <Text color="gray">Splash</Text>
+    <Box flexDirection="column" alignItems="center" justifyContent="center" height="100%">
+      <Text bold color={tokenHex("accent")}>HELL&apos;S CODE</Text>
+      <Text color={tokenHex("accent2")}>{status}</Text>
+      <Text color={tokenHex("dim")}>- T3ntari</Text>
     </Box>
   );
 }
