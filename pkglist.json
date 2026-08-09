@@ -12,7 +12,7 @@
       "url": "file://plugins/talisman/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "84ae3d5e0b49d63ddbb5d319c9e0b65fcd16da92b9a332dc0a3a9f7917fb2154"
+      "verification": "c5970a79714ebfdd23b7afe0128d4ac7c909292a5f340193873e9bf29e22f5b0"
     },
     "lure": {
       "version": "3.0.0",
