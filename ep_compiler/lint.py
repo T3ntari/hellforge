@@ -600,7 +600,10 @@ def lint_source(text, path=None, report_only=False):
         # unknown line
         if not s.startswith(("}", "{", "@", "#", "$", "!", "?")):
             if not re.match(r"^(project|composer|title|artist|album|genre|section|include|tempo|Key|arpeggio|chromatic_run|play|File:|Version:|Status:|print|assert|pedal|rest|perc|prog|pick|rand|t3|scale|run|break|continue)", s, re.I) \
-                    and not re.match(r"^[A-Ga-g]#?b?\d\s*~", s):
+                    and not re.match(r"^[A-Ga-g]#?b?\d\s*~", s) \
+                    and not re.match(r"^\[[^\]]+\]\s*\(\d+:\d+\)", s) \
+                    and not re.match(r"^E\(\d+\s*,\s*\d+\)", s) \
+                    and not re.match(r"^[A-Ga-g]#?b?\d+\s+[whqest]", s):
                 if "play mvmt" not in s and not s.startswith("section") and "{" not in s and "}" not in s:
                     diags.append(_diag("E056", i, extra=s[:40], char=0, length=len(s)))
 

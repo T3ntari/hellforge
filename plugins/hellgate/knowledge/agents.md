@@ -21,9 +21,11 @@ sources, never fragments or placeholders.
   `@seed 42` + `pick(...)`/`rand(...)`, plus the performance layer
   `pedal on/off`, `rest q`, `@art:staccato|legato|tenuto|accent`,
   `t3(...)` tuplets, `@oct:+1`, `@curve vel 60 115`, ties `C4~ q q`).
+- Polyrhythm `[C4 E4 G4](3:2)`, Euclidean `E(5,4)` and shorthand `C4 q`
+  are VALID v5 (superset) — use them freely, they do not demote the file.
 - NEVER write legacy syntax in new files — no machine lines
-  (`T0 N60 D500 V80`), no `N60`/`N60-72`, no `E(5,4)`/`(5:4)` polyrhythms,
-  no v3 shorthand `C4 q`, no `chord(I)` roman numerals, no `while`, no
+  (`T0 N60 D500 V80`), no `N60`/`N60-72`, no `CH0 3:2 C4|E4 e`, no
+  `ritard(2 bars)->100`, no `chord(I)` roman numerals, no `while`, no
   `for $i = 0 to N step S`, no `?0.8`, no `@curve bpm from` — these are
   v1–v4 paths that compile only with deprecation warnings; writing them
   makes a file legacy. Convert old material with

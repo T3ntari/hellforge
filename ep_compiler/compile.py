@@ -154,8 +154,8 @@ def detect_syntax_version(text):
             return 'v5'
     # v4 markers (next superset level)
     v4_patterns = [
-        r'E\(\d+\s*,\s*\d+\)',          # Euclidean rhythm
-        r'\[[^\]]+\]\s*\(\d+:\d+\)',    # polyrhythm [notes](3:2)
+        # NOTE: Euclidean E(5,4) and polyrhythm [C4 E4](3:2) are valid v5
+        # superset constructs — markerless files with them default to v5.
         r'ritard(?:ando)?\(',           # ritardando
         r'@curve\s+(?:bpm|vel)',        # tempo / velocity curves
         r'Version:\s*v4',               # v4 header
@@ -172,7 +172,9 @@ def detect_syntax_version(text):
             _warn_deprecated('v4')
             return 'v4'
     v3_patterns = [r'@(adagio|allegro|presto)', r'^!\w+\s*=', r'\?\d+\.\d+\s+T',
-                   r'V~', r'D~', r'^[A-G]#?b?\d+\s+[whqest]',
+                   r'V~', r'D~',
+                   # NOTE: `C4 q` v3 shorthand is a valid v5 superset
+                   # construct — markerless files default to v5.
                    r'x\d+\s*$', r'&', r'/\*', r'ppp\s*<']
     for p in v3_patterns:
         if re.search(p, text, re.I | re.MULTILINE):
