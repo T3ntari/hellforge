@@ -111,6 +111,29 @@ def run(api, state):
     return 0
 
 
+def _run_suite_and_report(bridge, project_dir, history):
+    """Run the project test suite and stream a summary — the engine-level
+    answer to 'check bugs in the codebase' when the model won't act."""
+    try:
+        from . import tests_runner as tr
+    except ImportError:
+        return
+    bridge.feed("running the test suite...", "accent2")
+    bridge.box_open("tests")
+    def _on_line(ln):
+        bridge.box_line(ln)
+    results = tr.run_tests(project_dir)
+    bridge.box_close("done")
+    summary = tr.summarize(results)
+    for line in summary.splitlines()[:12]:
+        bridge.feed(line, "ok" if "✓" in line or "passed" in line else "dim")
+    failed = sum(1 for r in results if not r.get("ok"))
+    bridge.feed("✓ all green" if failed == 0 else
+                f"✗ {failed} file(s) failing — see above", "ok" if failed == 0 else "err")
+    history["_agent_done"] = True
+    history["agent"] = []
+
+
 def _handle(api, state, bridge, history, line):
     line = llm_agent.strip_ansi(line).strip()
     if not line:
@@ -174,15 +197,28 @@ def _handle(api, state, bridge, history, line):
     if mode == "chat":
         return  # the reply already streamed as chunk events — no duplicate feed
     plan = llm_agent.parse_plan(text)
+    bug_intent = any(k in line.lower() for k in ("bug", "check", "test", "debug", "verify"))
     if plan is not None and plan.get("done"):
-        bridge.feed(f"done: {plan.get('summary', '')}", "ok")
-        history["_agent_done"] = True
-        history["agent"] = []
+        # A 'done' shrug is not enough for bug-check requests — the engine
+        # still verifies the codebase and reports.
+        if bug_intent:
+            _run_suite_and_report(bridge, api.project_dir, history)
+            if plan.get("summary"):
+                bridge.feed(f"model note: {plan['summary']}", "dim")
+        else:
+            bridge.feed(f"done: {plan.get('summary', '')}", "ok")
+            history["_agent_done"] = True
+            history["agent"] = []
         return
     if plan is None or not (plan.get("files") or plan.get("commands")
                             or plan.get("tests") or plan.get("todo")
                             or plan.get("search") or plan.get("memory")):
-        return  # already streamed as chunks — no duplicate feed
+        # Model didn't act (weak model, generic reply). For bug-check /
+        # verify intents, the ENGINE runs the suite regardless — real value
+        # even when the model just shrugs.
+        if bug_intent:
+            _run_suite_and_report(bridge, api.project_dir, history)
+        return
     bridge.feed(f"plan: {plan.get('summary', 'no summary')}", "accent2")
     cmds = plan.get("commands") or []
     if cmds:

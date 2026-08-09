@@ -1349,12 +1349,16 @@ AGENT_PREFIXES = ("/fix", "/edit", "/tool", "/write", "/plugin", "/agent",
 # Task-intent phrases: plain-language requests that need the agent (tools,
 # files, edits). Routed to agent mode automatically instead of chat.
 AGENT_INTENT = (
-    "find a bug", "find bugs", "look for a bug", "spot the bug", "debug",
+    "find a bug", "find bugs", "look for a bug", "look for bugs",
+    "spot the bug", "check bugs", "check for bugs", "check the codebase",
+    "check the project", "check for issues", "find issues", "find the bug",
+    "is there a bug", "any bugs", "debug", "test the", "run the tests",
     "search the codebase", "search the project", "analyze", "inspect",
     "refactor", "fix the", "fix a", "fix it", "fix this", "fix that",
     "create a", "create an", "write a", "write an", "add a", "add an",
-    "implement", "review", "explain the code", "explain how", "how does",
-    "what does", "where is", "find the", "look at", "check the",
+    "implement", "review the code", "review", "explain the code",
+    "explain how", "how does", "what does", "where is", "find the",
+    "look at", "look for", "check the",
 )
 
 

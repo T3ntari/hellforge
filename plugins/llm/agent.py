@@ -72,7 +72,8 @@ Rules:
 - "tests": "all" (or a list like ["tests/syntax_test.py"]) runs the project
   test suite; failures are fed back to you automatically and you must fix
   them — the auto-fix loop keeps retesting until green. Use it whenever you
-  change .py files.
+  change .py files, AND whenever the user asks you to check/verify the
+  codebase for bugs — run the suite and report what fails, then fix it.
 - PREFER TOOLS OVER COMMANDS: make changes with read/edit/write actions, not
   by proposing shell commands. Commands are for verification only (running
   tests, git status). Never propose running the application itself as a
