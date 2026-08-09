@@ -45,3 +45,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# TypeScript TUI
+tui-ts/node_modules/
+tui-ts/dist/
