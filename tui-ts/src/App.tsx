@@ -196,6 +196,16 @@ export default function App({ bridge }: AppProps): JSX.Element {
     [bridge],
   );
 
+  const handleType = useCallback((char: string) => {
+    // Typing while the palette is open: close it and continue editing
+    // (e.g. "/" then "e" → "/e" → "/exit").
+    setPaletteOpen(false);
+    editor.setState((prev) => ({
+      buffer: prev.buffer + char,
+      cursor: prev.cursor + 1,
+    }));
+  }, [editor]);
+
   const handlePick = useCallback((command: string) => {
       if (command === "/model") {
         setPickerOpen(true);
@@ -275,7 +285,7 @@ export default function App({ bridge }: AppProps): JSX.Element {
       {box ? <SubWindow title={box.title} lines={box.lines} /> : null}
       {ask ? <Gatekeeper ask={ask} onAnswer={(v) => handleAnswer(ask!.key, v)} /> : null}
       {paletteOpen ? (
-        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={handlePick} />
+        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={handlePick} onType={handleType} />
       ) : null}
       {pickerOpen ? (
         <ModelPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={handleModelPick} />

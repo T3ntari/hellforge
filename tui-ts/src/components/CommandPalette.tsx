@@ -52,9 +52,13 @@ export interface CommandPaletteProps {
   onPick: (cmd: string) => void;
   /** Called when Esc is pressed; the parent should flip `open` to false. */
   onClose?: () => void;
+  /** Called with a printable character typed while open — the parent
+   *  closes the palette and continues editing (e.g. typing "e" after "/"
+   *  keeps "/e" going toward "/exit"). */
+  onType?: (char: string) => void;
 }
 
-export function CommandPalette({ open, onPick, onClose }: CommandPaletteProps) {
+export function CommandPalette({ open, onPick, onClose, onType }: CommandPaletteProps) {
   const [selected, setSelected] = useState(0);
   const count = PALETTE_COMMANDS.length;
 
@@ -63,7 +67,7 @@ export function CommandPalette({ open, onPick, onClose }: CommandPaletteProps) {
   }, [open]);
 
   useInput(
-    (_input, key) => {
+    (input, key) => {
       if (key.upArrow) {
         setSelected((i) => (i - 1 + count) % count);
       } else if (key.downArrow) {
@@ -72,6 +76,8 @@ export function CommandPalette({ open, onPick, onClose }: CommandPaletteProps) {
         onPick(PALETTE_COMMANDS[selected].cmd);
       } else if (key.escape) {
         onClose?.();
+      } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
+        onType?.(input);
       }
     },
     { isActive: open },
