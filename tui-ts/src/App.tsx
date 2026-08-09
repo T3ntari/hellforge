@@ -103,10 +103,15 @@ export default function App({ bridge }: AppProps): JSX.Element {
   });
   const slashWasOn = useRef(false);
   useEffect(() => {
-    const on = editor.state.buffer.startsWith("/");
-    if (!slashWasOn.current && on) setPaletteOpen(true);
-    slashWasOn.current = on;
-  }, [editor.state.buffer]);
+    const buf = editor.state.buffer;
+    if (buf === "/") {
+      if (!slashWasOn.current) setPaletteOpen(true);
+      slashWasOn.current = true;
+    } else {
+      if (slashWasOn.current && paletteOpen) setPaletteOpen(false);
+      slashWasOn.current = false;
+    }
+  }, [editor.state.buffer, paletteOpen]);
 
   useEffect(() => {
     bridge.on("system", (m) => {
@@ -191,9 +196,7 @@ export default function App({ bridge }: AppProps): JSX.Element {
     [bridge],
   );
 
-  const handlePick = useCallback(
-    (command: string) => {
-      setPaletteOpen(false);
+  const handlePick = useCallback((command: string) => {
       if (command === "/model") {
         setPickerOpen(true);
         return;
@@ -232,7 +235,9 @@ export default function App({ bridge }: AppProps): JSX.Element {
       setPickerOpen(false);
       return;
     }
-    if (!paletteOpen) setPaletteOpen(true);
+    if (paletteOpen) {
+      setPaletteOpen(false);
+    }
   });
 
   return (
