@@ -13,7 +13,7 @@ Usage:
     run.py transpose <file> <n> [-o out]  Shift notes by semitones (default <file>_transposed.mid)
     run.py tempo <file> <bpm> [-o out]  Recompile at a new tempo (default <file>_tempo.mid)
     run.py merge <a> <b> [-o out]       Concatenate two files (default <a>_merged.mid)
-    run.py hellgate [tool]              Launch OpenCode/Aider/OpenHands/Goose focused in this repo
+    run.py hellgate                     HellGate boot -> OpenCode, focused in this repo
 
 Modes:
     --window   Open a dedicated console window (CREATE_NEW_CONSOLE on Windows)

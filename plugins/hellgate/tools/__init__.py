@@ -1,32 +1,18 @@
-"""Hellgate tools layer — one module per tool lives here.
+"""HellGate tools - OpenCode only.
 
-Contract (implemented by tools/opencode.py, tools/aider.py,
-tools/openhands.py, tools/goose.py):
+    TOOL = {"id": "opencode", "name": "OpenCode", "license": "MIT",
+            "install_cmd": ..., "confined": True, "notes": ...}
 
-    TOOL = {
-        "id": "opencode",               # unique id
-        "name": "OpenCode",
-        "license": "MIT",
-        "install_cmd": str | None,      # one-line shell install hint
-        "confined": bool,               # can run fully inside project root
-        "notes": str | None,            # picker note (docker needed etc.)
-    }
+    def detect() -> bool
+    def launch(project_dir, agent, knowledge_dir, extra_args, stream_out) -> int
 
-    def detect() -> bool:
-        Return True when the tool is installed / launchable.
-
-    def launch(project_dir: str, agent: str | None, knowledge_dir: str,
-               extra_args: list[str], stream_out=print) -> int:
-        Launch the tool focused inside project_dir; must not read/write
-        outside project_dir. Return the tool exit code.
-
-Every module imports nothing outside the stdlib and hellgate.util.
-discover() returns the four TOOL dicts merged with live detect() status.
+The module reads hellgate-state/provider.json (via plugins.hellgate.providers)
+for the active provider/model and confines all config into the project root.
 """
 
 import importlib
 
-TOOL_IDS = ("opencode", "aider", "openhands", "goose")
+TOOL_IDS = ("opencode",)
 
 
 def discover():
@@ -34,12 +20,11 @@ def discover():
     for tid in TOOL_IDS:
         try:
             mod = importlib.import_module(f"plugins.hellgate.tools.{tid}")
-        except Exception as e:  # a broken tool module must not kill the picker
-            tools.append({
-                "id": tid, "name": tid, "license": "?", "install_cmd": None,
-                "confined": False, "notes": f"module error: {e}",
-                "installed": False, "launch": None,
-            })
+        except Exception as e:
+            tools.append({"id": tid, "name": tid, "license": "?",
+                          "install_cmd": None, "confined": False,
+                          "notes": f"module error: {e}",
+                          "installed": False, "launch": None})
             continue
         d = dict(mod.TOOL)
         d["installed"] = bool(mod.detect())

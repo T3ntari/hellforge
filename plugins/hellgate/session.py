@@ -1,41 +1,41 @@
-"""Hellgate session — picker + REPL.
+"""HellGate session — boots and launches OpenCode directly.
 
-    hellgate> 1        launch OpenCode (fresh chat, project dir = root by default)
-    hellgate> $change  switch to another tool
-    hellgate> $new     start a fresh chat in the current tool
-    hellgate> $dir     show / change the project directory (default: root)
-    hellgate> $agent   show / switch agent (Music-Composer | Music-Refiner | default)
-    hellgate> $model   show the active model (HELLGATE_MODEL override)
-    hellgate> $help    list commands
-    hellgate> quit     exit
+    run.py hellgate
 
-State (current tool / dir / agent) persists in hellgate-state/session.json
-inside the project root. Every launch regenerates the knowledge digest
-(current.md: distilled core.md for small-context models, full.md otherwise)
-and confines the tool to the chosen project directory.
+Flow per launch:
+  wrapper warning (every time)
+  → first-run onboarding on a NEW machine (specs-based, even with history)
+  → provider/model resolution (ollama asks for a model via the select list)
+  → HellCode welcome page + loading screen (real init, x/1024)
+  → OpenCode TUI, focused inside the project dir
+
+After OpenCode exits: Enter relaunches, $provider / $model / $agent / $dir
+manage the session, q quits.
 """
 
 import json
 import os
 import sys
 
-from . import tools as T
-from . import util
+from . import boot
 from . import knowledge as K
 from . import providers as P
+from . import util
+from . import welcome
+from .tools import opencode as OC
 
 HELLGATE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = util.PROJECT_DIR
 
 HELP = """\
-$change            switch to another tool (back to the picker)
-$new               start a fresh chat in the current tool
-$dir [path]        show or change the project directory (default: project root)
-$agent [name]      show or switch agent (Music-Composer / Music-Refiner / default)
-$provider [name]   show or switch provider (ollama is only one option)
-$model [name]      show or set the model for the current provider
-$help              this list
-quit / exit        leave the session"""
+Enter / $new      relaunch OpenCode (fresh chat)
+$agent [name]     show or switch agent (Music-Composer / Music-Refiner / default)
+$provider [name]  show or switch provider (ollama is one option — and asks
+                  for a model)
+$model [name]     show or set the model for the current provider
+$dir [path]       show or change the project directory (default: project root)
+$help             this list
+quit / exit / q   leave the session"""
 
 
 def state_path():
@@ -47,12 +47,19 @@ def load_state():
         with open(state_path()) as f:
             return json.load(f)
     except Exception:
-        return {"tool": None, "dir": PROJECT_DIR, "agent": None}
+        return {"dir": PROJECT_DIR, "agent": None}
+
+
+def save_state(state):
+    os.makedirs(os.path.dirname(state_path()), exist_ok=True)
+    with open(state_path(), "w") as f:
+        json.dump(state, f, indent=2)
 
 
 def ensure_provider(state, stream_out=print, input_fn=input):
-    """Resolve the provider for a launch: state > default. Returns the
-    provider dict, or None when unavailable (caller aborts)."""
+    """Resolve the provider for a launch: state > default. When ollama is
+    the provider without an explicitly chosen model, ALWAYS ask via the
+    select list. Returns the provider dict or None (abort)."""
     pid = state.get("provider")
     prov = P.by_id(pid) if pid else None
     if prov is None:
@@ -69,7 +76,6 @@ def ensure_provider(state, stream_out=print, input_fn=input):
     m = explicit or prov["model"]
     if prov["id"] == "ollama":
         if not explicit:
-            # ollama became the provider without a chosen model — always ask.
             select_ollama_model(state, stream_out, input_fn)
             explicit = state.get("model", {}).get("ollama")
             m = explicit or m
@@ -84,8 +90,7 @@ def ensure_provider(state, stream_out=print, input_fn=input):
 
 
 def select_ollama_model(state, stream_out=print, input_fn=input):
-    """Interactive select list of installed ollama models. Returns True when
-    a model was chosen (persisted), False when left unchanged."""
+    """Interactive select list of installed ollama models. Persists the pick."""
     models = P.installed_models()
     if not models:
         stream_out("  ollama unreachable — no models to list (start `ollama serve`)")
@@ -109,15 +114,9 @@ def select_ollama_model(state, stream_out=print, input_fn=input):
     return False
 
 
-def save_state(state):
-    os.makedirs(os.path.dirname(state_path()), exist_ok=True)
-    with open(state_path(), "w") as f:
-        json.dump(state, f, indent=2)
-
-
 def prepare_knowledge(stream_out=print):
     """Write knowledge/current.md: distilled for small-context models,
-    full knowledge otherwise. Returns the chosen kind."""
+    full knowledge otherwise."""
     kind, text = K.pick_for(model_context_tokens())
     path = os.path.join(HELLGATE_DIR, "knowledge", "current.md")
     with open(path, "w", encoding="utf-8") as f:
@@ -129,122 +128,81 @@ def prepare_knowledge(stream_out=print):
 
 def model_context_tokens():
     try:
-        from plugins.llm import providers as P
-        return P.context_window()
+        from plugins.llm import providers as Pmod
+        return Pmod.context_window()
     except Exception:
         return 32768
 
 
-def picker(state, stream_out=print, prompt_input=input):
-    """Numbered tool picker. Returns a tool id or None (quit)."""
-    while True:
-        tools = T.discover()
-        stream_out("")
-        stream_out("HELLFORGE hellgate — pick an agent TUI:")
-        for i, t in enumerate(tools, 1):
-            mark = "ok" if t["installed"] else "missing"
-            note = f"  ({t['notes'][:60]})" if (t["notes"] and not t["installed"]) else ""
-            stream_out(f"  {i}. {t['name']:<10} [{mark}]{note}")
-        stream_out(f"  q. quit")
-        prov = P.by_id(state.get("provider") or "") or P.resolve_default()
-        stream_out(f"  current: {state.get('tool') or 'none'} | dir: {state.get('dir') or PROJECT_DIR}"
-                   f" | agent: {state.get('agent') or 'default'}"
-                   f" | provider: {prov['name']}")
-        try:
-            raw = prompt_input("hellgate> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return None
-        if raw.lower() in ("q", "quit", "exit"):
-            return None
-        if raw.isdigit():
-            i = int(raw)
-            if 1 <= i <= len(tools):
-                return tools[i - 1]["id"]
-        stream_out("  pick a number or q.")
-
-
-def run_tool(tid, state, stream_out=print, input_fn=input):
-    """Launch one tool, confining it to state['dir']. Returns exit code."""
-    tool = T.by_id(tid)
-    if tool is None:
-        stream_out(f"  unknown tool: {tid}")
-        return 1
-    if not tool["installed"]:
-        stream_out(f"  {tool['name']} is not installed — run: {tool.get('install_cmd') or 'see docs'}")
-        return 1
-    prepare_knowledge(stream_out)
+def launch_opencode(state, stream_out=print, input_fn=input):
+    """Provider + knowledge + config, then the OpenCode TUI."""
     provider = ensure_provider(state, stream_out, input_fn)
     if provider is None:
         return 1
     P.write_provider_json(state["dir"], provider)
+    prepare_knowledge(stream_out)
     agent = state.get("agent")
     if agent:
         stream_out(f"  agent: {agent}")
-    stream_out(f"  launching {tool['name']} in {state['dir']} — exit the tool to return here.")
+    stream_out(f"  launching OpenCode in {state['dir']} — exit it to return here.")
     stream_out("")
     try:
-        code = tool["launch"](state["dir"], agent, os.path.join(HELLGATE_DIR, "knowledge"),
-                              [], stream_out)
+        code = OC.launch(state["dir"], agent,
+                         os.path.join(HELLGATE_DIR, "knowledge"), [], stream_out)
     except KeyboardInterrupt:
         code = 130
     except Exception as e:
         stream_out(f"  launch error: {e}")
         code = 1
     stream_out("")
-    stream_out(f"  [{tool['name']} exited with code {code}]")
+    stream_out(f"  [OpenCode exited with code {code}]")
     return code
 
 
 def run(api, tool_name=None):
-    """Entry: run.py hellgate [tool]."""
+    """Entry: run.py hellgate."""
+    from . import HELLGATE_VERSION
     state = load_state()
     stream_out = print
     input_fn = input
 
     if tool_name:
-        tid = tool_name.lower()
-        if tid not in T.TOOL_IDS:
-            stream_out(f"  unknown tool: {tid} — one of {', '.join(T.TOOL_IDS)}")
-            return 1
-        state["tool"] = tid
-        save_state(state)
-        return run_tool(tid, state, stream_out, input_fn)
-
-    # Always ask on open — the picker IS the launcher (per spec). $change
-    # switches later, in the session REPL.
-    tid = picker(state, stream_out, input_fn)
-    if tid is None:
-        return 0
-    state["tool"] = tid
-    save_state(state)
+        stream_out(f"  hellgate is OpenCode-only now — launching OpenCode"
+                   f" (ignoring '{tool_name}')")
 
     while True:
-        run_tool(state["tool"], state, stream_out, input_fn)
-        # Session REPL — seamless $change / $new / $dir / $agent.
+        # 1. wrapper warning — every single launch.
+        welcome.show_warning(stream_out)
+        # 2. first-run onboarding on a NEW machine (specs-based).
+        if welcome.needs_onboarding():
+            if not welcome.onboarding(stream_out, input_fn):
+                return 0
+        # 3. provider/model resolution (ollama asks for a model).
+        provider = ensure_provider(state, stream_out, input_fn)
+        if provider is None:
+            return 1
+        P.write_provider_json(state["dir"], provider)
+        # 4. welcome page + loading screen (real init, x/1024).
+        boot.run_boot(PROJECT_DIR, HELLGATE_VERSION, stream_out)
+        # 5. OpenCode, directly.
+        launch_opencode(state, stream_out, input_fn)
+
+        # After OpenCode exits.
         try:
             raw = input_fn("hellgate> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
         if not raw:
-            continue  # Enter: relaunch the same tool (fresh chat)
+            continue  # relaunch
         low = raw.lower()
         if low in ("quit", "exit", "q"):
-            state["tool"] = None
-            save_state(state)
             return 0
         if low in ("$help", "help"):
             stream_out(HELP)
             continue
-        if low in ("$change", "change"):
-            tid = picker(state, stream_out, input_fn)
-            if tid is None:
-                return 0
-            state["tool"] = tid
-            save_state(state)
-            continue
         if low in ("$new", "new"):
-            continue  # relaunch = fresh chat in the same tool
+            continue
         if low.startswith("$dir") or low.startswith("dir "):
             parts = low.split(maxsplit=1)
             if len(parts) < 2:
@@ -257,7 +215,7 @@ def run(api, tool_name=None):
                 continue
             if not util.confine(d, PROJECT_DIR):
                 stream_out(f"  warning: {d} is OUTSIDE the HELLFORGE root — "
-                           "tools stay focused on their project dir, but knowledge "
+                           "OpenCode stays focused on its project dir, but knowledge "
                            "still targets HELLFORGE.")
             state["dir"] = d
             save_state(state)
@@ -321,7 +279,7 @@ def run(api, tool_name=None):
             save_state(state)
             stream_out(f"  provider {pid}: model set to {parts[1]}")
             continue
-        stream_out("  try: $help | $change | $new | $dir [path] | $agent [name] | quit")
+        stream_out("  try: $help | $new | $dir [path] | $agent [name] | $provider [name] | quit")
 
 
 if __name__ == "__main__":
