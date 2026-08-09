@@ -27,6 +27,7 @@ logs/
 
 # Build artifacts / binaries
 node_modules/
+dist/
 *.vsix
 doc.zip
 tools/fluidsynth/
