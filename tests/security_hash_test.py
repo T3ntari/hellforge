@@ -68,7 +68,7 @@ def test_extra_plugin_dir_flags():
             f.write("probe = 1\n")
         r = S.verify()
         assert not r["ok"], "unlisted plugin dir must be flagged"
-        assert "unlisted_probe" in r["changed"] or "unlisted_probe" in r["extra_dirs"], \
+        assert any("unlisted_probe" in c for c in r["changed"]) or "unlisted_probe" in r["extra_dirs"], \
             f"changed: {r['changed']}, extra_dirs: {r['extra_dirs']}"
         os.remove(os.path.join(extra, "__init__.py"))
         # plugin dir without __init__.py -> uncovered -> extra_dirs
