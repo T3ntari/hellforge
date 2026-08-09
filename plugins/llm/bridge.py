@@ -236,10 +236,29 @@ def _handle(api, state, bridge, history, line):
         # Actionless plan or plain reply: show the summary (never the raw
         # JSON), or the buffered text.
         summary = (plan or {}).get("summary") if isinstance(plan, dict) else None
-        bridge.feed(summary if summary else (text or ""), "text")
+        reply = summary if summary else re.sub(r"^(done|plan)\s*:\s*", "", text or "")
+        bridge.feed(reply, "text")
+        # The model couldn't act. If the task names a file, the ENGINE scans
+        # it directly — real analysis even when the model just shrugs.
+        fm = re.search(r"([A-Za-z0-9_][\w./-]*\.py)\b", line)
+        if not fm:
+            for tok in re.findall(r"[A-Za-z0-9_]+", line):
+                for cand in (tok + ".py", tok + "/__init__.py"):
+                    if os.path.isfile(cand):
+                        fm = re.match(r"(.+)", cand)
+                        break
+                if fm:
+                    break
+        scanned = None
         if plan is not None and isinstance(plan, dict) and plan.get("done") is False:
-            bridge.feed("the model proposed no concrete edits — "
-                        "try '/fix <specific file>' for targeted changes.", "dim")
+            if fm and os.path.isfile(fm.group(1)):
+                scanned = llm_agent.scan_bloat(fm.group(1))
+                if scanned:
+                    bridge.feed("bloat scan (engine):", "accent2")
+                    bridge.feed(scanned, "dim")
+            if not scanned:
+                bridge.feed("the model proposed no concrete edits — "
+                            "try '/fix <specific file>' for targeted changes.", "dim")
         # Bug-check / verify intents: the ENGINE runs the suite regardless —
         # real value even when the model just shrugs.
         if bug_intent:

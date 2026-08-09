@@ -46,7 +46,10 @@ START your reply with a thought block:
 [THINK]one short paragraph of reasoning about the task[/THINK]
 THEN output ONLY the JSON plan (no markdown fences, no prose outside it).
 Use empty arrays explicitly: "files": [], "commands": [] when nothing is
-needed — never omit them. When finished, reply {"done": true, "summary": "..."}."""
+needed — never omit them. When finished, reply {"done": true, "summary": "..."}.
+For ANALYZE / FIND / REVIEW requests you MUST first emit
+{"files":[{"action":"read","path":"<the exact file>","why":"..."}]} and wait
+for the content in the next user turn — never answer without reading first."""
 
 
 SYSTEM_PROMPT = """You are HELLFORGE Copilot, an AI assistant embedded in the HELLFORGE
@@ -584,3 +587,31 @@ def plan_is_done(plan):
     files = plan.get("files") or []
     commands = plan.get("commands") or []
     return not files and not commands
+
+
+def scan_bloat(path):
+    """Engine-side static bloat scan — works even when the model just
+    shrugs. Returns a compact text report or None."""
+    import ast as _ast
+    if not os.path.isfile(path):
+        return None
+    src = open(path, encoding="utf-8", errors="replace").read()
+    try:
+        tree = _ast.parse(src)
+    except SyntaxError as e:
+        return f"scan {path}: parse error at line {e.lineno}"
+    funcs = []
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            n = (node.end_lineno or node.lineno) - node.lineno
+            funcs.append((node.name, n, node.lineno))
+    funcs.sort(key=lambda x: x[1], reverse=True)
+    lines = src.splitlines()
+    long_lines = [(i, len(l)) for i, l in enumerate(lines, 1) if len(l) > 100]
+    rep = [f"scan {path}: {len(lines)} lines"]
+    if funcs:
+        top = ", ".join(f"{n} ({l} ln @ {s})" for n, l, s in funcs[:4])
+        rep.append("biggest functions: " + top)
+    if long_lines:
+        rep.append("long lines >100: " + ", ".join(f"{i} ({n})" for i, n in long_lines[:6]))
+    return "\n".join(rep)
