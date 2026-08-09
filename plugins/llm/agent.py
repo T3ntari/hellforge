@@ -17,6 +17,30 @@ sentences. No JSON, no tools — just a helpful, direct answer. Reference
 files only if you are certain they exist."""
 
 
+def agent_docs_context(project_dir, cap=16000):
+    """The model-facing docs (docs/agent/*.md) — the maps the AI needs to
+    understand the project: language, compiler pipeline, plugin API,
+    testing, the copilot tool protocol, architecture. The model is fed
+    these on EVERY agent turn, not just for large profiles."""
+    from pathlib import Path
+    root = Path(project_dir)
+    parts = []
+    used = 0
+    for name in ("quickstart", "language", "compiler", "plugins",
+                 "testing", "copilot", "architecture"):
+        p = root / "docs" / "agent" / f"{name}.md"
+        if p.exists():
+            try:
+                t = p.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            parts.append("## " + name + ".md\n" + t)
+            used += len(t)
+            if used >= cap:
+                break
+    return "\n\n".join(parts)
+
+
 AGENT_PROMPT = """You are HELLFORGE Copilot in AGENT mode.
 START your reply with a thought block:
 [THINK]one short paragraph of reasoning about the task[/THINK]

@@ -23,6 +23,7 @@ import { Box, Text, measureElement, useInput, useStdout } from "ink";
 import type { DOMElement } from "ink";
 import type { Color, FeedItem } from "../protocol.js";
 import { tokenHex } from "../theme.js";
+import { Markdown } from "../markdown.js";
 
 interface Row {
   text: string;
@@ -165,9 +166,13 @@ export default function ChatFeed({ items, thinking }: ChatFeedProps) {
     <Box flexGrow={1} overflow="hidden" ref={outerRef}>
       <Box flexDirection="column" width={innerWidth} height={height}>
         {slice.map((row, i) => (
-          <Text key={i} color={row.color === null ? undefined : tokenHex(row.color)}>
-            {row.text}
-          </Text>
+          row.color === null ? (
+            <Markdown key={i} text={row.text} />
+          ) : (
+            <Text key={i} color={tokenHex(row.color)}>
+              {row.text}
+            </Text>
+          )
         ))}
         {thinking && (
           <Text color={tokenHex("dim")}>{`${THINKING_TEXT}${".".repeat((tick % 3) + 1)}`}</Text>

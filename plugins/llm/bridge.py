@@ -167,7 +167,9 @@ def _handle(api, state, bridge, history, line):
         context = (f"Project context:\n{llm._build_context(project_dir, line)}\n\n"
                    f"{indexer.index_to_text(idx, max_files=20)}"
                    + (f"\n\n{repro}" if repro else ""))
-        messages = [{"role": "system", "content": llm_agent.AGENT_PROMPT}]
+        messages = [{"role": "system", "content":
+            llm_agent.AGENT_PROMPT + "\n\n"
+            + llm_agent.agent_docs_context(project_dir, cap=14000)}]
         if context:
             messages.append({"role": "user", "content": context})
         messages.append({"role": "user", "content": line})
