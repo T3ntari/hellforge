@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/App.js",
+    "build": "tsc && node -e \"const p=require(\"./package.json\"); p.scripts.build='tsc'; require(\"fs\").writeFileSync(\"package.json\", JSON.stringify(p,null,2))\"",
+    "start": "node dist/index.js",
     "dev": "tsx src/App.tsx"
   },
   "dependencies": {
