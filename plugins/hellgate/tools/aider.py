@@ -197,6 +197,19 @@ def _inline_persona(agent):
     return None
 
 
+def _ensure_gitignore(project_dir):
+    gi = os.path.join(project_dir, ".gitignore")
+    try:
+        with open(gi) as f:
+            cur = f.read()
+    except OSError:
+        cur = ""
+    if ".aider*" not in cur:
+        with open(gi, "a") as f:
+            f.write("\n# hellgate (aider)\n.aider*\n")
+    return gi
+
+
 def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     exe = _bin(project_dir)
     if not exe:
@@ -216,13 +229,17 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     persona = None
     match = util.pick_agent(_load_agents(knowledge_dir), agent)
     persona = match["prompt"] if match else _inline_persona(agent)
+    _ensure_gitignore(project_dir)
+    cmd += ["--no-gitignore", "--no-show-model-warnings", "--no-auto-commits"]
     if persona:
         ms_path = os.path.join(state, "model-settings.yml")
+        import json as _json
         with open(ms_path, "w", encoding="utf-8") as f:
             f.write("- name: %s\n" % model_str)
             f.write("  edit_format: diff\n")
-            f.write("  system_prompt_prefix: %s\n"
-                    % persona.replace("\n", "\n    ").rstrip())
+            # json.dumps → a YAML-safe double-quoted scalar (persona contains
+            # '**bold**' etc. that YAML would read as aliases otherwise).
+            f.write("  system_prompt_prefix: %s\n" % _json.dumps(persona))
         cmd += ["--model-settings-file", ms_path]
 
     names = (("current.md",) if os.path.isfile(os.path.join(knowledge_dir, "current.md"))

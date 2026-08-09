@@ -52,3 +52,4 @@ tui-ts/dist/
 hellgate-state/
 plugins/hellgate/knowledge/current.md
 hellgate-state/
+.aider*

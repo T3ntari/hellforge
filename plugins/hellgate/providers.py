@@ -52,6 +52,42 @@ def by_id(pid):
     return None
 
 
+_TAGS_CACHE = None
+
+
+def _ollama_base():
+    return os.environ.get("HELLGATE_OLLAMA_URL",
+                          by_id("ollama")["base_url"]).rstrip("/")
+
+
+def installed_models():
+    """Names installed on the local ollama, or [] when unreachable."""
+    global _TAGS_CACHE
+    if _TAGS_CACHE is not None:
+        return _TAGS_CACHE
+    root = _ollama_base()
+    if root.endswith("/v1"):
+        root = root[:-3]
+    try:
+        with urllib.request.urlopen(f"{root}/api/tags", timeout=3) as r:
+            data = json.loads(r.read().decode())
+        _TAGS_CACHE = [m["name"] for m in data.get("models", [])]
+    except Exception:
+        _TAGS_CACHE = []
+    return _TAGS_CACHE
+
+
+def ollama_default_model():
+    """A model that ACTUALLY exists on this machine, by preference."""
+    names = installed_models()
+    for pref in ("Qwen2.5-Coder-3B", "qwen2.5-coder", "gemma3", "gemma",
+                 "deepseek-r1"):
+        for n in names:
+            if pref.lower() in n.lower():
+                return n
+    return names[0] if names else "qwen2.5-coder:3b"
+
+
 def _ollama_up(url):
     root = url.rstrip("/")
     if root.endswith("/v1"):

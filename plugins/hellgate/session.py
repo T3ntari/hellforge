@@ -66,6 +66,11 @@ def ensure_provider(state, stream_out=print):
                    "$provider to pick another (ollama is one option)")
         return None
     m = state.get("model", {}).get(prov["id"]) or prov["model"]
+    if prov["id"] == "ollama" and P.installed_models():
+        if m not in P.installed_models():
+            fixed = P.ollama_default_model()
+            stream_out(f"  model '{m}' is not installed on ollama — using '{fixed}'")
+            m = fixed
     prov = dict(prov)
     prov["model"] = m
     stream_out(f"  provider: {prov['name']} ({prov['id']}) — model: {m or '(unset)'}")
