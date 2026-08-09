@@ -48,17 +48,17 @@ export const PALETTE_COMMANDS: readonly PaletteCommand[] = [
 export interface CommandPaletteProps {
   /** Whether the palette is shown; selection resets whenever it turns true. */
   open: boolean;
-  /** Called with the raw command (e.g. "/fix") when Enter is pressed. */
+  /** The current input buffer (used to decide whether Enter picks or
+   *  passes through to the editor). */
+  buffer?: string;
+  /** Called with the raw command (e.g. "/fix") when Enter is pressed on a
+   *  lone "/". */
   onPick: (cmd: string) => void;
   /** Called when Esc is pressed; the parent should flip `open` to false. */
   onClose?: () => void;
-  /** Called with a printable character typed while open — the parent
-   *  closes the palette and continues editing (e.g. typing "e" after "/"
-   *  keeps "/e" going toward "/exit"). */
-  onType?: (char: string) => void;
 }
 
-export function CommandPalette({ open, onPick, onClose, onType }: CommandPaletteProps) {
+export function CommandPalette({ open, buffer = "/", onPick, onClose }: CommandPaletteProps) {
   const [selected, setSelected] = useState(0);
   const count = PALETTE_COMMANDS.length;
 
@@ -67,17 +67,18 @@ export function CommandPalette({ open, onPick, onClose, onType }: CommandPalette
   }, [open]);
 
   useInput(
-    (input, key) => {
+    (_input, key) => {
       if (key.upArrow) {
         setSelected((i) => (i - 1 + count) % count);
       } else if (key.downArrow) {
         setSelected((i) => (i + 1) % count);
       } else if (key.return) {
-        onPick(PALETTE_COMMANDS[selected].cmd);
+        // Only a lone "/" means "pick a command" — anything else is the
+        // user typing a full command (e.g. "/exit"), which the editor
+        // submits normally.
+        if (buffer === "/") onPick(PALETTE_COMMANDS[selected].cmd);
       } else if (key.escape) {
         onClose?.();
-      } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
-        onType?.(input);
       }
     },
     { isActive: open },

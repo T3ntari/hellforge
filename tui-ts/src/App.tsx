@@ -85,7 +85,18 @@ export default function App({ bridge }: AppProps): JSX.Element {
   const submit = useCallback(
     (line: string) => {
       if (!line.trim()) return;
-      bridge.submit(line);
+      const trimmed = line.trim();
+      if (QUIT_COMMANDS.has(trimmed)) {
+        // Synchronous exit — unmissable, nothing can block it.
+        try {
+          bridge.quit();
+        } catch {
+          /* noop */
+        }
+        process.exit(0);
+        return;
+      }
+      bridge.submit(trimmed);
     },
     [bridge],
   );
@@ -93,7 +104,10 @@ export default function App({ bridge }: AppProps): JSX.Element {
   // Input line. The feed agent's ChatFeed does not host an editor, so the
   // line lives here in App (raw keys via ../input.ts). A leading "/" opens
   // the command palette; Esc/Enter inside the palette are its own.
-  const editorActive = ready && !ask && !paletteOpen && !pickerOpen;
+  // The editor stays ACTIVE while the palette is open: typing passes
+  // through naturally ("/" then "exit" → "/exit"). The palette only owns
+  // ↑/↓, Esc, and Enter-on-a-lone-"/".
+  const editorActive = ready && !ask && !pickerOpen;
   const editor = useInputEditor({
     isActive: editorActive,
     onSubmit: (line) => {
@@ -185,7 +199,11 @@ export default function App({ bridge }: AppProps): JSX.Element {
       dispatch({ type: "append", item: { color: "err", text: `[error] ${m.text ?? ""}` } });
       setReady(true);
     });
-    bridge.on("done", () => exit());
+    bridge.on("done", () => {
+      try { exit(); } catch {
+        process.exit(0);
+      }
+    });
   }, [bridge, exit]);
 
   const handleAnswer = useCallback(
@@ -195,16 +213,6 @@ export default function App({ bridge }: AppProps): JSX.Element {
     },
     [bridge],
   );
-
-  const handleType = useCallback((char: string) => {
-    // Typing while the palette is open: close it and continue editing
-    // (e.g. "/" then "e" → "/e" → "/exit").
-    setPaletteOpen(false);
-    editor.setState((prev) => ({
-      buffer: prev.buffer + char,
-      cursor: prev.cursor + 1,
-    }));
-  }, [editor]);
 
   const handlePick = useCallback((command: string) => {
       if (command === "/model") {
@@ -285,7 +293,7 @@ export default function App({ bridge }: AppProps): JSX.Element {
       {box ? <SubWindow title={box.title} lines={box.lines} /> : null}
       {ask ? <Gatekeeper ask={ask} onAnswer={(v) => handleAnswer(ask!.key, v)} /> : null}
       {paletteOpen ? (
-        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={handlePick} onType={handleType} />
+        <CommandPalette open={paletteOpen} buffer={editor.state.buffer} onClose={() => setPaletteOpen(false)} onPick={handlePick} />
       ) : null}
       {pickerOpen ? (
         <ModelPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={handleModelPick} />

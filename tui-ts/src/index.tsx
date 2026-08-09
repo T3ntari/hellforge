@@ -22,9 +22,30 @@ const { unmount, waitUntilExit } = render(
   { exitOnCtrlC: false },
 );
 
-process.on("exit", () => bridge.dispose());
-process.on("SIGINT", () => bridge.quit());
-process.on("SIGTERM", () => bridge.quit());
+// Every exit path leads here — the process must never linger holding the
+// python bridge child.
+function hardExit(code = 0) {
+  try {
+    bridge.dispose();
+  } catch {
+    /* noop */
+  }
+  setTimeout(() => process.exit(code), 50);
+}
+
+process.on("exit", () => {
+  try {
+    bridge.dispose();
+  } catch {
+    /* noop */
+  }
+});
+process.on("SIGINT", () => hardExit(0));
+process.on("SIGTERM", () => hardExit(0));
+
+bridge.onExit?.((code) => hardExit(code ?? 0));
 
 bridge.start();
-waitUntilExit().then(() => process.exit(0));
+// Ink's waitUntilExit is unreliable in some terminals — exit anyway.
+waitUntilExit().then(() => hardExit(0));
+setTimeout(() => {}, 0);

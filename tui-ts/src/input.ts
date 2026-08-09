@@ -240,9 +240,14 @@ export function useInputEditor({ isActive = true, initial, onSubmit }: InputEdit
   const { internal_eventEmitter } = useStdin();
 
   const apply = useCallback((ev: EditorEvent) => {
+    try {
+      import("node:fs").then(m => m.appendFileSync("/tmp/editor_ev.log",
+        JSON.stringify({ kind: ev.kind, line: ev.kind === "submit" ? ev.line : undefined, buf: stateRef.current.buffer }) + "\n"));
+    } catch {}
     switch (ev.kind) {
       case "change":
         setState(ev.state);
+        stateRef.current = ev.state;  // keep the ref live between renders
         break;
       case "submit":
         onSubmitRef.current(ev.line);
@@ -278,6 +283,22 @@ export function useInputEditor({ isActive = true, initial, onSubmit }: InputEdit
   useInput(
     useCallback(
       (input, key) => {
+        // Fast typing / paste can deliver several keys in ONE chunk (e.g.
+        // "/exit\n" as a single sequence). Split it and apply each
+        // character in order — the ref is synced on change, so the state
+        // chains correctly.
+        if (input && input.length > 1 && !key.ctrl && !key.meta) {
+          for (const ch of input) {
+            const k =
+              ch === "\n" || ch === "\r"
+                ? { return: true }
+                : ch === "\x7f" || ch === "\b"
+                  ? { backspace: true }
+                  : ({} as Key);
+            apply(applyEditorKey(stateRef.current, ch, k));
+          }
+          return;
+        }
         apply(applyEditorKey(stateRef.current, input, key));
       },
       [apply],

@@ -90,8 +90,9 @@ def run(api, state):
                   f"{state.get('model') or '?'} • chat mode")
     bridge.mode("chat")
     print("[bridge ready]", file=sys.stderr, flush=True)
-    for raw in sys.stdin:
-        raw = raw.strip()
+    # Binary line reads: immune to pipe buffering quirks under node spawn.
+    for raw in sys.stdin.buffer:
+        raw = raw.decode("utf-8", errors="replace").strip()
         if not raw:
             continue
         try:

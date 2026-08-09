@@ -11,6 +11,7 @@ export class Bridge {
   private handlers = new Map<string, Handler[]>();
   private pending: TsToPy[] = [];
   private eventLog: PyToTs[] = [];
+  private onExitCallback: ((code: number | null) => void) | null = null;
 
   constructor(
     private pythonBin = "python",
@@ -69,8 +70,9 @@ export class Bridge {
     this.proc.stderr!.on("data", (d: Buffer) => {
       process.stderr.write(d);
     });
-    this.proc.on("close", () => {
+    this.proc.on("close", (code) => {
       this.ready = false;
+      this.onExitCallback?.(code);
     });
     this.ready = true;
     // flush anything queued before the process was up
@@ -96,6 +98,10 @@ export class Bridge {
 
   quit() {
     this.send({ type: "quit" });
+  }
+
+  onExit(cb: (code: number | null) => void) {
+    this.onExitCallback = cb;
   }
 
   dispose() {
