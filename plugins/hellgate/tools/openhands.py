@@ -4,6 +4,14 @@ Runs the OpenHands CLI focused inside the project root. All launch-time
 config is generated under <project>/hellgate-state/openhands/ and passed
 with --config-file (default would be config.toml in the cwd).
 
+The active provider is read from <project>/hellgate-state/provider.json
+(written by the session before every launch) and translated into the
+config.toml [llm] section (see _llm_lines): openai-compatible for
+openai/openrouter/custom (with base_url), anthropic for anthropic, google
+for google, and the plain model + base_url for ollama. When provider.json
+is absent (older setups) it falls back to the ollama provider and streams
+a note about it.
+
 OpenHands 0.9.8 realities (verified against the installed package):
   - the `openhands` console script never awaits main() (a coroutine), so it
     is launched through `python -c "import asyncio; ...asyncio.run(main())"`.
@@ -12,6 +20,12 @@ OpenHands 0.9.8 realities (verified against the installed package):
     --system-prompt flag or system_prompt config key — so the agent persona
     cannot be injected. The persona is still passed via -t (harmless, and
     honored by newer versions).
+  - the [llm] section maps to openhands.core.config.llm_config.LLMConfig:
+    model / api_key / base_url (provider is inferred by litellm from the
+    model prefix, e.g. anthropic/claude-sonnet-4-5, google/gemini-2.0-flash).
+    A [core] section must be present for the [llm]/[agent] sections to be
+    applied at all (load_from_toml returns early via env-style parsing when
+    it is missing — verified against the 0.9.8 package).
   - Docker IS required: the eventstream runtime calls docker.from_env() at
     startup and dies with DockerException when no docker daemon is reachable
     (verified on this machine: no docker). detect() therefore returns True
@@ -22,13 +36,16 @@ import os
 import shutil
 import subprocess
 
+from .. import providers as P
 from .. import util
 
-MODEL = os.environ.get(
+DEFAULT_MODEL = os.environ.get(
     "HELLGATE_MODEL",
     "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
 )
-OLLAMA_URL = os.environ.get("HELLGATE_OLLAMA_URL", "http://127.0.0.1:11434/v1")
+DEFAULT_OLLAMA_URL = os.environ.get("HELLGATE_OLLAMA_URL", "http://127.0.0.1:11434/v1")
+
+PROVIDER_IDS = ("ollama", "openai", "anthropic", "openrouter", "google", "custom")
 
 TOOL = {
     "id": "openhands",
@@ -40,7 +57,8 @@ TOOL = {
     "notes": "Docker required (eventstream runtime calls docker.from_env(); "
              "pip CLI has no docker-free runtime). CLI is a line REPL; "
              "persona/-t task flag is ignored by 0.9.8 (no --system-prompt). "
-             "Broken `openhands` bin script → launched via asyncio wrapper.",
+             "Broken `openhands` bin script → launched via asyncio wrapper; "
+             "provider/model from hellgate-state/provider.json.",
 }
 
 
@@ -72,11 +90,6 @@ def _docker_ok():
         return False
 
 
-def _root():
-    return os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))))
-
-
 def detect():
     if not _cli_installed(_root()):
         return False
@@ -85,6 +98,60 @@ def detect():
 
 def _state_dir(project_dir):
     return os.path.join(project_dir, "hellgate-state", "openhands")
+
+
+def _fallback_ollama():
+    return {"id": "ollama", "name": "Ollama (local)",
+            "model": DEFAULT_MODEL, "base_url": DEFAULT_OLLAMA_URL, "api_key": None}
+
+
+def _provider(project_dir, stream_out):
+    """Provider dict from hellgate-state/provider.json, or ollama fallback."""
+    prov = P.read_provider_json(project_dir)
+    if prov is None:
+        stream_out("hellgate: no provider.json — falling back to ollama")
+        return _fallback_ollama()
+    if prov.get("id") not in PROVIDER_IDS:
+        stream_out(f"hellgate: unknown provider '{prov.get('id')}' in provider.json "
+                   "— falling back to ollama")
+        return _fallback_ollama()
+    return prov
+
+
+def _ollama_model_url(prov):
+    """Ollama model + base URL; HELLGATE_MODEL / HELLGATE_OLLAMA_URL override
+    the provider.json values when set."""
+    model = os.environ.get("HELLGATE_MODEL", prov.get("model") or DEFAULT_MODEL)
+    url = os.environ.get("HELLGATE_OLLAMA_URL", prov.get("base_url") or DEFAULT_OLLAMA_URL)
+    return model, url
+
+
+def _llm_lines(prov):
+    """provider.json -> config.toml [llm] section lines.
+
+    api_key is omitted when null (openhands/litellm then reads its own
+    env). Provider is inferred by litellm from the model prefix."""
+    pid = prov["id"]
+    model = prov.get("model") or DEFAULT_MODEL
+    url = prov.get("base_url")
+    key = prov.get("api_key")
+    if pid == "ollama":
+        model, url = _ollama_model_url(prov)
+        return ['model = "%s"' % model,
+                'api_key = "ollama"',
+                'base_url = "%s"' % url]
+    if pid == "anthropic":
+        model = "anthropic/" + model
+    elif pid == "google":
+        model = "google/" + model
+    else:  # openai / openrouter / custom -> openai-compatible
+        model = ("openrouter/" if pid == "openrouter" else "openai/") + model
+    lines = ['model = "%s"' % model]
+    if key:
+        lines.append('api_key = "%s"' % key)
+    if url:
+        lines.append('base_url = "%s"' % url)
+    return lines
 
 
 def _load_agents(knowledge_dir):
@@ -168,14 +235,15 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     state = _state_dir(project_dir)
     os.makedirs(state, exist_ok=True)
 
+    prov = _provider(project_dir, stream_out)
     conf_path = os.path.join(state, "config.toml")
     with open(conf_path, "w", encoding="utf-8") as f:
-        f.write("[llm]\n")
-        f.write(f'model = "{MODEL}"\n')
-        f.write('api_key = "ollama"\n')
-        f.write(f'base_url = "{OLLAMA_URL}"\n')
-        f.write("\n[agent]\n")
+        f.write("[core]\n")
+        f.write('workspace_base = "%s"\n' % project_dir)
         f.write('default_agent = "CodeActAgent"\n')
+        f.write("\n[llm]\n")
+        for line in _llm_lines(prov):
+            f.write(line + "\n")
 
     if not _docker_ok():
         stream_out("hellgate: openhands needs a reachable Docker daemon "
@@ -196,7 +264,7 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     cmd += ["-t", task]
     cmd += [str(a) for a in (extra_args or [])]
 
-    util.say(f"openhands ({MODEL}) in {project_dir}", stream_out)
+    util.say(f"openhands ({prov['id']}/{prov.get('model')}) in {project_dir}", stream_out)
     p = subprocess.Popen(cmd, cwd=project_dir)
     try:
         return p.wait()

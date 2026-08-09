@@ -5,12 +5,23 @@ done with GOOSE_PATH_ROOT (verified: config dir, sessions db and logs all
 move under it) plus XDG_STATE_HOME/XDG_DATA_HOME for the CLI's leftover
 log files, so nothing is written to ~/.config/goose or ~/.local/share/goose.
 
+The active provider is read from <project>/hellgate-state/provider.json
+(written by the session before every launch); each provider id maps to its
+GOOSE_PROVIDER value + API key env (see _goose_env). When provider.json is
+absent (older setups) it falls back to the ollama provider and streams a
+note about it.
+
 Provider wiring (verified with goose 1.45.0): goose 1.45 has NO profile
 files or GOOSE_PROFILE_DIR — the provider/model/base are configured through
-environment variables:
-  GOOSE_PROVIDER=ollama  GOOSE_MODEL=<model>  OLLAMA_HOST=<host>
-(round-trip verified: `goose run -t ...` answered PONG). GOOSE_TELEMETRY_OFF
-skips the first-run "share usage data" prompt, and
+environment variables. Verified env names (present in the goose 1.45.0
+binary; there is NO generic GOOSE_API_KEY):
+  ollama:     GOOSE_PROVIDER=ollama  GOOSE_MODEL=<model>  OLLAMA_HOST=<host>
+  anthropic:  GOOSE_PROVIDER=anthropic  ANTHROPIC_API_KEY
+  openai:     GOOSE_PROVIDER=openai  OPENAI_API_KEY  OPENAI_BASE_URL
+  openrouter: GOOSE_PROVIDER=openrouter  OPENROUTER_API_KEY  (native provider)
+  google:     GOOSE_PROVIDER=google  GOOGLE_API_KEY
+  custom:     GOOSE_PROVIDER=openai (openai-compatible)  OPENAI_API_KEY  OPENAI_BASE_URL
+GOOSE_TELEMETRY_OFF skips the first-run "share usage data" prompt, and
 GOOSE_SYSTEM_PROMPT_FILE_PATH feeds the agent persona/knowledge into the
 session system prompt.
 """
@@ -19,13 +30,16 @@ import os
 import shutil
 import subprocess
 
+from .. import providers as P
 from .. import util
 
-MODEL = os.environ.get(
+DEFAULT_MODEL = os.environ.get(
     "HELLGATE_MODEL",
     "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
 )
-OLLAMA_URL = os.environ.get("HELLGATE_OLLAMA_URL", "http://127.0.0.1:11434/v1")
+DEFAULT_OLLAMA_URL = os.environ.get("HELLGATE_OLLAMA_URL", "http://127.0.0.1:11434/v1")
+
+PROVIDER_IDS = ("ollama", "openai", "anthropic", "openrouter", "google", "custom")
 
 TOOL = {
     "id": "goose",
@@ -36,8 +50,9 @@ TOOL = {
                    "download_cli.sh | CONFIGURE=false bash",
     "confined": True,
     "notes": "Confined via GOOSE_PATH_ROOT + XDG_* (goose 1.45 has no "
-             "profile dir; provider via GOOSE_PROVIDER/GOOSE_MODEL/OLLAMA_HOST). "
-             "Persona via GOOSE_SYSTEM_PROMPT_FILE_PATH.",
+             "profile dir; provider/model/key via GOOSE_*/provider env, from "
+             "hellgate-state/provider.json). Persona via "
+             "GOOSE_SYSTEM_PROMPT_FILE_PATH.",
 }
 
 
@@ -51,6 +66,72 @@ def detect():
 
 def _state_dir(project_dir):
     return os.path.join(project_dir, "hellgate-state", "goose")
+
+
+def _fallback_ollama():
+    return {"id": "ollama", "name": "Ollama (local)",
+            "model": DEFAULT_MODEL, "base_url": DEFAULT_OLLAMA_URL, "api_key": None}
+
+
+def _provider(project_dir, stream_out):
+    """Provider dict from hellgate-state/provider.json, or ollama fallback."""
+    prov = P.read_provider_json(project_dir)
+    if prov is None:
+        stream_out("hellgate: no provider.json — falling back to ollama")
+        return _fallback_ollama()
+    if prov.get("id") not in PROVIDER_IDS:
+        stream_out(f"hellgate: unknown provider '{prov.get('id')}' in provider.json "
+                   "— falling back to ollama")
+        return _fallback_ollama()
+    return prov
+
+
+def _ollama_model_url(prov):
+    """Ollama model + base URL; HELLGATE_MODEL / HELLGATE_OLLAMA_URL override
+    the provider.json values when set."""
+    model = os.environ.get("HELLGATE_MODEL", prov.get("model") or DEFAULT_MODEL)
+    url = os.environ.get("HELLGATE_OLLAMA_URL", prov.get("base_url") or DEFAULT_OLLAMA_URL)
+    return model, url
+
+
+def _goose_env(prov):
+    """provider.json -> GOOSE_PROVIDER / model / key / base URL env vars.
+
+    api_key is omitted when null (goose then falls back to its own secrets
+    store / env)."""
+    pid = prov["id"]
+    model = prov.get("model") or DEFAULT_MODEL
+    url = prov.get("base_url")
+    key = prov.get("api_key")
+    if pid == "ollama":
+        model, url = _ollama_model_url(prov)
+        env = {"GOOSE_PROVIDER": "ollama", "GOOSE_MODEL": model}
+        env["OLLAMA_HOST"] = url[:-3] if url.endswith("/v1") else url
+    elif pid == "anthropic":
+        env = {"GOOSE_PROVIDER": "anthropic", "GOOSE_MODEL": model}
+        if key:
+            env["ANTHROPIC_API_KEY"] = key
+    elif pid == "openai":
+        env = {"GOOSE_PROVIDER": "openai", "GOOSE_MODEL": model}
+        if key:
+            env["OPENAI_API_KEY"] = key
+        if url:
+            env["OPENAI_BASE_URL"] = url
+    elif pid == "openrouter":
+        env = {"GOOSE_PROVIDER": "openrouter", "GOOSE_MODEL": model}
+        if key:
+            env["OPENROUTER_API_KEY"] = key
+    elif pid == "google":
+        env = {"GOOSE_PROVIDER": "google", "GOOSE_MODEL": model}
+        if key:
+            env["GOOGLE_API_KEY"] = key
+    else:  # custom -> openai-compatible path
+        env = {"GOOSE_PROVIDER": "openai", "GOOSE_MODEL": model}
+        if key:
+            env["OPENAI_API_KEY"] = key
+        if url:
+            env["OPENAI_BASE_URL"] = url
+    return env
 
 
 def _load_agents(knowledge_dir):
@@ -132,13 +213,12 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
     root = os.path.join(state, "root")
     os.makedirs(os.path.join(root, "config"), exist_ok=True)
 
+    prov = _provider(project_dir, stream_out)
     env = dict(os.environ)
+    env.update(_goose_env(prov))
     env["GOOSE_PATH_ROOT"] = root
     env["XDG_STATE_HOME"] = os.path.join(state, "xdg", "state")
     env["XDG_DATA_HOME"] = os.path.join(state, "xdg", "data")
-    env["GOOSE_PROVIDER"] = "ollama"
-    env["GOOSE_MODEL"] = MODEL
-    env["OLLAMA_HOST"] = OLLAMA_URL[:-3] if OLLAMA_URL.endswith("/v1") else OLLAMA_URL
     env["GOOSE_TELEMETRY_OFF"] = "true"
 
     match = util.pick_agent(_load_agents(knowledge_dir), agent)
@@ -148,7 +228,7 @@ def launch(project_dir, agent, knowledge_dir, extra_args, stream_out=print):
         env["GOOSE_SYSTEM_PROMPT_FILE_PATH"] = sp
 
     cmd = [exe, "session"] + [str(a) for a in (extra_args or [])]
-    util.say(f"goose (ollama/{MODEL}) in {project_dir}", stream_out)
+    util.say(f"goose ({prov['id']}/{prov.get('model')}) in {project_dir}", stream_out)
     p = subprocess.Popen(cmd, cwd=project_dir, env=env)
     try:
         return p.wait()
