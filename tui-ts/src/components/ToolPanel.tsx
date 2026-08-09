@@ -1,23 +1,40 @@
-/** PLACEHOLDER — owned by tickets-ts-tools (ToolPanel.tsx). Replace wholesale.
- *  Contract: { actions: ToolAction[] } (ToolAction from ../frame.js).
- *  Spinner line while the newest action is !done; past actions collapse to a
- *  ✓ accordion (dim). */
+import React from "react";
 import { Box, Text } from "ink";
-import type { ToolAction } from "../frame.js";
+import { TOKENS } from "../frame.js";
 
-export interface ToolPanelProps {
+export interface ToolAction {
+  title: string;
+  status: "running" | "done" | "error";
+  summary?: string;
+}
+
+interface ToolPanelProps {
   actions: ToolAction[];
 }
 
-export default function ToolPanel(props: ToolPanelProps): JSX.Element {
+/** Spinner line that collapses into a ✓ accordion of past actions. */
+export default function ToolPanel({ actions }: ToolPanelProps) {
+  if (actions.length === 0) return null;
   return (
     <Box flexDirection="column">
-      {props.actions.map((a) => (
-        <Text key={a.id} color={a.done ? "gray" : "yellow"}>
-          {a.done ? "✓ " : "… "}
-          {a.title}
-        </Text>
-      ))}
+      {actions.map((a, i) => {
+        if (a.status === "running") {
+          return (
+            <Text key={i} color={TOKENS.accent2} dimColor>
+              {"\u25cf "}
+              {a.title}
+              {"..."}
+            </Text>
+          );
+        }
+        return (
+          <Text key={i} color={a.status === "done" ? TOKENS.ok : TOKENS.err} dimColor>
+            {a.status === "done" ? "\u2713 " : "\u2717 "}
+            {a.title}
+            {a.summary ? ` ${a.summary}` : ""}
+          </Text>
+        );
+      })}
     </Box>
   );
 }
