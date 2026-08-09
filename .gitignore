@@ -49,3 +49,6 @@ Thumbs.db
 # TypeScript TUI
 tui-ts/node_modules/
 tui-ts/dist/
+hellgate-state/
+plugins/hellgate/knowledge/current.md
+hellgate-state/

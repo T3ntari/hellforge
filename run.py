@@ -13,6 +13,7 @@ Usage:
     run.py transpose <file> <n> [-o out]  Shift notes by semitones (default <file>_transposed.mid)
     run.py tempo <file> <bpm> [-o out]  Recompile at a new tempo (default <file>_tempo.mid)
     run.py merge <a> <b> [-o out]       Concatenate two files (default <a>_merged.mid)
+    run.py hellgate [tool]              Launch OpenCode/Aider/OpenHands/Goose focused in this repo
 
 Modes:
     --window   Open a dedicated console window (CREATE_NEW_CONSOLE on Windows)
@@ -464,6 +465,9 @@ def main():
         return cmd_tempo(args)
     if mode in ("merge",):
         return cmd_merge(args)
+    if mode in ("hellgate", "gate", "hg"):
+        from plugins.hellgate import _cmd as _hellgate_cmd
+        return _hellgate_cmd(args, _plugin_api)
     if mode in ("--help", "-h", "help"):
         print(__doc__)
         return 0
