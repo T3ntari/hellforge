@@ -1,44 +1,37 @@
-# **HELLFORGE v1.0.0.0 ALPHA — radical: GPU Shader Math Core**
+# Radical — GPU Shader Math Core
 
-**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [radical](radical.md) | [tensorsharp](tensorsharp.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [eaudio](eaudio.md) | [lure](lure.md) | [portbaby](portbaby.md) | [talisman](talisman.md) | [developing-plugins](developing-plugins.md)
+**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [radical](radical.md) | [tensorsharp](tensorsharp.md) | [commands](../commands/radical-commands.md)
 
 ---
 
 ## Overview
 
-The **radical** plugin is the GPU Shader Math Core of HELLFORGE. It transforms Piano DSL AST nodes into GLSL shader source code and manages the GPU compute runtime across multiple vendors.
+**radical v1.0.0** (author Tentari) is the GPU Shader Math Core. It
+compiles E math ASTs into **GLSL compute shaders** and executes them on GPU
+shader cores, registered as a math evaluator at **priority 5** (above
+LURE's 10). Fallback chain: Radical → LURE → Python. Requires
+`pip install PyOpenGL glfw` — gracefully unavailable when missing.
 
-## AST-to-GLSL Compilation
+## Pipeline
 
-radical walks the compiled AST and emits GLSL 4.60-compatible source for vertex, fragment, and compute shaders. Key transformations:
+1. The E math AST is analyzed
+2. GLSL compute shader source is generated
+3. The shader is compiled and cached (`shader_cache`)
+4. The compute dispatch runs; results feed back into the expression result
 
-| DSL Construct | GLSL Output |
-|---------------|-------------|
-| `kernel`      | `#version 460 core` + `layout(local_size_x=...)` compute shader |
-| `parallel for`| `for` loop with `uint idx = gl_GlobalInvocationID.x` |
-| `float4`      | `vec4` |
-| `mat4`        | `mat4` |
-| `dot(a,b)`    | `dot(a,b)` |
+## Multi-GPU & VRAM
 
-## Compute Runtime
+- Enumerates all GPUs at startup; `radical gpu <index>` switches the
+  active device (context re-init requires a shell restart), `radical gpu
+  list` shows the table.
+- `radical vram <MB>` caps VRAM usage; `radical vram off` disables the
+  cap.
 
-radical provides a hardware abstraction layer for executing compute shaders:
+## Commands
 
-- Dynamic shader compilation and caching
-- Automatic work-group sizing based on GPU capabilities
-- Asynchronous dispatch with fence synchronization
-- Profiling hooks for per-shader timing
+`radical status|benchmark|shaders|gpu|vram|info` — see
+[Radical commands](../commands/radical-commands.md).
 
-## Multi-GPU Switching
+## Dependencies
 
-radical enumerates all available GPUs and supports explicit device selection at the DSL level via `@gpu(index)`. It manages per-device memory contexts and can split workloads across GPUs.
-
-## VRAM Limits
-
-radical tracks available VRAM per device and enforces allocation caps. When a GPU is within 10% of its VRAM limit, radical falls back to the next available device or stages data through system memory with automatic paging.
-
----
-
-**API Reference:** `#include <radical/api.h>`
-
-**HELLFORGE v1.0.0.0 ALPHA — radical: GPU Shader Math Core**
+Used by OPENapi, Vulkanizer, EAudio and TensorSHARP (`api.require("Radical")`).

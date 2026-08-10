@@ -1,35 +1,41 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](gpu/overview.md) | [radical-gpu](gpu/radical-gpu.md) | [opengl-api](gpu/opengl-api.md) | [vulkan-api](gpu/vulkan-api.md) | [tensor-cores](gpu/tensor-cores.md) | [shader-compilation](gpu/shader-compilation.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [radical-gpu](radical-gpu.md) | [opengl-api](opengl-api.md) | [vulkan-api](vulkan-api.md) | [tensor-cores](tensor-cores.md) | [shader-compilation](shader-compilation.md)
 
 ## Radical Compute Pipeline
 
-Radical is the GPU compute engine within Piano DSL. It generates GLSL compute shaders from high-level Piano DSL kernel expressions.
+Radical (v1.0.0) is the GPU shader math core: it compiles E math ASTs
+into GLSL compute shaders and executes them on GPU shader cores.
 
 ### Pipeline
 
-1. Piano DSL kernel expression is parsed
-2. AST is analyzed for parallelizability
-3. GLSL compute shader code is generated
-4. Shader is compiled to SPIR-V via the compiler cache
-5. Compute dispatch is executed with optimal work group sizes
-6. Results are read back or consumed in-place
+1. The E math AST for an expression is analyzed
+2. GLSL compute shader source is generated
+3. The shader is compiled and cached (`shader_cache`)
+4. The compute dispatch runs with the selected GPU
+5. Results feed back into the expression result (fallback: LURE → Python)
 
-### GLSL Codegen
+### Evaluator registration
 
-The codegen translates Piano DSL vector/matrix operations into GLSL WGSL-compatible syntax. It automatically handles:
+Radical registers a math evaluator at **priority 5** — above LURE (10),
+below TensorSHARP (3), always with the Python evaluator (100) as the
+floor. `radical info` shows the chain.
 
-- Work group size selection based on GPU capabilities
-- Shared memory allocation
-- Barrier insertion for cross-invocation synchronization
-- Precision selection (TF32, FP16, INT8)
+### Multi-GPU & VRAM
 
-### Dispatch
+- `radical gpu` — show the active GPU; `radical gpu list` enumerates all
+  GPUs (index, vendor, type, VRAM, API support); `radical gpu <index>`
+  switches (context re-init needs a shell restart)
+- `radical vram <MB>` — cap VRAM; `radical vram off` removes the cap
+- `radical status` reports GPU type, OpenGL/GLSL versions, compute
+  capability, shaders compiled and expressions evaluated
 
-```
-piano compute --kernel my_kernel --grid 256,256,1
-```
+### Shader cache
+
+`radical shaders` shows the compiled-shader cache (count, KB, previews).
+Cache lookups are source-hash keyed; see
+[Shader Compilation](shader-compilation.md).
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — Radical compute

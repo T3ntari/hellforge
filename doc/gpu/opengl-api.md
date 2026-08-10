@@ -1,31 +1,37 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](gpu/overview.md) | [radical-gpu](gpu/radical-gpu.md) | [opengl-api](gpu/opengl-api.md) | [vulkan-api](gpu/vulkan-api.md) | [tensor-cores](gpu/tensor-cores.md) | [shader-compilation](gpu/shader-compilation.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [radical-gpu](radical-gpu.md) | [opengl-api](opengl-api.md) | [vulkan-api](vulkan-api.md) | [tensor-cores](tensor-cores.md) | [shader-compilation](shader-compilation.md)
 
 ## OPENapi — OpenGL Primitives
 
-OPENapi provides a comprehensive set of OpenGL 4.6 primitives designed for game engine integration with Piano DSL.
+OPENapi (v1.0.0) is the low-level **OpenGL** graphics API driver — the raw
+building blocks that game engines are built on top of. It requires Radical
+for GPU detection (`pip install PyOpenGL glfw`).
 
-### Features
+### Primitives
 
-- Vertex buffer objects (VBO) with streaming updates
-- Uniform buffer objects (UBO) for per-frame data
-- Shader storage buffer objects (SSBO) for compute
-- Compute shader dispatch with barrier management
-- Debug markers and GPU timer queries
+- **Context** — GLFW window, OpenGL version, extensions, debug callback
+- **Shader** — GLSL compile/link, uniform reflection
+- **Buffer** — VBO, EBO, VAO, SSBO, UBO allocation + upload
+- **Texture** — 2D/3D/cubemap, sampler state, mipmaps
+- **Render** — pipeline state, draw calls, framebuffer objects, swapchain
+- **Window** — input callbacks, cursor modes, fullscreen toggling
 
-### Example
+### Querying the driver
 
-```piano
-openapi.buffer.vertex(positions, layout = "vec3")
-openapi.shader.compute("shaders/audio_dsp.comp")
-openapi.dispatch(128, 128, 1)
+```
+openapi status        # GPU, OpenGL/GLSL versions, extension count, vsync
+openapi extensions    # key extensions: compute shader, SSBO, DSA,
+                      # KHR_debug, ray tracing, sparse/bindless textures
+openapi info          # sub-API summary
 ```
 
 ### Integration
 
-OPENapi is designed to sit alongside existing OpenGL rendering code. It does not assume ownership of the GL context and can be used with any framework (SDL, GLFW, Qt).
+OPENapi does not assume ownership of the GL context and can sit alongside
+existing OpenGL code (SDL, GLFW, Qt). Example engine:
+`examples/opengl_engine.py`.
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — OpenGL API driver

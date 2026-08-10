@@ -1,32 +1,34 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](gpu/overview.md) | [radical-gpu](gpu/radical-gpu.md) | [opengl-api](gpu/opengl-api.md) | [vulkan-api](gpu/vulkan-api.md) | [tensor-cores](gpu/tensor-cores.md) | [shader-compilation](gpu/shader-compilation.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [radical-gpu](radical-gpu.md) | [opengl-api](opengl-api.md) | [vulkan-api](vulkan-api.md) | [tensor-cores](tensor-cores.md) | [shader-compilation](shader-compilation.md)
 
 ## Shader Compilation Pipeline
 
-### GLSL to SPIR-V
+### AST → GLSL
 
-Generated GLSL shaders are compiled to SPIR-V using the compiler cache.
+Radical compiles E math ASTs into GLSL compute shader source:
 
-1. Source GLSL is hashed (SHA-512) for cache lookup
-2. Cache hit: load cached SPIR-V binary
-3. Cache miss: compile via `glslang` or `shaderc`
-4. SPIR-V is validated and stored in cache
-5. Compiled shader is dispatched to GPU
+- Expression nodes map to GLSL expressions over the compute grid
+- Shader source is generated per expression AST
+- Precision follows the evaluator chain (TF32/FP16 on Tensor Cores,
+  FP32 fallback)
 
-### AST to GLSL Codegen
+### Compilation & caching
 
-The Radical codegen translates Piano DSL AST nodes into GLSL:
+1. Source GLSL is hashed for cache lookup
+2. Cache hit → load the cached shader
+3. Cache miss → compile, then store in the shader cache
+4. Compiled shader is dispatched to the GPU
 
-- Vector operations map to GLSL `vec` types
-- Audio DSP graphs become compute shader invocations
-- Control flow is preserved with barrier synchronization
-- Buffer bindings are auto-assigned and tracked
+`radical shaders` reports cache stats (count, KB) with previews of recent
+entries.
 
-### Caching
+### Dispatch
 
-Shader cache location: `~/.piano/cache/shaders/`. Cache entries expire after 7 days or on compiler version change.
+Dispatch happens inside Radical's compute runtime with the GPU selected
+by the K-rip hypervisor (`krip gpu <auto|list|all|0,1|...>`), capped by
+`radical vram <MB>` when set.
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — shader pipeline

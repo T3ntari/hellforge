@@ -1,34 +1,31 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [eaudio-api](audio/eaudio-api.md) | [spatial-audio](audio/spatial-audio.md) | [dsp-effects](audio/dsp-effects.md) | [device-management](audio/device-management.md)
+[Nav: doc/index.md](../index.md) | [eaudio-api](eaudio-api.md) | [spatial-audio](spatial-audio.md) | [dsp-effects](dsp-effects.md) | [device-management](device-management.md)
 
 ## Spatial Audio
 
-The spatial audio system provides 3D sound positioning for Piano DSL applications.
+The **SpatialAudioAPI** (eaudio) provides 3D sound positioning primitives
+for E applications.
 
-### Listener
+### Primitives
 
-The listener represents the virtual microphone in 3D space:
+- 3D audio object placement using listener-relative coordinates
+- Velocity for Doppler calculation
+- Distance attenuation curves (rolloff models)
+- Directional sources (cone/pattern directivity)
 
-```
-listener.position = [x, y, z]
-listener.orientation = [forward_x, forward_y, forward_z, up_x, up_y, up_z]
-listener.velocity = [vx, vy, vz]
-```
+### Doppler & attenuation
 
-### Sources
+Doppler shift is calculated from relative velocity between listener and
+source. Attenuation follows a configurable rolloff model (linear,
+inverse, exponential).
 
-Audio sources are positioned relative to the listener:
+### Culling integration
 
-- `source.position` -- 3D position
-- `source.velocity` -- Velocity for Doppler calculation
-- `source.directivity` -- Cone/pattern for directional sources
-- `source.rolloff` -- Distance attenuation curve
-
-### Doppler and Attenuation
-
-Doppler shift is calculated from relative velocity between listener and source. Attenuation follows a configurable rolloff model (linear, inverse, exponential).
+The Talisman driver can cull/occlude inaudible sources before they reach
+the spatial mixer (`talisman on|off`, `talisman local` for local-only
+mode) — see [Talisman](../plugins/talisman.md).
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — spatial audio

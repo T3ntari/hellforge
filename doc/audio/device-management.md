@@ -1,35 +1,33 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [eaudio-api](audio/eaudio-api.md) | [spatial-audio](audio/spatial-audio.md) | [dsp-effects](audio/dsp-effects.md) | [device-management](audio/device-management.md)
+[Nav: doc/index.md](../index.md) | [eaudio-api](eaudio-api.md) | [spatial-audio](spatial-audio.md) | [dsp-effects](dsp-effects.md) | [device-management](device-management.md)
 
 ## Device Management
 
-### Device Selection
+EAudio auto-selects the default system audio device.
 
-EAudio auto-selects the default system audio device but allows explicit selection:
+### Device enumeration
 
 ```
-piano eaudio device set "Focusrite Scarlett 2i2"
-piano eaudio device default
+eaudio devices
 ```
 
-### Format Negotiation
+Lists every available device with index, channel count and sample rate,
+plus the default output and default sample rate. `eaudio status` shows the
+active default output.
 
-When opening a stream, EAudio negotiates the optimal format with the device:
+### Backends
 
-| Parameter | Options |
-|---|---|
-| Sample rate | 44100, 48000, 96000, 192000 |
-| Bit depth | 16, 24, 32 (float) |
-| Channels | 1 (mono), 2 (stereo), up to 8 |
-| Buffer size | 64, 128, 256, 512, 1024 samples |
+The basic backend uses `pygame`; the advanced backend uses
+`python-sounddevice` (WASAPI / CoreAudio / ALSA / JACK via the platform
+stack). When no backend is present the driver reports
+`eaudio: unavailable` at boot with a diagnostic.
 
-Devices that do not support the requested format will return the closest match. Use `eaudio device info` to see negotiated parameters.
+### Format negotiation
 
-### Hot-Swap Detection
-
-EAudio monitors for device connection/disconnection events and can trigger callbacks to re-route audio streams automatically.
+The device API exposes each device's channel count and supported sample
+rate; selection negotiates the closest match.
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — device management

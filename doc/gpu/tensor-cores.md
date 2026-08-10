@@ -1,32 +1,41 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](gpu/overview.md) | [radical-gpu](gpu/radical-gpu.md) | [opengl-api](gpu/opengl-api.md) | [vulkan-api](gpu/vulkan-api.md) | [tensor-cores](gpu/tensor-cores.md) | [shader-compilation](gpu/shader-compilation.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [radical-gpu](radical-gpu.md) | [opengl-api](opengl-api.md) | [vulkan-api](vulkan-api.md) | [tensor-cores](tensor-cores.md) | [shader-compilation](shader-compilation.md)
 
 ## Tensor Core Utilization
 
-TensorSHARP is the Tensor Core abstraction layer within Piano DSL. It provides automatic matrix operation acceleration on NVIDIA hardware.
+TensorSHARP (v1.0.0) accelerates E math on NVIDIA **Tensor Cores** via
+CuPy with mixed precision — the highest-priority math evaluator
+(priority 3).
 
 ### Supported Modes
 
 | Mode | Precision | Use Case |
 |---|---|---|
-| TF32 | 19-bit mantissa | Training, general compute |
+| TF32 | 19-bit mantissa | General compute |
 | FP16 | 16-bit half | Audio DSP, inference |
 | INT8 | 8-bit integer | Quantized inference, UI effects |
 
-### Automatic Selection
+### Requirements
 
-The runtime queries the GPU for Tensor Core capabilities and selects the optimal mode based on the operation type:
+NVIDIA GPU + CUDA toolkit + `pip install cupy-cuda12x` (or `pip install
+cupy` for auto-detection). The plugin skips at boot with a "requires
+Radical" note when the GPU compute runtime is missing.
 
-```piano
-// Auto-selected based on GPU and precision hints
-let result = tensorsharp.matmul(A, B, precision = "auto")
+### Status
+
+```
+tensorsharp status     # CUDA, Tensor Cores, precision, GPU, GFLOPS
+tensorsharp cores      # compute capability, FP16/TF32/INT8 support
+tensorsharp benchmark  # tensor op benchmark
 ```
 
 ### Fallback
 
-On GPUs without Tensor Cores (or when TensorSHARP is disabled), operations fall back to standard FP32 shader compute through Radical.
+On GPUs without Tensor Cores (or when TensorSHARP is unavailable),
+operations fall back to Radical's FP32 shader compute, then LURE, then
+Python.
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — Tensor Cores

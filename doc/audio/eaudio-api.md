@@ -1,35 +1,36 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [eaudio-api](audio/eaudio-api.md) | [spatial-audio](audio/spatial-audio.md) | [dsp-effects](audio/dsp-effects.md) | [device-management](audio/device-management.md)
+[Nav: doc/index.md](../index.md) | [eaudio-api](eaudio-api.md) | [spatial-audio](spatial-audio.md) | [dsp-effects](dsp-effects.md) | [device-management](device-management.md)
 
 ## EAudio API
 
-EAudio is the audio abstraction layer for Piano DSL, providing device enumeration, buffer management, and stream control.
+EAudio (v1.0.0) is the low-level **audio API** driver: device
+enumeration, PCM buffer management, 3D spatial positioning and DSP
+effects. It is an API for building audio engines on — not a player.
 
-### Device Enumeration
+### Driver status
 
 ```
-piano eaudio devices
+eaudio status        # device count, default output, sample rate
+eaudio devices       # every device: index, channels, sample rate
+eaudio info          # the four sub-APIs and their state
 ```
 
-Lists all available audio devices with channel count and supported sample rates.
+### Sub-APIs
 
-### Buffer Management
+- **AudioDeviceAPI** — device enumeration, selection, format negotiation
+- **AudioBufferAPI** — PCM buffer management, streaming, ring buffers
+- **SpatialAudioAPI** — 3D positioning, velocity, doppler, attenuation
+- **AudioEffectsAPI** — reverb, EQ, compressor, delay, convolution reverb
 
-- Ring buffers for low-latency streaming
-- Pool allocation for effect chain processing
-- DMA buffer sharing with GPU compute pipelines
-- Automatic buffer size negotiation based on device capabilities
+### Dependencies & fallback
 
-### Stream Control
-
-- `eaudio.stream.open(device, config)` -- Open an audio stream
-- `eaudio.stream.start()` -- Begin processing
-- `eaudio.stream.stop()` -- Stop processing
-- `eaudio.stream.close()` -- Release resources
-
-EAudio supports WASAPI (Windows), CoreAudio (macOS), ALSA (Linux), and JACK.
+- Requires Radical (GPU context may be used for audio DSP compute
+  shaders); `pip install pygame` for the basic backend or
+  `python-sounddevice` for the advanced one
+- When no audio backend is available the plugin reports
+  `eaudio: unavailable` at boot and still registers the command
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — EAudio API

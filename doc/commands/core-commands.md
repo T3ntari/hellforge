@@ -1,127 +1,113 @@
-# HELLFORGE v1.0.0.0 ALPHA — Core Commands
+# HELLFORGE — Core Commands
 
-> Navigation: [doc/index.md](../index.md)
+> Navigation: [doc/index.md](../index.md) | [core-commands](core-commands.md) | [krip-commands](krip-commands.md) | [integrity-commands](integrity-commands.md) | [llm-commands](llm-commands.md)
+
+These are the **built-in** eshell commands plus the `run.py` CLI modes. Every
+launch re-enters through the K-rip hypervisor (`KRIP_INNER=1` marks children,
+`KRIP_BYPASS=1` escapes). Plugin-registered commands are listed in their own
+pages.
+
+## eshell built-ins
 
 ## cd
 **Syntax:** `cd <path>`
-**Description:** Change the current working directory within the eshell environment.
-**Example:** `cd examples/`
-**Plugin:** built-in (core eshell)
+**Description:** Change the current working directory within eshell.
+**Example:** `cd songs/`
 
 ## ls
 **Syntax:** `ls [path]`
-**Description:** List files and directories in the specified path or current directory.
+**Description:** List files and directories.
 **Example:** `ls doc/commands/`
-**Plugin:** built-in (core eshell)
 
 ## compile
-**Syntax:** `compile <file.e> [-o output]`
-**Description:** Compile a piano-dsl `.e` composition file into a playable audio format.
-**Example:** `compile lullaby.e -o lullaby.wav`
-**Plugin:** built-in (core eshell)
-
-## play
-**Syntax:** `play <file.e>`
-**Description:** Compile and immediately play a composition through the default audio output.
-**Example:** `play techno_beat.e`
-**Plugin:** built-in (core eshell)
-
-## gui
-**Syntax:** `gui [--theme <name>]`
-**Description:** Launch the piano-dsl graphical composition editor interface.
-**Example:** `gui --theme dark`
-**Plugin:** built-in (core eshell)
-
-## info
-**Syntax:** `info [--all]`
-**Description:** Display system information, loaded plugins, and environment status.
-**Example:** `info --all`
-**Plugin:** built-in (core eshell)
+**Syntax:** `compile <spec> [-o <out>] [--human] [--machine] [--recursive]`
+**Description:** Compile `.e`/`.ei`/`.eci`/`.enx` sources to `.mid`/`.wav`/`.ec`/`.eic` (`--human`/`--machine` convert between modes inside `.eic`).
+**Example:** `compile songs/aurora_nocturne.e -o aurora.mid`
 
 ## convert
-**Syntax:** `convert <input> -f <format> [-o output]`
-**Description:** Convert between supported audio and composition formats.
-**Example:** `convert lullaby.wav -f mp3 -o lullaby.mp3`
-**Plugin:** built-in (core eshell)
+**Syntax:** `convert <input>`
+**Description:** Import MIDI/audio → `.e` source; `--project` for `.ei` project structure.
+**Example:** `convert input.mid`
 
-## encrypt
-**Syntax:** `encrypt <file> [-k keyfile]`
-**Description:** Encrypt a composition file using built-in cipher.
-**Example:** `encrypt lullaby.e -k mykey.pub`
-**Plugin:** built-in (core eshell)
+## play / gui
+**Syntax:** `play <file>` · `gui <file>`
+**Description:** Play a file (or open it in the glassmorphism window).
+**Example:** `play songs/aurora_nocturne.e`
 
-## ecc
-**Syntax:** `ecc <mode> [options]`
-**Description:** Elliptic-curve cryptography utilities for key generation and signing.
-**Example:** `ecc genkey -o composer.key`
-**Plugin:** built-in (core eshell)
+## info / stats / tracks / inspect
+**Syntax:** `info <file>` · `stats <file>` · `tracks <file>` · `inspect <file> [N]`
+**Description:** File stats (notes, duration, range, velocity, polyphony, density, channels), per-channel tables, and the first N events (default 12).
+**Example:** `inspect songs/aurora_nocturne.e 20`
 
-## mod
-**Syntax:** `mod <name>`
-**Description:** Load or unload a piano-dsl plugin module by name.
-**Example:** `mod load radical`
-**Plugin:** built-in (core eshell)
+## new
+**Syntax:** `new <name> [-o <dir>]`
+**Description:** Scaffold a v5 project directory (`index.ei` + `parts/main.e` + `README.md`).
+**Example:** `new my-piece`
 
-## plugin
-**Syntax:** `plugin list|info|install|remove <name>`
-**Description:** Manage installed plugins — list, inspect, install from registry, or remove.
+## transpose / tempo / merge
+**Syntax:** `transpose <file> <semitones> [-o out]` · `tempo <file> <bpm> [-o out]` · `merge <a> <b> [-o out]`
+**Description:** Shift notes, recompile at a new tempo, concatenate two files.
+**Example:** `transpose song.mid 2`
+
+## lint
+**Syntax:** `lint <spec>`
+**Description:** Run the v5-aware linter (same diagnostics as `run.py check`).
+**Example:** `lint songs/`
+
+## sign
+**Syntax:** `sign <file>`
+**Description:** Sign a file with your local ED25519 identity (`sign --setup` creates it under `.e_identity/`).
+**Example:** `sign songs/aurora_nocturne.e`
+
+## encrypt / ecc
+**Syntax:** `encrypt <file> [-o <out.ee>]` · `ecc <file> [-o <out.ecc>]`
+**Description:** Encrypt a file to `.ee`, or compile+encrypt to `.ecc` (one step).
+**Example:** `encrypt song.e -o song.ee`
+
+## mod / plugin / pkglist / ezip
+**Syntax:** `mod <cmd>` · `plugin <cmd>` · `pkglist <cmd>` · `ezip <cmd>`
+**Description:** Manage mods and plugins (list/avail/scan/update/fetch/remove/version), the package registry (show/update/search/version/detail), and install `.ezip` packages (install/list).
 **Example:** `plugin list`
-**Plugin:** built-in (core eshell)
 
 ## audio
-**Syntax:** `audio list|select|test <device>`
-**Description:** List, select, or test audio output devices.
-**Example:** `audio list`
-**Plugin:** built-in (core eshell)
-
-## ezip
-**Syntax:** `ezip <file> [-o archive.ezp]`
-**Description:** Package composition files and assets into a compressed archive.
-**Example:** `ezip lullaby.e -o lullaby.ezp`
-**Plugin:** built-in (core eshell)
+**Syntax:** `audio <cmd>`
+**Description:** Audio devices & config (devices/set-device/config).
+**Example:** `audio devices`
 
 ## gc
-**Syntax:** `gc [--force]`
-**Description:** Run garbage collection to free unused memory in the eshell runtime.
-**Example:** `gc --force`
-**Plugin:** built-in (core eshell)
+**Syntax:** `gc <cmd>`
+**Description:** Garbage collection (enable/disable/flush/clean/status).
+**Example:** `gc status`
 
 ## sys
-**Syntax:** `sys info|stats|log [options]`
-**Description:** Display system diagnostics, resource usage statistics, or runtime logs.
-**Example:** `sys stats`
-**Plugin:** built-in (core eshell)
+**Syntax:** `sys <cmd>`
+**Description:** System management (status/scan/reload/reset/panic, `sys strict 0|1|2`).
+**Example:** `sys strict 2`
 
-## pkglist
-**Syntax:** `pkglist [--installed] [--available]`
-**Description:** List all installed or available packages and their versions.
-**Example:** `pkglist --installed`
-**Plugin:** built-in (core eshell)
+## clear / help / exit
+**Syntax:** `clear` · `help` · `exit`
+**Description:** Clear the screen; show help (built-ins → plugin help sections → grouped plugin commands with dimmed `(alias)` markers); quit.
 
-## clear
-**Syntax:** `clear`
-**Description:** Clear the eshell terminal screen.
-**Example:** `clear`
-**Plugin:** built-in (core eshell)
+## `run.py` CLI modes
 
-## help
-**Syntax:** `help [command]`
-**Description:** Display help information for a specific command or list all commands.
-**Example:** `help compile`
-**Plugin:** built-in (core eshell)
+```bash
+run.py play <file> [--gui] [--window] [--detach]
+run.py compile <spec> -o <out> [--to v5] [--strict] [--mem] [--recursive]
+run.py check <spec> [--recursive] [--max <N>]      # v5-aware lint
+run.py shell | stats | tracks | inspect | new | transpose | tempo | merge
+run.py ai <cmd>                                    # LLM copilot
+run.py bridge                                      # stdio bridge for the TS TUI
+run.py hellgate                                    # HellGate -> OpenCode
+run.py integrity [--github]                        # X/Y digest verification
+run.py krip [run|eshell|hellgate|player|status]    # the hypervisor entry
+```
 
-## exit
-**Syntax:** `exit`
-**Description:** Exit the eshell environment gracefully.
-**Example:** `exit`
-**Plugin:** built-in (core eshell)
+- `--window` opens a dedicated console window; `--detach` runs in the
+  background logging to `logs/`; `--gui` uses the pygame glassmorphism
+  player.
+- `compile --to <v1|v2|v3|v4|v5>` converts syntax instead of exporting
+  MIDI (via the portbaby plugin).
+- `--strict` fails fast on any diagnostic; `--mem` prints the in-memory
+  event estimate.
 
-## quit
-**Syntax:** `quit`
-**Description:** Alias for exit — terminate the eshell session.
-**Example:** `quit`
-**Plugin:** built-in (core eshell)
-
----
-
-**HELLFORGE v1.0.0.0 ALPHA** — *forge your sound*
+See also: [K-rip commands](krip-commands.md) · [Integrity commands](integrity-commands.md) · [LLM commands](llm-commands.md)

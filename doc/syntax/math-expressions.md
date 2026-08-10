@@ -1,12 +1,9 @@
-# **HELLFORGE v1.0.0.0 ALPHA**
+# Math Expressions — `{$expr}`
 
 [Back to doc/index.md](../index.md) · [Syntax Overview](overview.md)
 
----
-
-## Math Expressions — `{$expr}`
-
-Any `{$...}` block is evaluated as a mathematical expression at parse time.
+Any `{$...}` block is evaluated as a mathematical expression at parse
+time.
 
 ### Syntax
 
@@ -17,14 +14,13 @@ Any `{$...}` block is evaluated as a mathematical expression at parse time.
 {$ rand(60, 72) }
 ```
 
-### AST Pipeline
+### Evaluator chain
 
-Every expression goes through a four-stage pipeline:
-
-1. **Lexer** — tokenises operators, numbers, identifiers, parentheses
-2. **Parser** — builds an Abstract Syntax Tree (AST)
-3. **Evaluator Chain** — resolves operators left-to-right with precedence
-4. **Reducer** — folds constants, substitutes variables
+Expressions are evaluated by the registered math evaluators, in priority
+order: **TensorSHARP** (Tensor Cores, priority 3) → **Radical** (GPU
+shader math, priority 5) → **LURE** (LuaJIT, priority 10) → **Python**
+(priority 100, always available). Any GPU/CUDA failures fall back down the
+chain automatically.
 
 ### Operands
 
@@ -54,6 +50,8 @@ Every expression goes through a four-stage pipeline:
 | `floor(x)` | Floor |
 | `ceil(x)` | Ceiling |
 
+In v5, `pick(...)` and `rand(...)` are deterministic under `@seed 42`.
+
 ### Usage in Positions
 
 ```
@@ -63,4 +61,4 @@ T{$ pos + 480 } N64 D240 V80
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — Piano DSL Syntax Documentation
+**HELLFORGE OS v0.1.14.41-beta** — v5 math

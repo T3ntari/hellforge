@@ -1,41 +1,28 @@
-# **HELLFORGE v1.0.0.0 ALPHA — openapi: OpenGL Graphics API**
+# OPENapi — Low-Level OpenGL Graphics API
 
-**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [radical](radical.md) | [tensorsharp](tensorsharp.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [eaudio](eaudio.md) | [lure](lure.md) | [portbaby](portbaby.md) | [talisman](talisman.md) | [developing-plugins](developing-plugins.md)
+**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [commands](../commands/openapi-commands.md)
 
 ---
 
 ## Overview
 
-**openapi** wraps modern OpenGL (4.6 core profile) into six sub-APIs accessible from Piano DSL. Each sub-API maps to a dedicated namespace.
+**OPENapi v1.0.0** (author Tentari) is a low-level **OpenGL** graphics API
+— not a game engine. It provides the raw building blocks that game engines
+and rendering pipelines are built on top of. Requires Radical for GPU
+detection; `pip install PyOpenGL glfw numpy`.
 
-## Sub-APIs
+## Core primitives
 
-### Context (`openapi.context`)
+- **Context** — GLFW window, OpenGL version, extensions, debug callback
+- **Shader** — compile/link GLSL programs, uniform reflection
+- **Buffer** — VBO, EBO, VAO, SSBO, UBO allocation + upload
+- **Texture** — 2D, 3D, cubemap, sampler state, mipmaps
+- **Render** — pipeline state, draw calls, framebuffer objects, swapchain
+- **Window** — input callbacks, cursor modes, fullscreen toggling
 
-Manages the OpenGL context lifecycle: creation, destruction, thread binding, and debug message callbacks. Supports multiple contexts for offscreen rendering.
+Example engine: `examples/opengl_engine.py`.
 
-### Shader (`openapi.shader`)
+## Commands
 
-Shader compilation, program linking, uniform/SSBO binding, and SPIR-V cross-compilation from radical-generated GLSL. Reflection queries for uniforms and buffer blocks.
-
-### Buffer (`openapi.buffer`)
-
-GPU buffer allocation (immutable, mapped, persistent), upload/download, bindless buffers via `ARB_bindless_texture`, and buffer storage barriers.
-
-### Texture (`openapi.texture`)
-
-Texture creation (2D, 3D, cube, array, multisample), mipmap generation, image load/store, and bindless texture handles. Supports all sized internal formats.
-
-### Render (`openapi.render`)
-
-Framebuffer objects, render passes, draw calls (indirect, instanced, indexed), query objects, and transform feedback. Compatible with radical-generated geometry shaders.
-
-### Window (`openapi.window`)
-
-Window creation via GLFW, input polling (keyboard, mouse, gamepad), vsync control, and swap chain management. Headless mode available for server-side rendering.
-
----
-
-**API Reference:** `#include <openapi/api.h>`
-
-**HELLFORGE v1.0.0.0 ALPHA — openapi: OpenGL Graphics API**
+`openapi status|extensions|info` — see
+[OPENapi commands](../commands/openapi-commands.md).

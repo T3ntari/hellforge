@@ -1,43 +1,59 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [pkglist](packaging/pkglist.md) | [plugin-management](packaging/plugin-management.md) | [embedded-backups](packaging/embedded-backups.md) | [signing-plugins](packaging/signing-plugins.md)
+[Nav: doc/index.md](../index.md) | [pkglist](pkglist.md) | [plugin-management](plugin-management.md) | [embedded-backups](embedded-backups.md) | [signing-plugins](signing-plugins.md)
 
 ## Plugin Management
 
-### Install
+Plugins are managed from the eshell console. Every command family takes
+subcommands:
+
+### plugin
 
 ```
-piano pkg install plugin-name
-piano pkg install ./path/to/plugin.pkg
+plugin list            # installed plugins + versions
+plugin avail           # available plugins
+plugin scan            # re-scan the plugins directory
+plugin update          # update plugin metadata
+plugin fetch <name>    # fetch a plugin
+plugin remove <name>   # remove a plugin
+plugin version         # plugin manager version
 ```
 
-Installation resolves dependencies, verifies signatures, and places files in the Piano DSL plugin directory.
-
-### Update
+### mod (mods — userland extensions)
 
 ```
-piano pkg update plugin-name
-piano pkg update --all
+mod list | avail | scan | update | fetch <name> | remove <name> | version
 ```
 
-Updates check the registry for newer versions, verify the new signature, and apply the update atomically.
-
-### Remove
+### pkglist (the package catalog)
 
 ```
-piano pkg remove plugin-name
+pkglist show | update | search <q> | version | detail <name>
 ```
 
-Removal deletes plugin files and updates the local registry. Dependencies shared with other plugins are preserved.
-
-### List
+### ezip (packages)
 
 ```
-piano pkg list
+ezip install <file.ezip> | ezip list
 ```
 
-Shows installed plugins with version, trust level, and verification status.
+### Boot & sandbox
+
+- At boot, the kernel loads every plugin under `plugins/` with real file
+  counts: "Plugin X present (N files)" — plugins can be disabled per
+  config; dependencies declared with `api.require()` install
+  automatically
+- `sys strict 0|1|2` controls unsigned-plugin policy (see
+  [Strict enforcement](../security/strict-enforcement.md))
+- Everything runs inside the K-rip sandbox (`krip sandbox run <name> -- <cmd>`
+  for arbitrary processes)
+
+### Custom plugins & updates
+
+Custom plugin dirs (not shipped upstream) survive safe updates: they are
+backed up, restored, and re-registered in `SECURITY_HASH.local` — see
+[Safe updates](../commands/integrity-commands.md).
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — plugin management

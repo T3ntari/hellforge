@@ -1,43 +1,43 @@
-# HELLFORGE v1.0.0.0 ALPHA — Radical Commands
+# HELLFORGE — Radical Commands
 
-> Navigation: [doc/index.md](../index.md)
+> Navigation: [doc/index.md](../index.md) | [core-commands](core-commands.md) | [radical-commands](radical-commands.md)
+
+The **radical** plugin (v1.0.0) is the GPU Shader Math Core: it compiles E
+math ASTs into GLSL compute shaders and executes them on the GPU. It is
+registered as a math evaluator at **priority 5** (after TensorSHARP's 3,
+before LURE's 10) and falls back Radical → LURE → Python. Requires
+`pip install PyOpenGL glfw`.
 
 ## radical status
 **Syntax:** `radical status`
-**Description:** Display the current status of the Radical GPU compute engine, including GPU model, driver version, and compute mode.
+**Description:** Primary GPU, vendor, type, VRAM, OpenGL/GLSL versions, compute support, shaders compiled, expressions evaluated, plus a list of ALL detected GPUs and the API support matrix.
 **Example:** `radical status`
-**Plugin:** radical
 
 ## radical gpu
-**Syntax:** `radical gpu [--list] [--select <index>]`
-**Description:** List available GPUs or select a specific GPU device for Radical compute operations.
-**Example:** `radical gpu --select 0`
-**Plugin:** radical
+**Syntax:** `radical gpu [list|<index>]`
+**Description:** Show the current GPU; `list` enumerates GPUs with index/vendor/type/VRAM; switching requires a shell restart to re-init the context.
+**Example:** `radical gpu list`
 
 ## radical vram
-**Syntax:** `radical vram [--stats] [--clear]`
-**Description:** Show VRAM usage statistics or clear the VRAM note buffer allocated by Radical.
-**Example:** `radical vram --stats`
-**Plugin:** radical
+**Syntax:** `radical vram [<MB>|off]`
+**Description:** Show or set the VRAM allocation cap (0/off = unlimited).
+**Example:** `radical vram 4096`
 
 ## radical benchmark
-**Syntax:** `radical benchmark [--iterations <n>] [--size <n>]`
-**Description:** Run a GPU compute benchmark to measure FLOPs, memory bandwidth, and note-generation throughput.
-**Example:** `radical benchmark --iterations 50000`
-**Plugin:** radical
+**Syntax:** `radical benchmark`
+**Description:** GPU compute benchmark.
+**Example:** `radical benchmark`
 
 ## radical shaders
-**Syntax:** `radical shaders list|compile|info [name]`
-**Description:** List, compile, or inspect GPU shader programs used for note generation.
-**Example:** `radical shaders list`
-**Plugin:** radical
+**Syntax:** `radical shaders`
+**Description:** Shader cache stats (count, KB) with a preview of recent entries.
+**Example:** `radical shaders`
 
 ## radical info
-**Syntax:** `radical info [--detailed]`
-**Description:** Display detailed information about the Radical plugin version, supported features, and GPU capabilities.
-**Example:** `radical info --detailed`
-**Plugin:** radical
+**Syntax:** `radical info`
+**Description:** Plugin summary: evaluator priority 5, AST→GLSL pipeline, fallback chain, multi-GPU switching and VRAM limit usage.
+**Example:** `radical info`
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — *forge your sound*
+**Plugin:** radical · see [Radical plugin page](../plugins/radical.md) and [GPU docs](../gpu/radical-gpu.md)

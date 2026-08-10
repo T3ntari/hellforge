@@ -1,14 +1,13 @@
-# **HELLFORGE v1.0.0.0 ALPHA**
+# v1 #MACHINE Mode — Token-Based Note Format (legacy)
 
 [Back to doc/index.md](../index.md) · [Syntax Overview](overview.md)
 
----
+> **LEGACY REFERENCE** — v1 compiles for backward compatibility with a
+> deprecation warning. Machine lines (`T0 N60 D500 V80`) are **not** valid
+> v5. Write v5 (see [overview](overview.md)); convert with
+> `run.py compile <old.e> --to v5`.
 
-## #MACHINE Mode — Token-Based Note Format
-
-Activate with `#MACHINE` (or `#MACH`) at the top of a block. Uses strict four-field token syntax.
-
-### Grammar
+## Grammar
 
 ```
 T<time> N<midi> D<duration> V<velocity>
@@ -21,7 +20,7 @@ T<time> N<midi> D<duration> V<velocity>
 | `D` | Duration | `1` – `INT32_MAX` | Note length in ticks |
 | `V` | Velocity | `0` – `127` | Note velocity / volume |
 
-### Examples
+## Examples
 
 ```
 #MACHINE
@@ -30,7 +29,7 @@ T480 N64 D240 V80
 T720 N67 D960 V90
 ```
 
-### Ties & Rests
+## Ties & Rests
 
 - Tie into previous note: omit `T`
 - Rest: set `N-1`
@@ -41,7 +40,7 @@ T0 N60 D480 V100   N64 D240 V80
 N-1 D120 V0
 ```
 
-### Token Reference
+## Token Reference
 
 | Token | Shorthand | Example |
 |-------|-----------|---------|
@@ -52,4 +51,4 @@ N-1 D120 V0
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — Piano DSL Syntax Documentation
+**HELLFORGE OS v0.1.14.41-beta** — legacy reference

@@ -1,42 +1,46 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [custom-plugin](examples/custom-plugin.md) | [gpu-compute](examples/gpu-compute.md) | [game-engine](examples/game-engine.md)
+[Nav: doc/index.md](../index.md) | [custom-plugin](custom-plugin.md) | [gpu-compute](gpu-compute.md) | [game-engine](game-engine.md)
 
 ## GPU Compute with Radical and TensorSHARP
 
-This example shows batch matrix multiplication using Radical compute shaders and TensorSHARP.
+This example shows how the GPU math drivers accelerate E expressions.
 
-### Define the Kernel
+### The evaluator chain
 
-```piano
-kernel batch_matmul {
-    input: matrix[1024, 1024] A
-    input: matrix[1024, 1024] B
-    output: matrix[1024, 1024] C
+Every `{$...}` math expression is evaluated by the best available
+evaluator: **TensorSHARP** (Tensor Cores, priority 3) → **Radical** (GLSL
+compute shaders, priority 5) → **LURE** (LuaJIT, priority 10) → **Python**
+(priority 100). You never call the GPU explicitly in E — it happens
+underneath.
 
-    @compute @workgroup(16, 16, 1)
-    fn main(@builtin(global_invocation_id) id: vec3u) {
-        let row = id.x
-        let col = id.y
-        C[row][col] = dot(A[row][:], B[:][col])
-    }
-}
+```e
+$result = {$a * $b + 1}          // routed to the best evaluator
+$picked = pick(C5 E5 G5)         // v5 deterministic choice (@seed 42)
 ```
 
-### Dispatch
+### Managing the GPU
 
-```piano
-let A = tensor.randn([1024, 1024])
-let B = tensor.randn([1024, 1024])
-let C = tensorsharp.matmul(A, B, precision = "tf32")
+```text
+krip gpu list          // which GPUs exist
+krip gpu 0,1           // use GPUs 0 and 1 (CUDA_VISIBLE_DEVICES)
+krip engine vulkan     // default engine
+radical status         // GPU model, VRAM, compute support
+radical vram 4096      // cap VRAM
+tensorsharp status     // Tensor Cores, precision, GFLOPS
 ```
 
-### Performance Notes
+### Fallbacks
+
+- No GPU → Radical unavailable at boot, LURE/Python take over
+- No Tensor Cores → TensorSHARP skips, Radical handles it
+- No lupa → Python pool handles everything
+
+### Performance notes
 
 - TF32 mode uses Tensor Cores on Ampere+ GPUs
-- Falls back to FP32 on non-Tensor Core hardware
-- Work group size is auto-tuned for the target GPU
+- Shader compilation is cached (`radical shaders`)
+- `lure benchmark` / `lure async` measure the compile-side speedups
 
----
-
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+See [GPU overview](../gpu/overview.md) and
+[Radical commands](../commands/radical-commands.md).

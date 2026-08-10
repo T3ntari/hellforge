@@ -1,10 +1,11 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [eaudio-api](audio/eaudio-api.md) | [spatial-audio](audio/spatial-audio.md) | [dsp-effects](audio/dsp-effects.md) | [device-management](audio/device-management.md)
+[Nav: doc/index.md](../index.md) | [eaudio-api](eaudio-api.md) | [spatial-audio](spatial-audio.md) | [dsp-effects](dsp-effects.md) | [device-management](device-management.md)
 
 ## DSP Effects
 
-The DSP engine provides a chainable effects pipeline for real-time audio processing.
+The **AudioEffectsAPI** (eaudio) provides an effects pipeline for audio
+engines built on top of EAudio.
 
 ### Reverb
 
@@ -32,6 +33,12 @@ The DSP engine provides a chainable effects pipeline for real-time audio process
 - Shelving filters (low/high)
 - FIR and IIR filter implementations
 
+### Related
+
+The Humanize driver adds *performance feel* (micro-timing + velocity
+expression) at the compile level (`@humanize:nn`) — see
+[Humanize](../plugins/humanize.md).
+
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — DSP effects

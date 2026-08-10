@@ -1,28 +1,29 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](signing/overview.md) | [regas-trust](signing/regas-trust.md) | [tentari-signing](signing/tentari-signing.md) | [key-management](signing/key-management.md) | [verification](signing/verification.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [regas-trust](regas-trust.md) | [tentari-signing](tentari-signing.md) | [key-management](key-management.md) | [verification](verification.md)
 
-## CORE-EXPANSION: REGAS Trust
+## REGAS Trust
 
-REGAS is the highest trust level in the HELLFORGE signing hierarchy. A REGAS signature indicates the plugin author's identity has been confirmed by the private registry (opt-in).
+**REGAS** is an author trust tag in HELLFORGE plugin metadata (e.g.
+`Made by Tentari. Signed: REGAS.`) — a legacy marker from the CORE-EXPANSION
+era of the project.
 
-### Characteristics
+### Current status
 
-- Server-confirmed TENTARI identity
-- Key fingerprint registered in the global REGAS registry
-- Eligible for `sys strict 2` enforcement without warnings
-- Automatic trust propagation across projects
+- REGAS is **not** a server-confirmed trust level anymore. The private
+  registry submission flow (`/verify`, `/confirm`, `--submit-regas`) was
+  removed from the open-source release; registry auth is not part of the
+  project.
+- Plugins may still carry the REGAS tag as an authorship/quality
+  indication; it implies **no** automatic trust privileges.
+- Verification is purely local: plugin hashes against `pkglist.json`
+  codes (see [pkglist](../packaging/pkglist.md)) and file signatures
+  against `.e_identity/trusted/` keys (see [Verification](verification.md)).
 
-### Workflow
+### History
 
-1. Developer generates an ed25519 key pair locally
-2. Key fingerprint is submitted to the registry (`/verify`)
-3. Registry reviews and confirms via `/confirm`
-4. Plugin signed with the confirmed key is marked REGAS
-5. Downstream consumers see REGAS trust automatically
-
-REGAS trust is the gold standard for distribution. All official HELLFORGE packages are REGAS-signed.
-
----
-
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+Originally REGAS meant "registry-confirmed identity — highest trust",
+granting eligibility for `sys strict 2` without warnings. That mechanism
+no longer exists; all official HELLFORGE packages now ship with SHA-256
+verification codes in `pkglist.json`, verified locally by
+`tools/verify_integrity.py`.

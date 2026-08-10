@@ -1,33 +1,29 @@
-# **HELLFORGE v1.0.0.0 ALPHA — eaudio: 3D Spatial Audio API**
+# EAudio — Low-Level Audio API
 
-**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [radical](radical.md) | [tensorsharp](tensorsharp.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [eaudio](eaudio.md) | [lure](lure.md) | [portbaby](portbaby.md) | [talisman](talisman.md) | [developing-plugins](developing-plugins.md)
+**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [eaudio](eaudio.md) | [humanize](humanize.md) | [talisman](talisman.md) | [commands](../commands/eaudio-commands.md)
 
 ---
 
 ## Overview
 
-**eaudio** delivers 3D spatial audio through four sub-APIs, backed by a real-time audio engine with <5 ms latency. Supports HRTF-based binaural rendering, Ambisonics, and object-based audio.
+**EAudio v1.0.0** (author Tentari) is a low-level **audio API** — not an
+audio player. It provides raw audio primitives that game engines and audio
+renderers are built on top of. Requires Radical (GPU context may be used
+for audio DSP compute shaders); `pip install pygame` (basic) or
+`python-sounddevice` (advanced).
 
-## Sub-APIs
+## Core primitives
 
-### Device (`eaudio.device`)
+- **Device** — audio device enumeration, selection, format negotiation
+- **Buffer** — PCM buffer management, streaming, ring buffers
+- **Spatial** — 3D audio positioning, velocity, doppler, attenuation
+- **Effects** — reverb, EQ, compressor, delay, convolution reverb
 
-Audio device enumeration and selection (WASAPI, ALSA, CoreAudio, JACK). Sample rate negotiation, buffer size configuration, and multi-channel output (stereo, 5.1, 7.1, Atmos).
+Third-party modders build audio engines ON TOP of this API.
 
-### Buffer (`eaudio.buffer`)
+## Commands
 
-Audio buffer management: PCM, compressed (Opus, Vorbis), procedural generation. Streaming buffers for long audio files and ring buffers for real-time synthesis.
-
-### Spatial (`eaudio.spatial`)
-
-3D audio object placement using listener-relative coordinates. HRTF convolution per source, distance attenuation curves, Doppler shift, and room reverb via IR convolution.
-
-### Effects (`eaudio.effects`)
-
-Per-source effect chain: EQ (parametric, graphic), compressor, limiter, reverb (convolution + algorithmic), delay, chorus, flanger, pitch shifter. Effects stack serializable to DSL.
-
----
-
-**API Reference:** `#include <eaudio/api.h>`
-
-**HELLFORGE v1.0.0.0 ALPHA — eaudio: 3D Spatial Audio API**
+`eaudio status|devices|info` — see
+[EAudio commands](../commands/eaudio-commands.md). The audio docs cover
+[devices](../audio/device-management.md), [spatial audio](../audio/spatial-audio.md),
+[DSP effects](../audio/dsp-effects.md) and the [API](../audio/eaudio-api.md).

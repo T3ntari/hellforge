@@ -1,26 +1,39 @@
-# Copilot Tool Protocol (plugins/llm + ai.py)
+# Copilot (plugins/llm) & HellGate Agents
 
-The repo embeds an LLM copilot. CLI: `ai.py` (thin wrapper over
-`plugins/llm`). When acting as the copilot you emit a **JSON plan** — the
-harness parses, previews diffs, confirms with the user, applies, runs
-commands/tests, and feeds results back. When done, reply `{"done": true}`.
+Two agent surfaces ship with HELLFORGE:
 
-## Commands
+1. The **built-in copilot** (`run.py ai` / `ai.py`, engine in
+   `plugins/llm/`) — an LLM agent that edits the repo through a JSON plan
+   protocol.
+2. **HellGate** (`run.py hellgate` / `krip hellgate`) — a wrapper that boots
+   **OpenCode** with two music-agent personas (Music-Composer,
+   Music-Refiner) and the knowledge pack. You may be acting inside either.
+
+## The llm copilot plugin
+
+Providers: `openai | deepseek | claude | ollama | custom` (OpenAI-compatible;
+`ai url <base_url>` for custom endpoints). State (provider/model/key) is
+persisted in `.plugin_config.json`; the API key is stored via the auth-token
+store.
+
+Commands (`ai status|setup|provider|model|url|key|connect|disconnect`):
 
 ```
-ai fix "<issue>" [--yes]   multi-step loop: plan → review → apply → verify →
-                           repeat (≤5 steps); --yes auto-applies writes/edits
+ai ask "<question>"        one-shot answer (no edits)
+ai chat                    interactive REPL chat (no edits)
+ai fix "<issue>" [--yes]   multi-step agentic loop: plan → review → apply →
+                           verify → repeat (≤5 steps); --yes auto-applies
+ai plugin "<description>"  generate a plugin skeleton in plugins/<name>/
+ai read <file> [start [end]]  line-numbered file view
 ai agent                   interactive multi-turn REPL with edit capability
-ai chat / ai ask "<q>"     chat / one-shot answer (no edits)
-ai read <file> [start [end]]   line-numbered file view
-ai plugin "<description>"  generate a plugin skeleton
-ai todo | review | cost | status | setup | provider | model | url | key
 ai agents on|off           multi-agent verification (daughter agent reviews)
 ai index build|status|off  project index; ai index-model <name> (Ollama)
 ```
 
-`ai agent` REPL: `/status`, `/read`, `/todo` slash-commands, context
-compaction, persisted sessions.
+`ai ask`/`ai chat` use a **two-mode intent router**: explicit `/fix`-style
+prefixes and plain-language task-intent phrases route to the agentic loop
+(tools, file edits, command execution); everything else stays a chat
+answer. `ai fix` is the full agent loop.
 
 ## JSON plan format (exact)
 
@@ -55,22 +68,15 @@ Plan keys: `summary` · `commands` (validated safe executables) · `tests`
 - `delete` — always requires explicit per-file confirmation; refused off-TTY;
   never via `a`/all.
 
-## Modes
-
-- **plan** — model returns plans; user confirms each change
-  (`y`/`n`/`v` view/`a` apply-all/`q` quit).
-- **auto** — `ai fix --yes` auto-applies writes/edits; deletes still need
-  per-file confirmation. **ask/chat** — plain text, no edits.
-
 ## Safety rules (non-negotiable)
 
 1. **Edit-not-rewrite**: existing files are line-range edits or unique
    search/replace blocks; whole-file writes refused without explicit `yes`.
 2. **Deletes confirmed** individually, always; `a` never auto-confirms.
 3. **Path bounds**: relative paths only, inside the project root; `..`,
-   absolute paths, the root itself rejected. Protected dirs (`.identity/`,
-   `.fent_cache/`, `.radical_cache/`, `.venv/`, `node_modules/`, `logs/`,
-   `__pycache__/`, `.git/`) never touched.
+   absolute paths, the root itself rejected. Protected dirs (`.e_identity/`,
+   `.venv/`, `hellgate-state/`, `logs/`, `__pycache__/`, `.git/`) never
+   touched.
 4. **Command allowlist** (exec.py): no `rm`/`mv`/`sudo`/`pip`/`curl`/`wget`;
    no shell metachars or `..`; `git` only for safe subcommands (status/diff/
    log — push/pull/reset/checkout banned); `python -c` and os/sys/subprocess/
@@ -96,34 +102,41 @@ them off as you complete them; never delete items.
 ## Search & context
 
 - **Index** (`ai index build`): keyword index (`.py/.e/.ei/.enx/.eci/.eic/
-  .md/.json/.lua/.js/.ts/.html`) in `.fent_cache/llm_index.json` (gitignored);
-  path tokens weight ×3, first line ×2.
+  .md/.json/.lua/.js/.ts/.html`) — gitignored cache; path tokens weight ×3,
+  first line ×2.
 - **Semantic**: optional Ollama embeddings (`ai index-model <name>`) —
   cosine-ranked; falls back to keyword.
 - **Context builder**: project tree + files the request names + keyword-window
   line ranges, ~60KB budget — relevant code, not whole files. `ai read` for
   precise line-numbered views.
 
-## Sessions & subagents
-
-`ai chat`/`ai agent` persist sessions (provider/model/turns/summary),
-resumable via `ai resume`/`ai sessions`. The `subagents` plan key runs up
-to 4 focused child requests in parallel; daughter-agent verification
-(`ai agents on`, `ai agent-model`) reviews changes read-only before each
-next step.
 ## HELL'S CODE TUI
 
 `ai agent` may run as a full-screen curses TUI. The agent logic lives on a
 background thread and talks to the frame loop through a Bridge:
+`stream(text)`, `feed(text, color)`, `box_open/box_line/box_close`
+(sub-windows, never spam the main feed), `ask(...)` (gatekeeper modal,
+BLOCKS until y/n/e), `status(text)` / `thinking(on)`. Headless (no TTY) →
+the classic line REPL; behavior parity is required, not just the TUI path.
 
-- `stream(text)` — streamed reply chunks (displayed live)
-- `feed(text, color)` — a full line in the feed (colors: accent/accent2/
-  text/dim/ok/err/warn)
-- `box_open(title)` / `box_line(text)` / `box_close(summary)` — bordered
-  sub-window for command output (never spam the main feed)
-- `ask(question, detail, choices)` — gatekeeper modal; BLOCKS the agent
-  thread until the user answers y/n/e
-- `status(text)` / `thinking(on)` — status bar and thinking indicator
+## HellGate — OpenCode wrapper & personas
 
-When running headless (no TTY), the same flows run through the classic line
-REPL — behavior parity is required, not just the TUI path.
+HellGate is a wrapper (not an official OpenCode product) that boots OpenCode
+focused in this repo. Per launch: wrapper warning → first-run onboarding
+(new machines, specs-based) → provider resolution → HellCode welcome +
+`x/1024` loading → OpenCode TUI.
+
+- **Provider registry** (first-available wins, Ollama last): Anthropic,
+  OpenAI, OpenRouter, Google Gemini, custom, Ollama (model select list from
+  `/api/tags`).
+- **Agents**: `$agent` switches between **Music-Composer** and
+  **Music-Refiner** — personas defined in
+  `plugins/hellgate/knowledge/agents.md` (each `## <Name>` section is the
+  agent's system prompt).
+- **Knowledge pack**: `full.md` (comprehensive map), `core.md` (distilled
+  digest — served to small-context models), `samples-index.md`, `agents.md`.
+- Everything runs inside the **K-rip sandbox** (launched via
+  `krip hellgate`): stay in the project root, never touch `.e_identity/`,
+  `.venv/`, `hellgate-state/` (session/provider state lives there).
+- Session commands after OpenCode exits: `Enter`/`$new` relaunch,
+  `$agent`, `$provider`, `$model`, `$dir`, `q` quit.

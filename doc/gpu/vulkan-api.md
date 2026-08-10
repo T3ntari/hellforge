@@ -1,30 +1,44 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](gpu/overview.md) | [radical-gpu](gpu/radical-gpu.md) | [opengl-api](gpu/opengl-api.md) | [vulkan-api](gpu/vulkan-api.md) | [tensor-cores](gpu/tensor-cores.md) | [shader-compilation](gpu/shader-compilation.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [radical-gpu](radical-gpu.md) | [opengl-api](opengl-api.md) | [vulkan-api](vulkan-api.md) | [tensor-cores](tensor-cores.md) | [shader-compilation](shader-compilation.md)
 
 ## Vulkanizer — Vulkan Compute + Ray Tracing + Upscale
 
-Vulkanizer is the Vulkan 1.3 backend for Piano DSL, providing the full GPU compute, ray tracing, and upscaling pipeline.
+Vulkanizer (v1.0.0) is the low-level **Vulkan** graphics & compute API
+driver — instance, pipelines, buffers, commands, ray tracing and custom
+temporal upscaling. Requires Radical for GPU detection and the Vulkan SDK
+(`pip install vulkan glfw`).
 
-### Compute
+### Primitives
 
-- Vulkan compute pipelines generated from Radical kernel expressions
-- Push constants for small uniform data
-- Descriptor set management with automatic layout inference
-- Timeline semaphore synchronization
+- **Instance** — Vulkan instance, physical device selection, logical
+  device, queues
+- **Pipeline** — compute/graphics pipelines, shader modules, descriptor
+  sets, push constants
+- **Buffer** — device-local, host-visible, staging, buffer barriers
+- **Command** — command pools, command buffers, submit, sync (semaphores,
+  fences)
+- **RayTrace** — `VK_KHR_ray_tracing` capability detection
+- **Upscale** — custom temporal upscaling via compute shaders + Tensor
+  Cores
 
-### Ray Tracing
+### Querying the driver
 
-- Acceleration structure building from Piano DSL geometry descriptions
-- Ray tracing pipelines with any-hit, closest-hit, and miss shaders
-- Integration with audio spatialization for sound propagation tracing
+```
+vulkanizer status     # GPU, Vulkan version, driver, compute queues, RT
+vulkanizer devices    # physical devices
+vulkanizer info       # sub-API summary
+```
 
-### Upscaling
+Example engine: `examples/vulkan_engine.py`.
 
-- Built-in temporal upscaling for audio visualization workloads
-- Integration with TensorSHARP for AI-based upscaling
-- Frame interpolation for smooth parameter animation
+### Engine selection
+
+K-rip sets **Vulkan** as the default graphics engine
+(`krip engine vulkan` — `opengl` switches the default); `krip vulkanrt`
+toggles the Vulkan runtime layer. See
+[GPU overview](overview.md).
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — Vulkan API driver

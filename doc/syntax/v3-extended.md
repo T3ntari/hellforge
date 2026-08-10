@@ -1,12 +1,10 @@
-# **HELLFORGE v1.0.0.0 ALPHA**
+# v3 Extended Syntax — Shorthand Notations (valid in v5)
 
 [Back to doc/index.md](../index.md) · [Syntax Overview](overview.md)
 
----
-
-## v3 Extended Syntax — Shorthand Notations
-
-Piano DSL v3 introduces compact notation inspired by guitar tabs and trackers.
+> **LEGACY REFERENCE** — v3 shorthand is **valid v5** (a superset: no
+> demotion). Only the v1–v4 *versioned* framing is deprecated; the
+> constructs below compile cleanly in v5.
 
 ### Note + Octave
 
@@ -15,7 +13,8 @@ C4  D4  E4  F4  G4  A4  B4  C5
 C#4  Db4  F#5  Bb3
 ```
 
-Letter note names with optional accidental (`#` or `b`) and octave number. Middle C = `C4`.
+Letter note names with optional accidental (`#` or `b`) and octave number.
+Middle C = `C4`.
 
 ### Duration Codes
 
@@ -59,4 +58,4 @@ Rq  Rh  Re
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — Piano DSL Syntax Documentation
+**HELLFORGE OS v0.1.14.41-beta** — v3 shorthand: valid v5

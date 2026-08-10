@@ -1,31 +1,33 @@
-# HELLFORGE v1.0.0.0 ALPHA — TensorSharp Commands
+# HELLFORGE — TensorSHARP Commands
 
-> Navigation: [doc/index.md](../index.md)
+> Navigation: [doc/index.md](../index.md) | [core-commands](core-commands.md) | [tensorsharp-commands](tensorsharp-commands.md)
+
+The **tensorsharp** plugin (v1.0.0) accelerates E math on NVIDIA **Tensor
+Cores** (CuPy, TF32/FP16 mixed precision). It depends on Radical for the
+GPU compute runtime and registers a math evaluator at **priority 3**
+(highest). Fallback chain: TensorSHARP → Radical → LURE → Python.
+Requires an NVIDIA GPU + CUDA toolkit + `pip install cupy-cuda12x`.
 
 ## tensorsharp status
 **Syntax:** `tensorsharp status`
-**Description:** Display the current status of the TensorSharp tensor compute engine, including core count, tensor memory pool, and active sessions.
+**Description:** CUDA availability, Tensor Core count, precision, GPU name, CuPy version, ops executed, total GFLOPS, evaluations — or "inactive" with install hints.
 **Example:** `tensorsharp status`
-**Plugin:** tensorsharp
 
 ## tensorsharp cores
-**Syntax:** `tensorsharp cores [--list] [--pin <id>]`
-**Description:** List available tensor processing cores or pin a specific core for tensor operations.
-**Example:** `tensorsharp cores --list`
-**Plugin:** tensorsharp
+**Syntax:** `tensorsharp cores`
+**Description:** Tensor Core configuration: GPU, compute capability, core count, max precision, FP16/TF32/INT8 support.
+**Example:** `tensorsharp cores`
 
 ## tensorsharp benchmark
-**Syntax:** `tensorsharp benchmark [--ops <n>] [--dims <n>]`
-**Description:** Run a tensor operation benchmark measuring matrix multiply, convolution, and note-tensor conversion throughput.
-**Example:** `tensorsharp benchmark --dims 512`
-**Plugin:** tensorsharp
+**Syntax:** `tensorsharp benchmark`
+**Description:** Tensor operation benchmark (matrix multiply etc.).
+**Example:** `tensorsharp benchmark`
 
 ## tensorsharp info
-**Syntax:** `tensorsharp info [--full]`
-**Description:** Display TensorSharp plugin version, supported tensor operations, and hardware acceleration backends.
-**Example:** `tensorsharp info --full`
-**Plugin:** tensorsharp
+**Syntax:** `tensorsharp info`
+**Description:** Plugin summary and capabilities.
+**Example:** `tensorsharp info`
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — *forge your sound*
+**Plugin:** tensorsharp · see [TensorSHARP plugin page](../plugins/tensorsharp.md) and [GPU docs](../gpu/tensor-cores.md)

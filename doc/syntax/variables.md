@@ -1,12 +1,9 @@
-# **HELLFORGE v1.0.0.0 ALPHA**
+# Variables — `$var`
 
 [Back to doc/index.md](../index.md) · [Syntax Overview](overview.md)
 
----
-
-## Variables — `$var`
-
-Variables are defined with `$` prefix and can hold integers, floats, strings, or pattern sequences.
+Variables are defined with `$` prefix and can hold integers, floats,
+strings, or pattern sequences.
 
 ### Definition
 
@@ -35,7 +32,8 @@ T{$i * 480} N{$notes[$idx]} D480 V{$vel}
 | Loop body | Iteration-local, discarded after loop |
 | Expression | Temporary within `{$...}` evaluation |
 
-Inner scopes shadow outer ones. Variables are looked up from innermost to outermost.
+Inner scopes shadow outer ones. Variables are looked up from innermost to
+outermost.
 
 ### Scope Example
 
@@ -62,6 +60,13 @@ repeat 10 {
 }
 ```
 
+### Plugins can handle variables too
+
+Plugins may register custom variable handlers
+(`api.register_variable_handler(fn)`) — the reference plugin handles
+`$repeat_4` / `$repeat_8` style names (see
+[`examples/plugins/example_plugin.py`](../../examples/plugins/example_plugin.py)).
+
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — Piano DSL Syntax Documentation
+**HELLFORGE OS v0.1.14.41-beta** — v5 variables

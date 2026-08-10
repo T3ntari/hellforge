@@ -1,61 +1,60 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [custom-plugin](examples/custom-plugin.md) | [gpu-compute](examples/gpu-compute.md) | [game-engine](examples/game-engine.md)
+[Nav: doc/index.md](../index.md) | [custom-plugin](custom-plugin.md) | [gpu-compute](gpu-compute.md) | [game-engine](game-engine.md)
 
 ## Custom Plugin Creation
 
-This guide walks through creating a Piano DSL plugin from scratch.
+This guide walks through creating an E plugin (driver) from scratch, based
+on the reference plugin at
+[`examples/plugins/example_plugin.py`](../../examples/plugins/example_plugin.py).
 
-### Step 1: Scaffold
+### Step 1: Start from the reference
 
-```
-piano plugin new my-audio-tool
-```
+Copy the example into `plugins/`:
 
-Creates the following structure:
-
-```
-my-audio-tool/
-  plugin.json
-  src/
-    main.piano
-  assets/
+```bash
+cp examples/plugins/example_plugin.py plugins/myplugin.py
 ```
 
-### Step 2: Write the Plugin
+A plugin is a Python module with a `register(api)` entry point:
 
-Edit `src/main.piano`:
-
-```piano
-plugin "my-audio-tool" version "1.0.0"
-
-export function process(input: float32[]) -> float32[] {
-    return input.map(sample => sample * 0.5)
-}
+```python
+def register(api):
+    """Called when the plugin is loaded. `api` provides registration functions."""
+    api.register_variable_handler(custom_var_handler)
+    api.register_syntax(custom_syntax_parser)
+    api.log("  > Example plugin registered: $repeat, @shuffle syntax")
 ```
 
-### Step 3: Build
+### Step 2: Add commands, help, boot steps
 
-```
-piano plugin build my-audio-tool
-```
-
-### Step 4: Sign
-
-```
-piano sign --plugin my-audio-tool.pkg
-```
-
-### Step 5: Install Locally
-
-```
-piano pkg install ./my-audio-tool.pkg
+```python
+def register(api):
+    api.add_boot_step("MyPlugin v1.0.0", "loading")
+    api.add_command("mycmd", _cmd, "MyPlugin: mycmd status|do")
+    api.add_help_section("MyPlugin Commands", [
+        ("mycmd status", "Show my plugin's status"),
+    ])
+    api.add_boot_step("MyPlugin ready", "done")
 ```
 
-### Step 6: Publish
+Commands appear in `help` grouped under the registering plugin; aliases
+are marked `(alias)` and dimmed.
 
-Upload the `.pkg` and `.sig` to your distribution channel.
+### Step 3: Register in pkglist.json
 
----
+Add your plugin's SHA-256 verification code to `pkglist.json` so
+`tools/verify_integrity.py` can check it (see
+[pkglist](../packaging/pkglist.md)). Custom plugin dirs are preserved
+across safe updates and registered in `SECURITY_HASH.local`.
 
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+### Step 4: Sign (optional)
+
+Signing is opt-in: `sign --setup` once, then `sign <file>` (see
+[Signing](../signing/overview.md)).
+
+### Step 5: Publish
+
+Keep the plugin in `plugins/<name>/` in the repo and document it under
+`doc/plugins/` + `doc/commands/`. Full API reference:
+[Developing Plugins](../plugins/developing-plugins.md).

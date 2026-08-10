@@ -1,25 +1,27 @@
-# HELLFORGE v1.0.0.0 ALPHA — Lure Commands
+# HELLFORGE — LURE Commands
 
-> Navigation: [doc/index.md](../index.md)
+> Navigation: [doc/index.md](../index.md) | [core-commands](core-commands.md) | [lure-commands](lure-commands.md)
+
+The **lure** plugin (v3.0.0) is the LuaJIT runtime accelerator — fast
+batch parsing and bulk event math on the compile hot path, plus an async
+compile engine. Requires `pip install lupa`; falls back to Python
+otherwise.
 
 ## lure status
 **Syntax:** `lure status`
-**Description:** Display the current status of the Lure acceleration engine, including accelerator type (CUDA/OpenCL), memory usage, and active acceleration sessions.
+**Description:** Show the sync engine state (lines parsed, events processed) and the async engine state (worker count).
 **Example:** `lure status`
-**Plugin:** lure
 
 ## lure benchmark
-**Syntax:** `lure benchmark [--size <n>] [--iterations <n>] [--type <cpu|gpu|all>]`
-**Description:** Run a benchmark measuring acceleration gain for note generation, comparing CPU vs accelerated performance.
-**Example:** `lure benchmark --iterations 10000 --type all`
-**Plugin:** lure
+**Syntax:** `lure benchmark`
+**Description:** Benchmark LURE vs the Python parser: batch machine-mode lines, mixed syntax, and the full compile pipeline — reports the speedup factor.
+**Example:** `lure benchmark`
 
 ## lure async
-**Syntax:** `lure async [--submit <file.e>] [--status] [--cancel <id>]`
-**Description:** Submit a composition for asynchronous accelerated processing, check status of async jobs, or cancel a running job.
-**Example:** `lure async --submit complex_beat.e`
-**Plugin:** lure
+**Syntax:** `lure async`
+**Description:** Benchmark async batch compilation (`ep_compiler.async_compile`) against synchronous compilation over several multi-thousand-line sources.
+**Example:** `lure async`
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — *forge your sound*
+**Plugin:** lure · see [LURE plugin page](../plugins/lure.md) and [Async docs](../async/lure-async.md)

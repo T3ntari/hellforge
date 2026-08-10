@@ -1,9 +1,9 @@
 # HELLFORGE Samples & Examples Index
 
-Reference index of `samples/` and `examples/` — what each demonstrates.
-Type column: v5 / v4 / v3 / v1 / v2 / ei / eic / enx / ec (syntax version
-or project format). All v1–v4 sources compile but are deprecated (warnings);
-v5 is canonical.
+Reference index of `samples/`, `songs/` and `examples/` — what each
+demonstrates. Type column: v5 / v4 / v3 / v1 / v2 / ei / eic / enx / ec
+(syntax version or project format). All v1–v4 sources compile but are
+deprecated (warnings); v5 is canonical.
 
 ## samples/
 
@@ -53,6 +53,12 @@ v5 is canonical.
 | `samples/enx/album.enx` | enx | Album root: `@title/@artist/@year` metadata + `**track tracks/song1.e**` |
 | `samples/enx/tracks/song1.e` | enx | Album track: intro → `repeat` riff → variation → outro |
 
+## songs/
+
+| Path | Type | What it demonstrates |
+|---|---|---|
+| `songs/aurora_nocturne.e` | v5 | "Aurora Nocturne" — a complete, polished v5 piano piece (48 bars, C major, `@bpm 78`, `@seed 7`): `pedal on/off`, `!fn` ornament macros, `for-in-list` arpeggio loops, `@curve vel` swells, ties (`@tie`), dotted durations, dynamics pp→fff across intro → theme → restate → interlude → climax → coda. The reference for full-song structure in canonical v5. |
+
 ## examples/
 
 | Path | Type | What it demonstrates |
@@ -80,7 +86,8 @@ v5 is canonical.
 
 Notes:
 - For canonical v5 style, mirror `samples/v5-current/pattern_demo.e`
-  (statements) and `performance_demo.e` (performance layer).
+  (statements) and `performance_demo.e` (performance layer); for a
+  complete polished piece, study `songs/aurora_nocturne.e`.
 - `run.py new <name>` scaffolds a fresh v5 project: `index.ei` +
   `parts/main.e` (pedal/rest/articulations) + `README.md`.
 - v1–v4 sources in `samples/` and `examples/` are legacy; they compile with

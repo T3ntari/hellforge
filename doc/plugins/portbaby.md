@@ -1,40 +1,33 @@
-# **HELLFORGE v1.0.0.0 ALPHA — portbaby: Syntax Version Porting**
+# Portbaby — Syntax Version Porting
 
-**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [radical](radical.md) | [tensorsharp](tensorsharp.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [eaudio](eaudio.md) | [lure](lure.md) | [portbaby](portbaby.md) | [talisman](talisman.md) | [developing-plugins](developing-plugins.md)
+**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [lure](lure.md) | [portbaby](portbaby.md) | [commands](../commands/portbaby-commands.md)
 
 ---
 
 ## Overview
 
-**portbaby** translates Piano DSL source code between syntax versions v1, v2, v3, and v4. It enables projects written in older syntax to run on newer engines and vice versa.
+**Portbaby v1.0.0** (author Tentari) ports E sources between syntax
+versions: v1 machine, v1 human, v2 semantic, v3 shorthand and v4
+polyrhythm/generative. It reports loss percentage and can generate proper
+multi-file project structures (`index.ei` + `parts/` + `project.enx`).
 
-## Version Mapping
+## Version targets
 
-| v1 (Legacy)       | v2 (Stable)          | v3 (Modern)          | v4 (Current)         |
-|-------------------|----------------------|----------------------|----------------------|
-| `kernel foo() =`  | `@kernel fn foo()`   | `@compute fn foo()`  | `kernel foo()`       |
-| `matrix a,b`      | `tensor a,b`         | `Tensor a,b`         | `mat a,b`            |
-| `shader{...}`     | `@vertex{...}`       | `fn vs(){...}`       | `vsh{...}`           |
-| `audio@buf`       | `@audio buffer`      | `let buf:AudioBuf`   | `abuf buf`           |
+`v1_machine`, `v1_human`, `v1`, `v2`, `v3`, `v4`, `v4_human`.
 
-## Porting Rules
+## Commands
 
-portbaby matches source files against syntax version signatures and applies transformation passes:
+Registered as `portbaby`, alias **`pb`** (`(alias)` in help):
 
-1. **Lexer tricking** — pre-tokenizes the source to detect version
-2. **AST rewriting** — transforms nodes between version schemas
-3. **Semantic validation** — ensures ported output is valid for the target version
-4. **Fallback annotation** — inserts `@compat` annotations where lossy conversion occurs
+- `portbaby <spec> --to <version> [--project] [--report] [--recursive]`
+- `portbaby update <project.ei>` — update an old project to latest syntax
+- `portbaby batch <glob> --to <version>` — batch conversion
 
-## Backport / Forward Port
+`<spec>` may be a file, a directory, `/` (all) or a glob. See
+[Portbaby commands](../commands/portbaby-commands.md).
 
-- `@target v1` — produces v1-compatible output (lossy)
-- `@target v2` — safe round-trip for most constructs
-- `@target v3` — full feature mapping
-- `@target v4` — preserves all features, may expand syntactic sugar
+## Note
 
----
-
-**API Reference:** `#include <portbaby/api.h>`
-
-**HELLFORGE v1.0.0.0 ALPHA — portbaby: Syntax Version Porting**
+The v5 canonical path is the language's future; portbaby converts legacy
+v1–v4 sources, and `run.py compile <old.e> --to v5` is the migration path
+(see [Syntax overview](../syntax/overview.md)).

@@ -1,52 +1,73 @@
-# **HELLFORGE v1.0.0.0 ALPHA — Plugin System Overview**
+# HELLFORGE — Plugin System Overview
 
-**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [radical](radical.md) | [tensorsharp](tensorsharp.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [eaudio](eaudio.md) | [lure](lure.md) | [portbaby](portbaby.md) | [talisman](talisman.md) | [developing-plugins](developing-plugins.md)
-
----
-
-## Overview
-
-HELLFORGE's plugin architecture provides a modular, extensible runtime for DSL compilation, GPU compute, graphics rendering, spatial audio, and scripting. Each plugin registers with the core engine through a unified plugin interface and participates in a deterministic boot chain.
-
-## Boot Order
-
-Plugins load in the following sequence:
-
-1. **lure** — LuaJIT Accelerator (evaluator priority 10)
-2. **radical** — GPU Shader Math Core (evaluator priority 9)
-3. **tensorsharp** — Tensor Core acceleration (evaluator priority 8)
-4. **openapi** — OpenGL Graphics API (evaluator priority 7)
-5. **vulkanizer** — Vulkan API (evaluator priority 6)
-6. **eaudio** — 3D Spatial Audio API (evaluator priority 5)
-7. **talisman** — Audio culling & privacy (evaluator priority 4)
-9. **portbaby** — Syntax version porting (evaluator priority 2)
-
-## Dependency Chain
-
-- **lure** has no dependencies and loads first.
-- **radical** depends on **lure** for scripted shader composition.
-- **tensorsharp** depends on **radical** for GPU context.
-- **openapi** depends on **radical** and **tensorsharp**.
-- **vulkanizer** depends on **radical**.
-- **eaudio** is independent of GPU plugins.
-- **talisman** depends on **eaudio**.
-- **portbaby** depends on all syntax-aware plugins.
-
-## Evaluator Priorities
-
-Each plugin registers a DSL evaluator with the core priority scheduler. Higher numeric priority runs first during AST evaluation:
-
-| Priority | Plugin     |
-|----------|------------|
-| 10       | lure       |
-| 9        | radical    |
-| 8        | tensorsharp|
-| 7        | openapi    |
-| 6        | vulkanizer |
-| 5        | eaudio     |
-| 4        | talisman   |
-| 2        | portbaby   |
+**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [developing-plugins](developing-plugins.md) | [krip](krip.md) | [hellgate](hellgate.md) | [llm](llm.md) | [radical](radical.md) | [tensorsharp](tensorsharp.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [eaudio](eaudio.md) | [humanize](humanize.md) | [talisman](talisman.md) | [lure](lure.md) | [portbaby](portbaby.md) | [learner](learner.md) | [launcher](launcher.md)
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Plugin System Overview**
+## The OS model
+
+HELLFORGE behaves like an operating system:
+
+- **kernel** — `ep_core` (plugin API: `add_command`, `add_help_section`,
+  `register_directive`, `register_math_evaluator`, `on()` hooks,
+  `add_boot_step`, `require`, boot chain, signing, sandbox)
+- **hypervisor** — **K-rip v1.0.0** (boot manager, resource sandbox, safe
+  updates, kernel registry — `krip os` shows the table)
+- **drivers** — every plugin under `plugins/`
+
+Every plugin is a Python package with a `register(api)` entry point; each
+may also ship its own eshell commands, help sections, compiler hooks,
+directives and math evaluators. The boot log reports real driver counts:
+"Plugin X present (N files)" and "[encryption] N module(s)".
+
+## The 14 shipped plugins (drivers)
+
+| Plugin | Version | Description | Command docs |
+|--------|---------|-------------|--------------|
+| [krip](krip.md) | 1.0.0 | Hypervisor — boot menu, mem/cpu/gpu sandbox, engine/vulkanrt/tensor, safe updates | [krip-commands](../commands/krip-commands.md) |
+| [hellgate](hellgate.md) | 0.1.14.41 | OpenCode wrapper — provider registry, Music-Composer/Refiner, knowledge pack | — |
+| [llm](llm.md) | — | AI copilot — ask/chat/fix/plugin; ollama/openai/anthropic/deepseek/custom | [llm-commands](../commands/llm-commands.md) |
+| [radical](radical.md) | 1.0.0 | GPU Shader Math Core — GLSL compute evaluation, multi-GPU, VRAM caps (priority 5) | [radical-commands](../commands/radical-commands.md) |
+| [tensorsharp](tensorsharp.md) | 1.0.0 | NVIDIA Tensor Core acceleration — CuPy TF32/FP16 (priority 3) | [tensorsharp-commands](../commands/tensorsharp-commands.md) |
+| [openapi](openapi.md) | 1.0.0 | Low-level OpenGL API — context, shaders, buffers, textures, render, window | [openapi-commands](../commands/openapi-commands.md) |
+| [vulkanizer](vulkanizer.md) | 1.0.0 | Low-level Vulkan API — instance, pipeline, commands, ray tracing, upscale | [vulkanizer-commands](../commands/vulkanizer-commands.md) |
+| [eaudio](eaudio.md) | 1.0.0 | Low-level audio API — devices, PCM buffers, 3D spatial, effects | [eaudio-commands](../commands/eaudio-commands.md) |
+| [humanize](humanize.md) | 1.0.0 | MoE de-robotizer — `@humanize:nn` micro-timing + velocity | — |
+| [talisman](talisman.md) | 1.1.0 | Audio culling, privacy & QOL — local mode, backup, inspect, stats | [talisman-commands](../commands/talisman-commands.md) |
+| [lure](lure.md) | 3.0.0 | LuaJIT runtime accelerator — sync + async compile (priority 10) | [lure-commands](../commands/lure-commands.md) |
+| [portbaby](portbaby.md) | 1.0.0 | Syntax version porting (`pb` alias) | [portbaby-commands](../commands/portbaby-commands.md) |
+| [learner](learner.md) | 1.0.0 | Interactive tutorial — lessons, questions, quizzes, tests | — |
+| [launcher](launcher.md) | 1.0.0 | New-window launching & process management (`launch` alias) | — |
+
+The example reference plugin lives at
+[`examples/plugins/example_plugin.py`](../../examples/plugins/example_plugin.py)
+(a `$repeat_N` variable handler + `@shuffle` syntax example) — copy it into
+`plugins/` to build your own driver.
+
+## Math evaluator priorities
+
+Lower priority value = tried first:
+
+| Priority | Evaluator |
+|----------|-----------|
+| 3 | TensorSHARP (Tensor Cores) |
+| 5 | Radical (GPU shader math) |
+| 10 | LURE (LuaJIT) |
+| 100 | Python (always-registered fallback) |
+
+## Boot chain
+
+1. K-rip hypervisor arms from `krip.json` (memory budget, CPU affinity,
+   GPU/engine/tensor env)
+2. Kernel boots (`ep_core`) — integrity sequence first (X → Y)
+3. Each driver's `register(api)` runs: `add_boot_step("...", "done")`
+   entries feed the boot progress; plugin dependencies declared with
+   `api.require()` are installed automatically
+4. eshell console starts inside the K-rip sandbox
+
+Custom plugins (not shipped upstream) are covered by the local manifest
+extension `SECURITY_HASH.local`, regenerated by the safe updater.
+
+---
+
+**HELLFORGE OS v0.1.14.41-beta** — kernel `ep_core` · 14 drivers · hypervisor K-rip v1.0.0

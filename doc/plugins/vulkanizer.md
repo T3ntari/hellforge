@@ -1,37 +1,32 @@
-# **HELLFORGE v1.0.0.0 ALPHA — vulkanizer: Vulkan API**
+# Vulkanizer — Low-Level Vulkan API
 
-**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [radical](radical.md) | [tensorsharp](tensorsharp.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [eaudio](eaudio.md) | [lure](lure.md) | [portbaby](portbaby.md) | [talisman](talisman.md) | [developing-plugins](developing-plugins.md)
+**Navigation:** [doc/index.md](../index.md) | [overview](overview.md) | [openapi](openapi.md) | [vulkanizer](vulkanizer.md) | [commands](../commands/vulkanizer-commands.md)
 
 ---
 
 ## Overview
 
-**vulkanizer** provides a full Vulkan 1.3 API surface exposed through five sub-APIs. It integrates with radical for shader module creation and leverages tensorsharp for compute dispatch where beneficial.
+**Vulkanizer v1.0.0** (author Tentari) is a low-level **Vulkan** graphics &
+compute API — not a game engine. It provides the raw Vulkan building blocks
+for game engines and rendering pipelines. Requires Radical for GPU
+detection; `pip install vulkan glfw` + Vulkan SDK 1.2+.
 
-## Sub-APIs
+## Core primitives
 
-### Instance (`vulkanizer.instance`)
+- **Instance** — Vulkan instance, physical device selection, logical
+  device, queues
+- **Pipeline** — compute/graphics pipelines, shader modules, descriptor
+  sets, push constants
+- **Buffer** — device-local, host-visible, staging, buffer barriers
+- **Command** — command pools, command buffers, submit, sync (semaphores,
+  fences)
+- **RayTrace** — `VK_KHR_ray_tracing` capability detection
+- **Upscale** — custom temporal upscaling via compute shaders + Tensor
+  Cores
 
-Instance and device creation with layer/extension enumeration, physical device selection (discrete GPU preference), and queue family discovery. Manages the `VkInstance` and `VkDevice` handles.
+Example engine: `examples/vulkan_engine.py`.
 
-### Pipeline (`vulkanizer.pipeline`)
+## Commands
 
-Pipeline layout, shader stage creation (from radical GLSL via `glslang` or SPIR-V), graphics pipeline, compute pipeline, and ray-tracing pipeline. Pipeline cache with disk serialization.
-
-### Command (`vulkanizer.command`)
-
-Command pool and buffer management, secondary command buffers, render pass barriers, and multi-threaded command recording. Automatic submission batching and timeline semaphore synchronization.
-
-### Raytrace (`vulkanizer.raytrace`)
-
-Top-level and bottom-level acceleration structure building, ray-tracing pipeline creation, shader binding tables, and `VK_KHR_ray_tracing` dispatch. Supports procedural and triangle geometry.
-
-### Upscale (`vulkanizer.upscale`)
-
-VK_KHR_fragment_shader_basic_interlock compute-based upscaler and FSR 2.2 integration. Temporal anti-aliasing and dynamic resolution scaling tied to frame budget feedback.
-
----
-
-**API Reference:** `#include <vulkanizer/api.h>`
-
-**HELLFORGE v1.0.0.0 ALPHA — vulkanizer: Vulkan API**
+`vulkanizer status|devices|info` — see
+[Vulkanizer commands](../commands/vulkanizer-commands.md).

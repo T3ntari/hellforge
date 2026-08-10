@@ -76,6 +76,34 @@ synth render params; `@key/@scale` → quantizer + roman numerals; `@oct` →
 | `export_wav` | `.wav/.mp3` | mido→`piano_synth.render(mid, out, params)` (from @sr/@bit/…) → ffmpeg fallback |
 | `export_eic` | `.eic` | bundles source text of `.e` / `.ei` (project/parts inline) / `.enx` (ordered projects inlined) |
 
+## run.py CLI map
+
+All run.py modes **re-enter through the K-rip hypervisor** (self-spawn
+inside the sandbox; `KRIP_INNER=1`/`KRIP_BYPASS=1` skip it).
+
+| Command | Usage | What it does |
+|---|---|---|
+| `compile` | `run.py compile <spec> -o <out>` | Compile to MIDI (default `<input>.mid`); `<spec>` = file/dir/`/`/glob; flags `--human`, `--machine`, `--strict`, `--mem`, `--recursive` |
+| `check` | `run.py check <spec>` | Lint — the authoritative gate; `--recursive`, `--max <N>`; a pure v5 file reports at most I001 |
+| `stats` | `run.py stats <file>` | Notes, duration, range, velocity, polyphony, density, channels |
+| `tracks` | `run.py tracks <file>` | Per-channel table (+ per-track when `TRK[]` present) |
+| `inspect` | `run.py inspect <file> [N]` | Show first N events (default 12) |
+| `new` | `run.py new <name> [-o <dir>]` | Scaffold a v5 project: `index.ei` + `parts/main.e` + `README.md` |
+| `transpose` | `run.py transpose <file> <n> [-o out]` | Shift notes by n semitones |
+| `tempo` | `run.py tempo <file> <bpm> [-o out]` | Recompile at a new tempo |
+| `merge` | `run.py merge <a> <b> [-o out]` | Concatenate two files |
+| `integrity` | `run.py integrity [--github]` | Verify core digest vs committed (+ GitHub copy) |
+| `hellgate` | `run.py hellgate` | HellGate → OpenCode wrapper |
+| `ai` | `run.py ai ...` | Built-in copilot (see copilot.md) |
+
+### Syntax conversion: `--to vN`
+
+`run.py compile <old.e> --to v5` converts an old source to the canonical
+version (portbaby converter; the v5 target is implemented as the
+v4-superset conversion). Also `--to v1|v2|v3|v4`. Conversion is the
+supported path for touching legacy files — never hand-port legacy syntax
+into new v5 sources.
+
 ## Mode modules (parse layer)
 
 | File | Handles |

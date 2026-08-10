@@ -1,12 +1,13 @@
-# **HELLFORGE v1.0.0.0 ALPHA**
+# v2 Semantic Syntax (legacy)
 
 [Back to doc/index.md](../index.md) · [Syntax Overview](overview.md)
 
----
+> **LEGACY REFERENCE** — v2 compiles for backward compatibility with a
+> deprecation warning. Write v5 (see [overview](overview.md)); convert
+> with `run.py compile <old.e> --to v5`.
 
-## v2 Semantic Syntax
-
-High-level musical constructs that describe intention rather than raw notes.
+High-level musical constructs that describe intention rather than raw
+notes.
 
 ### Section Header
 
@@ -18,8 +19,6 @@ High-level musical constructs that describe intention rather than raw notes.
 [Outro]
 ```
 
-Sections provide structural organisation and can be referenced by loops and directives.
-
 ### Key & Scale Declaration
 
 ```
@@ -27,8 +26,6 @@ Key: Cmaj
 Key: Amin
 Key: F#min
 ```
-
-Sets the tonal centre for subsequent semantic generators.
 
 ### `arpeggio()`
 
@@ -51,8 +48,6 @@ chromatic_run(start=60, steps=8, direction=up)
 chromatic_run(72, 4, down)
 ```
 
-Generates a chromatic sequence of `steps` notes starting from MIDI note `start`.
-
 ### `walking_bass()`
 
 ```
@@ -60,8 +55,6 @@ walking_bass(Cmaj, 8)
 walking_bass(Amin, 16, pattern=1)
 ```
 
-Creates chord-tone walking bass lines.
-
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — Piano DSL Syntax Documentation
+**HELLFORGE OS v0.1.14.41-beta** — legacy reference

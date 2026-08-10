@@ -1,12 +1,9 @@
-# **HELLFORGE v1.0.0.0 ALPHA**
+# Directives — `@` Prefixed Controls
 
 [Back to doc/index.md](../index.md) · [Syntax Overview](overview.md)
 
----
-
-## Directives — `@` Prefixed Controls
-
-Directives set global or scoped interpreter state. They affect all subsequent notes and generators.
+Directives set global or scoped interpreter state. They affect all
+subsequent notes and generators.
 
 ### Tempo
 
@@ -23,19 +20,27 @@ Directives set global or scoped interpreter state. They affect all subsequent no
 
 | Directive | Description | Example |
 |-----------|-------------|---------|
-| `@key` | Set key signature | `@key Cmaj` |
+| `@key` | Set key signature | `@key C major` |
 | `@scale` | Set scale pattern | `@scale major` |
 | `@root` | Set root note | `@root C4` |
 
-### Performance
+### Performance (v5 piano layer)
 
 | Directive | Description | Example |
 |-----------|-------------|---------|
 | `@vol` | Global volume (0–127) | `@vol 100` |
-| `@ch` | MIDI channel (0–15) | `@ch 1` |
-| `@dur` | Default note duration | `@dur 480` |
-| `@vel` | Default note velocity | `@vel 90` |
-| `@octave` | Default octave offset | `@octave 4` |
+| `@dur` | Note duration — `:q` `:h` `:e` codes or ticks | `@dur:q` |
+| `@vel` | Note velocity — `:mf` `:f` `:p` or 0–127 | `@vel:mf` |
+| `@pedal` | Sustain pedal (0–127) | `@pedal:64` |
+| `@art` | Articulation (`staccato`, `legato`, …) | `@art:staccato` |
+| `@humanize` | MoE performance feel, strength 0–100 | `@humanize:15` |
+| `@seed` | Deterministic randomness seed | `@seed 42` |
+
+### Low-level render controls
+
+`@master`, `@gain`, `@sr`, `@bit`, `@quality`, `@gc`, `@mem`, `@sub`,
+`@bass_boost`, `@stereo_width`, `@neural` — work end-to-end from source
+through MIDI export to WAV rendering.
 
 ### System
 
@@ -44,9 +49,16 @@ Directives set global or scoped interpreter state. They affect all subsequent no
 | `@gc` | Garbage-collect variable scope | `@gc` |
 | `@reset` | Reset all state to defaults | `@reset` |
 
+### Plugin directives
+
+Plugins can register their own `@directive` parsers via
+`api.register_directive(pattern, handler)` — the compiler picks them up
+like built-ins.
+
 ### Scope
 
-Directives respect the same scope stack as variables. A directive inside a section or loop reverts when the scope exits.
+Directives respect the same scope stack as variables. A directive inside a
+section or loop reverts when the scope exits.
 
 ```
 @bpm 120
@@ -58,4 +70,4 @@ C4q  E4q  G4q
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — Piano DSL Syntax Documentation
+**HELLFORGE OS v0.1.14.41-beta** — v5 directives

@@ -1,28 +1,30 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](async/overview.md) | [lure-async](async/lure-async.md) | [radical-async](async/radical-async.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [lure-async](lure-async.md) | [radical-async](radical-async.md)
 
-## Radical Async GPU Compilation
+## GPU / Fallback Async Chain
 
-The Radical engine offloads shader compilation and batch compute workloads to the GPU asynchronously.
+This page documents the async *fallback* story on the GPU side. Note: the
+standalone async plugin of the early alpha is **gone** — its role was
+replaced by the Python thread pool fallback described below.
 
-### Capabilities
+### The chain
 
-- GLSL to SPIR-V compilation on GPU compute queues
-- Parallel AST-to-GLSL codegen for large shader forests
-- Tensor Core accelerated matrix operations for DSP pipeline generation
-- Non-blocking dispatch with CPU-side progress polling
+1. **LURE async engine** — preferred when `lupa` is installed (LuaJIT
+   pool, per-thread runtimes)
+2. **Python `ThreadPoolExecutor`** — the universal fallback when LURE is
+   unavailable; this path now ships in the core
+3. **Radical / TensorSHARP** — GPU shader compilation and dispatch stay
+   on the synchronous compile path (per-expression), not in the async
+   batch pipeline
 
-### Workflow
+### GPU work remains synchronous
 
-1. AST nodes are batched into GPU work groups
-2. GLSL codegen runs on CPU threads (LURE/Python pool) in parallel
-3. Generated GLSL is dispatched to GPU for SPIR-V compilation
-4. Compiled shaders are cached to disk
-5. Callback fires when all shaders are ready
-
-This approach keeps the CPU free for other pipeline stages while the GPU handles compilation.
+Radical compiles GLSL and dispatches compute synchronously per expression
+(evaluator priority 5); the batch *parsing* pipeline is where the async
+pool applies. Combined with the evaluator fallback (TensorSHARP →
+Radical → LURE → Python), every configuration degrades gracefully.
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — async fallback chain

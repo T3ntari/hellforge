@@ -1,29 +1,32 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](async/overview.md) | [lure-async](async/lure-async.md) | [radical-async](async/radical-async.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [lure-async](lure-async.md) | [radical-async](radical-async.md)
 
 ## Async Compile Pipeline
 
-The Piano DSL compiler uses a multi-tier asynchronous pipeline to maximize throughput during compilation.
+Compilation can run asynchronously over batches of sources. The async
+stack is layered:
 
-### Fallback Chain
+1. **LURE async engine** — a pool of LuaRuntimes (one per thread) for
+   parallel compilation of independent sources (requires `lupa`)
+2. **Python `ThreadPoolExecutor` fallback** — used when LURE is
+   unavailable (the standalone async plugin of the early alpha was
+   removed; the thread pool is now part of the core)
 
-1. **LURE** — Primary async engine. Per-thread LuaRuntimes for parallel compilation.
-2. **Python ThreadPoolExecutor** — fallback when LURE is unavailable.
-3. **Radical** — GPU shader compilation dispatched asynchronously to the GPU queue.
+The engine is selected at runtime; `lure status` shows which one is
+active and the worker count.
 
-Each tier can operate independently. The compiler selects the best available engine at startup, with LURE preferred on systems with Lua support.
+### Pipeline stages
 
-### Pipeline Stages
+- Parse + event generation per source (async, pooled)
+- Export/rendering stays synchronous
 
-- Parse (async)
-- Type-check (async)
-- IR generation (async)
-- Optimization (async)
-- Code generation (async)
-- Signing (sync, enforced)
-- Output (sync)
+### Testing
+
+`lure async` benchmarks the async batch path against synchronous
+compilation over several multi-thousand-line sources — see
+[LURE async](lure-async.md).
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — async compile

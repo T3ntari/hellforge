@@ -1,25 +1,27 @@
-# HELLFORGE v1.0.0.0 ALPHA — Vulkanizer Commands
+# HELLFORGE — Vulkanizer Commands
 
-> Navigation: [doc/index.md](../index.md)
+> Navigation: [doc/index.md](../index.md) | [core-commands](core-commands.md) | [vulkanizer-commands](vulkanizer-commands.md)
+
+The **vulkanizer** plugin (v1.0.0) is a low-level **Vulkan graphics &
+compute API** — instance, pipelines, buffers, commands, ray-tracing
+capability detection, custom temporal upscaling. Depends on Radical for GPU
+detection. Requires `pip install vulkan glfw` + Vulkan SDK 1.2+.
 
 ## vulkanizer status
 **Syntax:** `vulkanizer status`
-**Description:** Display the current status of the Vulkanizer GPU compute plugin, including Vulkan API version, device count, and compute queue status.
+**Description:** GPU name, Vulkan version, driver version, async compute queues, ray-tracing availability — or "inactive" with install hints.
 **Example:** `vulkanizer status`
-**Plugin:** vulkanizer
 
 ## vulkanizer devices
-**Syntax:** `vulkanizer devices [--list] [--select <index>] [--props]`
-**Description:** List available Vulkan-capable devices, select a device, or display device properties (VRAM, shader capabilities, compute queues).
-**Example:** `vulkanizer devices --props`
-**Plugin:** vulkanizer
+**Syntax:** `vulkanizer devices`
+**Description:** Enumerate Vulkan-capable physical devices with details.
+**Example:** `vulkanizer devices`
 
 ## vulkanizer info
-**Syntax:** `vulkanizer info [--layers] [--extensions]`
-**Description:** Display Vulkanizer plugin version, supported Vulkan layers, and enabled device extensions.
-**Example:** `vulkanizer info --extensions`
-**Plugin:** vulkanizer
+**Syntax:** `vulkanizer info`
+**Description:** Describe the sub-APIs: Instance, Pipeline (compute/graphics, shader modules, descriptors, push constants), Command (pools, buffers, submit, sync), RayTrace (VK_KHR_ray_tracing), Upscale (compute-based temporal upscaling).
+**Example:** `vulkanizer info`
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — *forge your sound*
+**Plugin:** vulkanizer · see [Vulkanizer plugin page](../plugins/vulkanizer.md) and [GPU docs](../gpu/vulkan-api.md)

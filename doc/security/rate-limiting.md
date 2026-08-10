@@ -1,39 +1,40 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [trust-model](security/trust-model.md) | [strict-enforcement](security/strict-enforcement.md) | [identity-management](security/identity-management.md) | [rate-limiting](security/rate-limiting.md)
+[Nav: doc/index.md](../index.md) | [trust-model](trust-model.md) | [strict-enforcement](strict-enforcement.md) | [identity-management](identity-management.md) | [rate-limiting](rate-limiting.md)
 
 ## Rate Limiting
 
-### Client-Side Limits
+HELLFORGE has **no built-in server endpoints** — there is nothing to rate
+limit by default, and no `/e_identity`-style endpoints exist. The guidance
+below is generic and applies only to **opt-in** network features you
+configure yourself.
 
-The Piano DSL client enforces rate limits on outgoing requests to the configured registry (HF_VERIFY_URL):
+### Opt-in network features
 
-| Endpoint | Limit | Window |
-|---|---|---|
-| `/verify` (registry submit) | 3 requests | 60 seconds |
-| `/confirm` (registry review) | 10 requests | 60 seconds |
-| `/api/v1/pkglist` | 30 requests | 60 seconds |
+| Feature | Env vars | When it talks to the network |
+|---------|----------|------------------------------|
+| Integrity verification | — | `run.py integrity --github` / Technique Y compares against the public GitHub repo (read-only) |
+| Safe updates | — | `u` in the boot menu / safe-update prompt — fetches the version tag from GitHub |
+| Plugin verification (remote) | `HF_VERIFY_URL`, `HF_VERIFY_TOKEN` | `tools/verify_integrity.py --remote` — pulls verification codes from *your* registry |
+| LLM providers | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `HELLGATE_*` | calls the provider you configured (Ollama is local) |
+| Deploy tooling | `HF_DEPLOY_*` | only if you use it |
 
-### Server-Side Limits
+Nothing is hardcoded: with unset variables the system is fully local.
 
-The server enforces additional limits per session token and IP address. Exceeding limits results in a `429 Too Many Requests` response with a `Retry-After` header.
+### Generic advice for your own services (HF_VERIFY_URL)
 
-### Blocks
+If you run your own verification registry, apply standard protection:
 
-Repeated violation of rate limits results in a temporary block:
+- Per-client request budgets (e.g. per IP / token), short windows, with
+  `429 Too Many Requests` + `Retry-After` on overflow
+- Exponential backoff on the client side for transient failures
+- Cap payload sizes and timeouts; never trust client-supplied paths
+- Treat `HF_VERIFY_TOKEN` as a secret — it is read from the environment
+  only, never committed
 
-- 1st offense: 60-second block
-- 2nd offense: 5-minute block
-- 3rd offense: 1-hour block
-- Further offenses: 24-hour block
+### Local limits
 
-### Configuration
-
-```
-piano config set rate_limit.max_retries 3
-piano config set rate_limit.backoff_base 2.0
-```
-
----
-
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+The system itself bounds its own resource usage via the K-rip hypervisor
+(`krip mem`, `krip cpu`, GPU selection) and the sandbox RLIMITs (CPU time,
+file size) for sandboxed processes — see
+[K-rip commands](../commands/krip-commands.md).

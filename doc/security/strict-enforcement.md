@@ -1,39 +1,45 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [trust-model](security/trust-model.md) | [strict-enforcement](security/strict-enforcement.md) | [identity-management](security/identity-management.md) | [rate-limiting](security/rate-limiting.md)
+[Nav: doc/index.md](../index.md) | [trust-model](trust-model.md) | [strict-enforcement](strict-enforcement.md) | [identity-management](identity-management.md) | [rate-limiting](rate-limiting.md)
 
 ## Strict Enforcement
 
-The `sys strict` directive controls how strictly the compiler enforces signature verification.
+`sys strict` (eshell) controls how strictly plugin/signing verification is
+enforced:
 
-### sys strict 0
+### sys strict 0 — OFF (default)
 
-Permissive. Unsigned and unknown packages are allowed with a warning. Only explicitly blacklisted packages are rejected.
+Permissive. Unsigned plugins load freely.
 
-### sys strict 1
+### sys strict 1 — WARN
 
-Moderate. Unknown signatures produce an error. Unsigned packages produce a warning. TENTARI and REGAS packages are accepted without issue.
+Unsigned plugins show a warning but still load.
 
-### sys strict 2
+### sys strict 2 — BLOCK
 
-Absolute. Only REGAS-signed packages are accepted. Any unsigned, unknown, or TENTARI package produces a hard error and compilation halts.
+Unsigned plugins are rejected. This is the strongest enforcement level —
+**still entirely local**, there is no server registry involved.
 
 ### Setting
 
 ```
-// In Piano DSL source
-sys strict 1
-
-// Or via CLI
-piano compile --strict 2
+sys strict 2          (in eshell)
+sys strict            (show the current level)
 ```
 
-### Use Cases
+### Relationship to the core digest
 
-- `strict 0`: Development and prototyping
-- `strict 1`: Team/CI environments
-- `strict 2`: Production and distribution builds
+`sys strict` governs *plugin* signing policy. The **core integrity
+sequence** (Technique X/Y, `run.py integrity`) is always active regardless
+of the strict level — a flagged core never boots normally; it enters
+SAFE MODE.
+
+### Use cases
+
+- `strict 0`: development and prototyping (default)
+- `strict 1`: team/CI environments with local signing
+- `strict 2`: locked-down deployments
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+See also: [Trust model](trust-model.md) · [Identity](identity-management.md) · [Signing](../signing/overview.md)

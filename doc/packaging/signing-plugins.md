@@ -1,46 +1,52 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [pkglist](packaging/pkglist.md) | [plugin-management](packaging/plugin-management.md) | [embedded-backups](packaging/embedded-backups.md) | [signing-plugins](packaging/signing-plugins.md)
+[Nav: doc/index.md](../index.md) | [pkglist](pkglist.md) | [plugin-management](plugin-management.md) | [embedded-backups](embedded-backups.md) | [signing-plugins](signing-plugins.md)
 
-## How to Sign Plugins for Distribution
+## Signing Plugins for Distribution
 
-### Step 1: Generate a Key
+Signing is **optional and opt-in** — it must never be made mandatory.
+There is no registry to submit to; trust is local and personal.
 
-```
-piano sign --generate
-```
-
-### Step 2: Sign Your Plugin
+### Step 1: Set up your identity (once)
 
 ```
-piano sign --plugin ./my-plugin.pkg
+sign --setup
 ```
 
-This creates a `my-plugin.pkg.sig` file alongside the package.
+Creates the local ED25519 keypair under `.e_identity/` (gitignored).
+See [Key Management](../signing/key-management.md).
+
+### Step 2: Sign files
+
+```
+sign <file>
+```
+
+Signs a file with your local identity (author metadata embedded). Verify
+locally via `ep_core`'s `verify_signature`.
 
 ### Step 3: Publish
 
-Upload both the `.pkg` and `.sig` files to your distribution channel. Users will automatically verify the signature upon installation.
+Plugins live in `plugins/<name>/` in the repo. For distribution:
 
-### Level Up: REGAS
+1. Add the plugin's **SHA-256 verification code** to `pkglist.json`
+   (see [pkglist](pkglist.md)) so `tools/verify_integrity.py` checks it
+2. Optionally set `sys strict 1|2` on the consumer side to warn/block
+   unsigned plugins (see
+   [Strict enforcement](../security/strict-enforcement.md))
 
-To achieve REGAS trust:
+### Best practices
 
-1. Submit your key fingerprint to your private registry (HF_VERIFY_URL)
-2. Await server review and confirmation
-3. Once confirmed, your signatures will be recognized as REGAS globally
+- Keep the private seed offline when not signing
+- Back up `.e_identity/` yourself (the safe updater preserves it, but it
+  is your machine's identity)
+- Sign release files with `sign <file>` if you want the `sys strict`
+  protections
+- Publish hashes: the pkglist verification code is the distribution
+  proof, not a server signature
 
-```
-piano sign --submit-regas
-```
+### What was removed
 
-### Best Practices
-
-- Keep private keys offline when not signing
-- Use a hardware security key for production plugin signing
-- Rotate keys annually or after any suspected compromise
-- Always verify signatures before publishing
-
----
-
-**HELLFORGE v1.0.0.0 ALPHA -- Piano DSL Documentation**
+The old server-side REGAS submission flow (`--submit-regas`, `/verify`,
+`/confirm` endpoints) is **gone** from the open-source release — registry
+auth is not part of the project. See [REGAS trust](../signing/regas-trust.md).

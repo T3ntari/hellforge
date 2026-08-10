@@ -1,32 +1,32 @@
-**HELLFORGE v1.0.0.0 ALPHA**
+**HELLFORGE OS v0.1.14.41-beta**
 
-[Nav: doc/index.md](index.md) | [overview](async/overview.md) | [lure-async](async/lure-async.md) | [radical-async](async/radical-async.md)
+[Nav: doc/index.md](../index.md) | [overview](overview.md) | [lure-async](lure-async.md) | [radical-async](radical-async.md)
 
 ## LURE Async Engine
 
-LURE is the primary asynchronous execution engine for the Piano DSL compiler. It maintains a pool of LuaRuntimes, one per thread, enabling parallel compilation of independent compilation units.
+LURE (v3.0.0) ships an async compile engine: a pool of LuaRuntimes, one
+per thread, for parallel compilation of independent compilation units —
+the hot path (line parsing, event math) runs in LuaJIT while Python
+manages state.
 
 ### Architecture
 
-- Thread-local LuaRuntimes with isolated state
-- Job queue with work-stealing scheduler
-- Lock-free communication channels between runtimes
-- Shared immutable AST cache
+- Per-thread LuaRuntimes with isolated state
+- Worker pool sized at runtime (`lure status` shows the count)
+- Graceful fallback to the **Python `ThreadPoolExecutor`** when `lupa`
+  is unavailable (or the engine is skipped with a diagnostic at boot)
+
+### Entry points
+
+- `ep_compiler/async_compile.py` — `async_compile_batch(sources)`
+- `lure async` — benchmark async vs synchronous compilation
 
 ### Benefits
 
-- Zero-GIL parallelism (pure native code paths)
+- Zero-GIL parallelism on the native (LuaJIT) hot path
 - Low overhead context switching
-- Direct integration with Lua-based pipeline plugins
-- Graceful degradation to the Python pool on unsupported platforms
-
-### Configuration
-
-```
-piano config set async.engine lure
-piano config set lure.threads auto
-```
+- Deterministic fallback: LURE → Python pool, never a silent stall
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA — Piano DSL Documentation**
+**HELLFORGE OS v0.1.14.41-beta** — LURE async

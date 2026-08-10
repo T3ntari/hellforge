@@ -1,55 +1,47 @@
-# HELLFORGE v1.0.0.0 ALPHA — Talisman Commands
+# HELLFORGE — Talisman Commands
 
-> Navigation: [doc/index.md](../index.md)
+> Navigation: [doc/index.md](../index.md) | [core-commands](core-commands.md) | [talisman-commands](talisman-commands.md)
 
-## talisman on
-**Syntax:** `talisman on [--profile <name>]`
-**Description:** Enable the Talisman processing engine with an optional optimization profile for note computation culling and core distribution.
-**Example:** `talisman on --profile aggressive`
-**Plugin:** talisman
+The **talisman** plugin (v1.1.0) is the audio culling, privacy & QOL
+engine: it removes inaudible/occluded notes on compile (post-compile hook),
+supports a local-only mode, auto-backup of compiled events, device-ID
+rotation, event inspection and compile stats.
 
-## talisman off
-**Syntax:** `talisman off`
-**Description:** Disable the Talisman processing engine and revert to default note computation behavior.
-**Example:** `talisman off`
-**Plugin:** talisman
+## talisman on / off
+**Syntax:** `talisman on` · `talisman off`
+**Description:** Enable/disable audio culling and occlusion on compile.
+**Example:** `talisman on`
 
 ## talisman local
-**Syntax:** `talisman local [--force] [--cores <n>]`
-**Description:** Constrain Talisman processing to local CPU cores only, optionally specifying the number of cores to use.
-**Example:** `talisman local --cores 4`
-**Plugin:** talisman
+**Syntax:** `talisman local [on|off]`
+**Description:** Toggle local-only mode (backend calls disabled).
+**Example:** `talisman local on`
 
 ## talisman backup
-**Syntax:** `talisman backup [--path <dir>] [--restore <file>]`
-**Description:** Backup or restore the current Talisman configuration, including culling rules and core affinity settings.
-**Example:** `talisman backup --path ./talisman_backup`
-**Plugin:** talisman
+**Syntax:** `talisman backup [on|off]`
+**Description:** Toggle auto-backup of every compiled event set (timestamped JSON under `.e_backups/`).
+**Example:** `talisman backup on`
 
 ## talisman rotate-id
-**Syntax:** `talisman rotate-id [--interval <n>] [--mode <round-robin|random|adaptive>]`
-**Description:** Configure core rotation settings — rotate processing across available cores at a specified interval and mode.
-**Example:** `talisman rotate-id --mode round-robin`
-**Plugin:** talisman
+**Syntax:** `talisman rotate-id`
+**Description:** Rotate the device ID.
+**Example:** `talisman rotate-id`
 
 ## talisman inspect
-**Syntax:** `talisman inspect [--verbose] [--output <file>]`
-**Description:** Inspect current Talisman processing state, culling statistics, core utilization, and optimization diagnostics.
-**Example:** `talisman inspect --verbose`
-**Plugin:** talisman
+**Syntax:** `talisman inspect <file.e>`
+**Description:** Inspect a source file's events.
+**Example:** `talisman inspect song.e`
 
 ## talisman stats
-**Syntax:** `talisman stats [--reset] [--interval <s>]`
-**Description:** Display real-time Talisman performance statistics including culling rate, core load balance, and processing throughput.
-**Example:** `talisman stats --interval 5`
-**Plugin:** talisman
+**Syntax:** `talisman stats`
+**Description:** Compile statistics: compile count, culled/occluded events.
+**Example:** `talisman stats`
 
 ## talisman status
 **Syntax:** `talisman status`
-**Description:** Display the current operational status of the Talisman engine, including enabled state, active profile, and core configuration.
+**Description:** Overall plugin state.
 **Example:** `talisman status`
-**Plugin:** talisman
 
 ---
 
-**HELLFORGE v1.0.0.0 ALPHA** — *forge your sound*
+**Plugin:** talisman · see [Talisman plugin page](../plugins/talisman.md)
