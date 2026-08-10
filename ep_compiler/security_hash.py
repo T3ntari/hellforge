@@ -388,12 +388,25 @@ def y_verify_online(timeout=15):
     """Technique Y check: compare the local version key against the live
     SECURITY_HASH.txt at the version tag on GitHub. Returns
     (ok, detail)."""
+    import subprocess as _sp
     import urllib.request
     tag, y_local = load_version_key()
     if not y_local:
         return False, "no committed version key"
+    # resolve the tag to its peeled commit SHA (annotated tags need ^{})
+    commit_sha = ""
+    try:
+        r = _sp.run(["git", "ls-remote", "origin",
+                     f"refs/tags/{tag}^{{}}"],
+                    capture_output=True, text=True, timeout=timeout)
+        if r.returncode == 0 and r.stdout.strip():
+            commit_sha = r.stdout.split("\t")[0]
+    except Exception:
+        pass
+    if not commit_sha:
+        return False, f"cannot resolve tag {tag} on GitHub"
     url = (f"https://raw.githubusercontent.com/T3ntari/hellforge/"
-           f"{tag}/SECURITY_HASH.txt")
+           f"{commit_sha}/SECURITY_HASH.txt")
     try:
         req = urllib.request.Request(url,
                                      headers={"User-Agent": "E-Lang/Verify/1.0"})
