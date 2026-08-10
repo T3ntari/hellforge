@@ -15,6 +15,7 @@ Usage:
     run.py merge <a> <b> [-o out]       Concatenate two files (default <a>_merged.mid)
     run.py hellgate                     HellGate boot -> OpenCode, focused in this repo
     run.py integrity [--github]        Verify core digest vs committed + GitHub copy
+    run.py codecount                   Code inventory: LOC + KB per extension, and totals
 
 Modes:
     --window   Open a dedicated console window (CREATE_NEW_CONSOLE on Windows)
@@ -434,6 +435,54 @@ def cmd_bridge(args):
         return 1
 
 
+def cmd_codecount(args):
+    """Code inventory: LOC + KB totals, per extension and overall."""
+    skip = {".venv", "hellgate-state", "node_modules", ".git", "__pycache__",
+            "dist", ".e_identity", ".fent_cache", "logs", ".backup_update",
+            "embedded_plugins"}
+    exts = {}
+    total_files = total_loc = total_bytes = 0
+    bin_files = bin_bytes = 0
+    for root, dirs, files in os.walk(PROJECT_DIR):
+        dirs[:] = [d for d in dirs if d not in skip]
+        for f in files:
+            if f == "SECURITY_HASH.txt":
+                continue
+            p = os.path.join(root, f)
+            ext = os.path.splitext(f)[1].lower() or "(none)"
+            try:
+                with open(p, "rb") as fh:
+                    data = fh.read()
+            except Exception:
+                continue
+            if b"\x00" in data[:4096]:  # binary asset — no LOC
+                bin_files += 1
+                bin_bytes += len(data)
+                continue
+            loc = data.count(b"\n")
+            size = len(data)
+            e = exts.setdefault(ext, [0, 0, 0])  # files, loc, bytes
+            e[0] += 1
+            e[1] += loc
+            e[2] += size
+            total_files += 1
+            total_loc += loc
+            total_bytes += size
+    print(f"  code inventory for {PROJECT_DIR}")
+    print(f"  {'extension':<10} {'files':>6} {'LOC':>10} {'size':>12}")
+    print("  " + "-" * 42)
+    for ext in sorted(exts, key=lambda x: -exts[x][1]):
+        n, loc, b = exts[ext]
+        print(f"  {ext:<10} {n:>6} {loc:>10,} {b / 1024:>10,.1f} KB")
+    print("  " + "-" * 42)
+    print(f"  {'TOTAL':<10} {total_files:>6} {total_loc:>10,} "
+          f"{total_bytes / 1024:>10,.1f} KB")
+    if bin_files:
+        print(f"  binary assets (no LOC): {bin_files} files, "
+              f"{bin_bytes / 1024:,.1f} KB")
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -476,6 +525,8 @@ def main():
         return cmd_tempo(args)
     if mode in ("merge",):
         return cmd_merge(args)
+    if mode in ("codecount", "cc", "cloc", "loc"):
+        return cmd_codecount(args)
     if mode in ("krip", "hypervisor"):
         from plugins.krip import hypervisor_entry
         return hypervisor_entry(args, print, input)
