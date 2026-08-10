@@ -1755,14 +1755,19 @@ def main():
                 else:
                     print(f"  {D}  First time? Run 'sign --setup' to create an account{R}")
                     print(f"  {D}  Already registered? Run 'sign --login'{R}")
-                r = input(f"  Login? [{c('y/N',B)}] ").strip().lower()
-                if r == "y":
-                    print(f"  {D}  Remote identity login is not part of the"
-                          " open-source release (registry auth removed)."
-                          f"  Local signing works: {GREEN}sign <file>{R}")
+                if os.environ.get("HF_REGISTRY"):
+                    r = input(f"  Login? [{c('y/N',B)}] ").strip().lower()
+                    if r == "y":
+                        print(f"  {D}  Remote identity login is not part of"
+                              " the open-source release (registry auth"
+                              " removed).  Local signing works:"
+                              f" {GREEN}sign <file>{R}")
+                    else:
+                        print(f"  {D}  Local signing works: 'sign <file>' —"
+                              " no remote account needed.{R}")
                 else:
-                    print(f"  {D}  Local signing works: 'sign <file>' — no"
-                          " remote account needed.{R}")
+                    print(f"  {D}  No remote account needed — local signing"
+                          f" works: {GREEN}sign <file>{R}")
     except Exception:
         pass
 
@@ -1909,6 +1914,18 @@ def main():
         print(f"  {c('Watcher active:', D)} monitoring {len(last_snap)} files every 1s")
 
     _start_plugin_watcher()
+
+    boot_cmd = os.environ.pop("KRIP_BOOT_CMD", "")
+    if boot_cmd:
+        parts = boot_cmd.split()
+        _cmd = parts[0].lower()
+        _args = parts[1:]
+        if _cmd in cmds:
+            print(f"\n  {c('▶', CYAN)} auto: {boot_cmd}")
+            try:
+                cmds[_cmd](_args)
+            except Exception as e:
+                print(f"  {c(f'error: {e}', RED)}")
 
     while True:
         try:

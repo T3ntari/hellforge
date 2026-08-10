@@ -719,7 +719,7 @@ def _draw_menu(entries, sel, countdown, stream_out, new_ver=None):
                      "press u to update (nothing is lost)" + S["reset"])
     lines.append("")
     lines.append(S["bar"] + "  ↑/↓ select   Enter boot   c console   "
-                 "u update   Esc exit   Ctrl+C console  " + S["reset"])
+                 "u update   g game   Esc exit   Ctrl+C console  " + S["reset"])
     stream_out("\n".join(lines))
 
 
@@ -808,6 +808,9 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
         raw = input_fn("boot> ").strip().lower()
         if raw == "console":
             return "console", None
+        if raw == "game":
+            os.environ["KRIP_BOOT_CMD"] = "ninja"
+            return "boot", entries[sel]
         if raw == "update":
             if new_ver:
                 return "update", new_ver
@@ -857,6 +860,10 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
             sel = (sel - 1) % len(entries)
         elif key == "down":
             sel = (sel + 1) % len(entries)
+        elif key == "g":
+            os.environ["KRIP_BOOT_CMD"] = "ninja"
+            stream_out("\n  → ninja game (weather on)")
+            return "boot", entries[sel]
         elif key == "enter":
             return "boot", entries[sel]
         elif key in ("ctrl-c", "console"):
