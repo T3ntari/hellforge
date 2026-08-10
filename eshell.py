@@ -1413,7 +1413,7 @@ def do_sys(args):
         core_init()
         try:
             from ep_core import _eshell_commands as new_cmds
-            for name, (handler, help_text) in new_cmds.items():
+            for name, (handler, help_text, _grp) in new_cmds.items():
                 if name not in cmds:
                     cmds[name] = handler
         except Exception:
@@ -1562,27 +1562,43 @@ def do_help(args):
     lines.append(f"  {c('clear', CYAN)}          Clear screen")
     lines.append(f"  {c('exit', CYAN)}           Quit")
 
-    # Append plugin help sections dynamically
+    # Plugin help sections — plugins write their own, in two accepted
+    # formats: plain lines ("  ai status ...") or (cmd, desc) pairs.
     try:
         from ep_core import _plugin_help_texts
         for title, helplines in _plugin_help_texts:
-            lines.append(f"")
+            if not helplines:
+                continue
+            lines.append("")
             lines.append(f"  {c(title, B)}")
-            for cmd, desc in helplines:
-                lines.append(f"  {c(cmd, CYAN)}  {desc}")
+            for entry in helplines:
+                if isinstance(entry, tuple):
+                    cmd, desc = entry
+                    lines.append(f"  {c(cmd, CYAN)}  {desc}")
+                else:
+                    lines.append(f"  {entry}")
     except Exception:
         pass
 
-    # Append plugin-registered commands (krip, and any other plugin command)
+    # Plugin-registered commands, grouped by the plugin that registered
+    # them (detected from the call stack); aliases are marked and dimmed.
     try:
         from ep_core import _eshell_commands
-        extra = sorted(n for n in _eshell_commands if n not in ("help", "?"))
-        if extra:
+        groups = {}
+        for name, (_handler, help_text, group) in _eshell_commands.items():
+            if name in ("help", "?"):
+                continue
+            text = help_text or ""
+            is_alias = "alias" in text.lower()
+            groups.setdefault(group or "Other", []).append((name, text, is_alias))
+        for group in sorted(groups):
             lines.append("")
-            lines.append(f"  {c('Plugin commands', B)}")
-            for name in extra:
-                _handler, help_text = _eshell_commands[name]
-                lines.append(f"  {c(name, CYAN)}  {help_text or ''}")
+            lines.append(f"  {c(group, B)}")
+            for name, text, is_alias in groups[group]:
+                if is_alias:
+                    lines.append(f"  {c(name, D)}  {text}  {c('(alias)', D)}")
+                else:
+                    lines.append(f"  {c(name, CYAN)}  {text}")
     except Exception:
         pass
 
@@ -1780,7 +1796,7 @@ def main():
     # Load plugin commands dynamically
     try:
         from ep_core import _eshell_commands
-        for name, (handler, help_text) in _eshell_commands.items():
+        for name, (handler, help_text, _grp) in _eshell_commands.items():
             if name not in cmds:
                 cmds[name] = handler
     except Exception:
@@ -1873,7 +1889,7 @@ def main():
                         _ecore._eshell_commands.clear()
                         _ecore.init()
                         _ecore.show_boot_progress()
-                        for name, (handler, help_text) in _ecore._eshell_commands.items():
+                        for name, (handler, help_text, _grp) in _ecore._eshell_commands.items():
                             if name not in cmds:
                                 cmds[name] = handler
                         _debounce_until = time.time() + 3.0

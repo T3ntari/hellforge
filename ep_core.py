@@ -384,6 +384,22 @@ RESTRICTED_BUILTINS = {
 
 # Extended registries
 _eshell_commands = {}
+
+
+def _caller_plugin():
+    """Best-effort name of the plugin registering a command (via the
+    call stack). Returns None when not called from plugins/."""
+    import inspect
+    try:
+        for fr in inspect.stack()[2:]:
+            fname = fr.filename or ""
+            fname = fname.replace("\\", "/")
+            if "/plugins/" in fname:
+                rest = fname.split("/plugins/", 1)[1]
+                return rest.split("/")[0].split(".")[0]
+    except Exception:
+        pass
+    return None
 _eshell_keybindings = {}
 _eshell_prompt_renderers = []
 _eshell_output_filters = []
@@ -409,7 +425,7 @@ class _PluginAPI:
 
     # ── v2 API: eshell integration ──
     def add_command(self, name, handler, help_text=""):
-        _eshell_commands[name] = (handler, help_text)
+        _eshell_commands[name] = (handler, help_text, _caller_plugin())
 
     def require(self, *packages):
         """Declare a pip dependency. Installed automatically on boot.
