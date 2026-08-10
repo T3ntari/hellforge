@@ -1590,12 +1590,14 @@ def main():
     import time
     import threading as _threading
 
-    # ── Core integrity digest — recomputed on every CLI start ──
+    # ── Core integrity — technique X first, then network/Y, every start ──
     try:
-        from ep_compiler.security_hash import boot_check
-        boot_check(print)
-    except Exception:
-        pass
+        from ep_compiler.safemode import safe_boot
+        _sec_result = safe_boot(print, input)
+        if _sec_result == "safemode-stay":
+            print("  \033[90m(safe mode — core isolated; run /safemode commands)\033[0m")
+    except Exception as e:
+        print(f"  \033[90m[security] check skipped: {e}\033[0m")
 
     # ── Project directory resolution: --project flag > HELLFORGE_PROJECT env > cwd ──
     project_dir = None

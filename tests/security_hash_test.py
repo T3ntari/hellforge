@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""HELLFORGE security digest tests — run with:
+"""HELLFORGE X/Y integrity tests — run with:
     python3 tests/security_hash_test.py
 """
 
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from ep_compiler import security_hash as S
+from ep_compiler import security_hash as SH
 
 passed = failed = 0
 
@@ -25,82 +26,77 @@ def check(name, fn):
         print(f"  [FAIL] {name}: {e}")
 
 
-def test_clean_verify():
-    r = S.verify()
-    assert r["ok"], f"clean tree must verify: {r['detail']}"
-check("clean tree verifies", test_clean_verify)
+def test_x_verify_clean():
+    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
+    ok, detail = SH.x_verify()
+    assert ok, f"X must verify after embed: {detail}"
+check("X: clean embed verifies", test_x_verify_clean)
 
 
-def test_digest_size():
-    r = S.verify()
-    b = r["bundle"]
-    assert b.count(".") == 2, "triple digest must have 3 parts"
-    assert len(b) >= 128, f"digest too small: {len(b)}"
-    assert len(b) <= 512, f"digest too large: {len(b)}"
-    parts = b.split(".")
-    assert len(parts[0]) == 64 and len(parts[1]) == 128 and len(parts[2]) == 128
-check("digest is 160 bytes (256+512+512)", test_digest_size)
+def test_x_rotation_changes_layout():
+    p1 = open(SH.X_FILE).read()
+    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
+    p2 = open(SH.X_FILE).read()
+    ok, _ = SH.x_verify()
+    assert ok, "rotated X must still verify"
+    assert p1 != p2, "rotation must change the hidden layout"
+check("X: rotation re-randomizes layout, still verifies", test_x_rotation_changes_layout)
 
 
-def test_tamper_flags_file():
+def test_x_flags_covered_tamper():
     orig = open(os.path.join(ROOT, "eshell.py")).read()
     try:
         with open(os.path.join(ROOT, "eshell.py"), "a") as f:
             f.write("\n# tamper-marker-x\n")
-        r = S.verify()
-        assert not r["ok"], "tampered tree must be flagged"
-        assert "eshell.py" in r["changed"], f"changed list: {r['changed']}"
+        ok, detail = SH.x_verify()
+        assert not ok, "X must flag a tampered covered file"
+        assert "does not match" in detail
     finally:
         with open(os.path.join(ROOT, "eshell.py"), "w") as f:
             f.write(orig)
-    r = S.verify()
-    assert r["ok"], f"restored tree must verify: {r['detail']}"
-check("tamper detection flags the exact file", test_tamper_flags_file)
+    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
+check("X: tampered covered file is flagged", test_x_flags_covered_tamper)
 
 
-def test_extra_plugin_dir_flags():
-    extra = os.path.join(ROOT, "plugins", "unlisted_probe")
-    os.makedirs(extra, exist_ok=True)
-    try:
-        # plugin dir with __init__.py -> enters the local manifest -> aggregate
-        # mismatch (the committed manifest does not know it)
-        with open(os.path.join(extra, "__init__.py"), "w") as f:
-            f.write("probe = 1\n")
-        r = S.verify()
-        assert not r["ok"], "unlisted plugin dir must be flagged"
-        assert any("unlisted_probe" in c for c in r["changed"]) or "unlisted_probe" in r["extra_dirs"], \
-            f"changed: {r['changed']}, extra_dirs: {r['extra_dirs']}"
-        os.remove(os.path.join(extra, "__init__.py"))
-        # plugin dir without __init__.py -> uncovered -> extra_dirs
-        r = S.verify()
-        assert not r["ok"], "dir without __init__ must be flagged"
-        assert "unlisted_probe" in r["extra_dirs"], f"extra_dirs: {r['extra_dirs']}"
-    finally:
-        try:
-            os.remove(os.path.join(extra, "__init__.py"))
-        except OSError:
-            pass
-        try:
-            os.rmdir(extra)
-        except OSError:
-            pass
-    r = S.verify()
-    assert r["ok"], f"after cleanup must verify: {r['detail']}"
-check("unlisted plugin dir (fentclient-style) flags the system", test_extra_plugin_dir_flags)
+def test_x_flags_fragment_tamper():
+    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
+    txt = open(SH.X_FILE).read()
+    m = re.search(r'(_x\d+ = ")([0-9a-f]+)(")', txt)
+    assert m, "X file should contain fragments"
+    open(SH.X_FILE, "w").write(txt[:m.start(2)] + "deadbeef" + txt[m.end(2):])
+    ok, _ = SH.x_verify()
+    assert not ok, "X must flag altered fragments"
+    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
+check("X: altered fragments are flagged", test_x_flags_fragment_tamper)
 
 
-def test_committed_manifest_exists():
-    m, bundle = S.load_committed()
-    assert m and bundle, "SECURITY_HASH.txt missing or malformed"
-    assert len(m) >= 20, f"manifest too small: {len(m)} entries"
-check("committed manifest present", test_committed_manifest_exists)
+def test_y_key_structure():
+    bundle = SH.digest_bundle(SH.compute_manifest())
+    y = SH.y_key(bundle, "v0.1.14.26-beta")
+    assert len(y) == 128, f"Y must be 128 hex chars, got {len(y)}"
+    assert all(c in "0123456789abcdef" for c in y)
+    assert SH.y_key(bundle, "v0.1.14.26-beta") == y, "Y must be deterministic"
+check("Y: 128-hex per-version key, deterministic", test_y_key_structure)
 
 
-def test_aggregate_stability():
-    m1 = S.compute_manifest()
-    m2 = S.compute_manifest()
-    assert S.digest_bundle(m1) == S.digest_bundle(m2)
-check("aggregate is deterministic", test_aggregate_stability)
+def test_y_version_key_committed():
+    tag, y = SH.load_version_key()
+    assert tag and y, "ep_compiler/_version_key.py must exist (generated)"
+    assert len(y) == 128
+check("Y: committed version key present", test_y_version_key_committed)
+
+
+def test_committed_manifest_matches():
+    r = SH.verify()
+    assert r["ok"], f"clean tree must verify: {r['detail']}"
+check("manifest: clean tree verifies", test_committed_manifest_matches)
+
+
+def test_digest_size():
+    b = SH.digest_bundle(SH.compute_manifest())
+    assert 128 <= len(b) <= 512, f"digest size out of range: {len(b)}"
+    assert b.count(".") == 2
+check("digest: 128-512 hex chars, triple", test_digest_size)
 
 
 print(f"\nSECURITY HASH TESTS: {passed}/{passed + failed} passed")

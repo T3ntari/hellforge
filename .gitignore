@@ -53,3 +53,6 @@ hellgate-state/
 plugins/hellgate/knowledge/current.md
 hellgate-state/
 .aider*
+ep_compiler/_x_hide.py
+SECURITY_HASH.local
+.backup_update/
