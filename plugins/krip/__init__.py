@@ -624,26 +624,64 @@ def boot_entry(entry, stream_out=print):
     return 0
 
 
+_S = {
+    "reset": "\033[0m",
+    "bold": "\033[1m",
+    "dim": "\033[2m",
+    "red": "\033[31m",
+    "green": "\033[32m",
+    "yellow": "\033[33m",
+    "blue": "\033[34m",
+    "cyan": "\033[36m",
+    "white": "\033[37m",
+    "sel": "\033[1;37;44m",      # selected entry: white on blue
+    "bar": "\033[1;30;46m",      # footer bar: black on cyan
+    "hdr": "\033[1;36;44m",      # header band: bold cyan on blue
+}
+
+
+def _banner():
+    """HELLFORGE OS banner."""
+    return (
+        "\n"
+        "   ██░ ██ ███████  ██▓     ██▓     ▄████▄  ██████  ▄████▄  ███████ ███████\n"
+        "  ▓██░ ██▒██  ██  ▓██▒    ▓██▒    ▒██▀ ▀█ ▒██    ▒ ▒██▀ ▀█ ██     ██  ██\n"
+        "  ▒██▀▀██░██ ░██  ▒██░    ▒██░    ▒▓█    ▄░ ▓██▄   ▒▓█    ▄▒██████ ██  ██\n"
+        "  ░▓█ ░██ ██ ░██  ▒██░    ▒██░    ▒▓▓▄ ▄██▒ ▒   ██▒▒▓▓▄ ▄██░▓█  ██ ██  ██\n"
+        "  ░▓█▒░██▓███████ ░██████▒░██████▒▒ ▓███▀ ░▒██████▒▒▒ ▓███▀ ▒██████ ███████\n"
+        "   ▒ ░░▒░▒░ ▒░▓  ░ ░ ▒░▓  ░ ░ ▒░▓  ░░ ░▒ ▒  ░░ ▒░▓  ░  ░ ▒ ▒  ░ ▒░▓  ░░ ▒░▓  ░\n"
+        "   ▒ ░▒░ ░░ ░ ▒  ░ ░ ░ ▒  ░ ░ ░ ▒  ░  ░  ▒   ░ ▒ ▒░  ░ ░ ▒   ░ ▒ ▒░  ░ ▒  ░\n"
+        "   ░  ░░ ░  ░ ░     ░ ░     ░ ░    ░        ░ ░ ░ ▒   ░ ░ ░ ░   ░ ░ ▒    ░ ░\n"
+        "   ░  ░  ░    ░  ░    ░  ░    ░  ░  ░ ░      ░ ░   ░  ░   ░ ░ ░    ░  ░   ░  ░\n"
+    )
+
+
 def _draw_menu(entries, sel, countdown, stream_out):
-    import time as _t
+    """Styled GRUB-like frame: banner, highlight-bar selection, footer bar."""
+    S = _S
     lines = []
-    lines.append("")
-    lines.append("  ╔════════════════════════════════════════════════════╗")
-    lines.append("  ║          HELLFORGE OS — K-rip boot manager         ║")
-    lines.append("  ╚════════════════════════════════════════════════════╝")
+    lines.append(S["hdr"] + "  HELLFORGE OS — K-rip boot manager  " + S["reset"])
+    lines.append(_banner().rstrip("\n"))
+    w = max((len(f"  {e['id']} v{e.get('version', '?')} [{e.get('mode', 'normal')}]"
+             + (f"  · {e['when']}" if e.get("when") else "")) for e in entries), default=40)
     for i, e in enumerate(entries):
-        mark = ">" if i == sel else " "
-        kern = e["id"].replace("ep_core", "ep_core")
-        line = (f"  {mark} {kern:<18} v{e.get('version', '?')}"
-                f"  [{e.get('mode', 'normal')}]")
-        if e.get("when"):
-            line += f"  · {e['when']}"
-        lines.append(line)
+        mode = e.get("mode", "normal")
+        chip = (S["green"] + "[normal]" + S["reset"] if mode == "normal"
+                else S["yellow"] + "[safemode]" + S["reset"])
+        when = f"  · {e['when']}" if e.get("when") else ""
+        base = f"{e['id']}  v{e.get('version', '?')}  {chip}{when}"
+        pad = " " * max(1, w - len(base))
+        if i == sel:
+            lines.append(S["sel"] + "  ▸ " + base + pad + "  " + S["reset"])
+        else:
+            lines.append(S["dim"] + "    " + base + pad + S["reset"])
+    lines.append("")
     if countdown is not None:
+        lines.append(S["yellow"] + f"  booting {entries[sel]['id']} in "
+                     f"{countdown:.2f}s — press any key to interrupt" + S["reset"])
         lines.append("")
-        lines.append(f"  booting {entries[sel]['id']} in {countdown}s — "
-                     "press any key to interrupt")
-    lines.append("  ↑/↓ select · Enter boot · c console · Ctrl+C console")
+    lines.append(S["bar"] + "  ↑/↓ select   Enter boot   c console   "
+                 "Ctrl+C console  " + S["reset"])
     stream_out("\n".join(lines))
 
 
