@@ -300,8 +300,14 @@ def x_embed(bundle, y=None):
     """Hide X (the digest) and Y (the version key) as very small 1-2 line
     fragments, each in its own random-named file, inside a freshly created
     random deep directory. The ORDER (file -> position) is saved in another
-    random directory. Returns the order file path."""
+    random directory. All previous layouts are purged first, so exactly one
+    order file ever exists. Returns the order file path."""
     import uuid
+    import shutil as _sh
+    for root in (_x_store_root(), _order_root()):
+        if root.is_dir():
+            for old in list(root.iterdir()):
+                _sh.rmtree(old, ignore_errors=True)
     store = _x_store_root() / uuid.uuid4().hex[:8]
     inner = store / uuid.uuid4().hex[:6]
     inner.mkdir(parents=True, exist_ok=True)
