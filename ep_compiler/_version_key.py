@@ -1,4 +1,4 @@
 # Technique Y — the permanent per-version key hash (from the committed
 # manifest, verified against GitHub). Generated. Do not edit.
-VERSION_TAG = "v0.1.14.54-beta"
-VERSION_KEY = "c74e85c7923ac8658ff7013369af1d3671331cb0288cf9d856f5dbdaa28501e4da65c2dc6b36a1612b000981bf40f01c122bbd76c57eed1baa7cb28eed530c09"
+VERSION_TAG = "v0.1.14.55-beta"
+VERSION_KEY = "26bd69401a6bd2b1960b20b7e574a3289924e23898c398c78501b699d2448dd5bf0ea48fec71cd3592ab3d254badd59c615b880403a649754b6f8189e25828ce"
