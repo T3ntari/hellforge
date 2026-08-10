@@ -160,6 +160,17 @@ _TAA = ["off", "on"]
 _ACCUM = ["1", "4", "16", "64"]
 _SHARPEN = [round(i * 0.1, 1) for i in range(11)]          # 0.0 .. 1.0
 _EXPOSURE = [round(0.5 + i * 0.1, 1) for i in range(16)]   # 0.5 .. 2.0
+_WEATHER = ["Storm", "Rain", "Light", "Dry"]
+_WEATHER_MAP = {
+    "Storm": {"rain": 1.0, "wetness": 1.0, "open_roof": True, "wind": 0.55,
+              "speed": 2.6, "grass": 0.85, "mud": 1.0},
+    "Rain": {"rain": 0.65, "wetness": 0.9, "open_roof": True, "wind": 0.3,
+             "speed": 2.2, "grass": 0.8, "mud": 0.9},
+    "Light": {"rain": 0.3, "wetness": 0.55, "open_roof": True, "wind": 0.15,
+              "speed": 1.8, "grass": 0.6, "mud": 0.6},
+    "Dry": {"rain": 0.0, "wetness": 0.0, "open_roof": True, "wind": 0.0,
+            "speed": 2.2, "grass": 0.3, "mud": 0.2},
+}
 
 
 class FSRMenu:
@@ -177,6 +188,8 @@ class FSRMenu:
             ("Exposure", _EXPOSURE, lambda: str(game.exposure), lambda v: setattr(game, "exposure", float(v))),
             ("Resolution", _RESOLUTIONS, lambda: f"{game.width}x{game.height}",
              lambda v: game.set_resolution(*[int(p) for p in v.split("x")])),
+            ("Weather", _WEATHER, lambda: game.weather_preset,
+             lambda v: setattr(game, "weather_preset", v)),
         ]
 
     def tick(self, keys):

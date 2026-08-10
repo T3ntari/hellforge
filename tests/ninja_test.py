@@ -50,6 +50,13 @@ def _params(seed=1.0, t=0.0, cam=(0.0, 0.0, 0.0), yaw=0.0, pitch=0.0,
     p[35] = accum
     p[36] = 1.0          # fire shape
     p[37], p[38] = max(8, int(w * scale)), max(8, int(h * scale))
+    p[39] = 1.0          # rain
+    p[40] = 1.0          # open roof
+    p[41] = 1.0          # wetness
+    p[42] = 0.85         # grass
+    p[43] = 0.35         # rain wind
+    p[44] = 2.2          # rain speed
+    p[45] = 1.0          # mud
     p[66], p[67] = w, h
     p[68] = 0.6          # sharpen
     p[69] = 1.0          # exposure
@@ -223,6 +230,42 @@ def _engine():
     return eng
 
 
+def test_weather_changes_scene():
+    eng = _engine()
+    eng.set_params(_params(t=1.0))
+    rain = eng.render()
+    p = _params(t=1.0)
+    p[39] = 0.0                      # no rain
+    eng.set_params(p)
+    dry = eng.render()
+    assert not np.array_equal(rain, dry), "rain toggle had no effect"
+    p2 = _params(t=1.0)
+    p2[40] = 0.0                     # closed roof
+    eng.set_params(p2)
+    closed = eng.render()
+    assert not np.array_equal(rain, closed), "roof toggle had no effect"
+    p3 = _params(t=1.0)
+    p3[41] = 0.0                     # no wetness (dry stone)
+    eng.set_params(p3)
+    matte = eng.render()
+    assert not np.array_equal(rain, matte), "wetness toggle had no effect"
+    eng.shutdown()
+
+
+def test_rain_animates():
+    eng = _engine()
+    eng.set_params(_params(t=0.0))
+    a = eng.render()
+    eng.set_params(_params(t=0.7))
+    b = eng.render()
+    # rain + ripples are time-animated even with fire static-ish params
+    diff = np.abs(a.astype(int) - b.astype(int)).mean()
+    assert diff > 0.05, f"rain not animating (mean |Δ| {diff:.3f})"
+    eng.shutdown()
+
+
+test("Ninja: weather toggles (rain/roof/wetness)", test_weather_changes_scene)
+test("Ninja: rain animates over time", test_rain_animates)
 test("Ninja: shader assets (4x .spv valid)", test_shader_assets)
 test("Ninja: engine init + GPU info", test_engine_init_and_gpu)
 test("Ninja: render deterministic (same seed+t -> identical)", test_render_deterministic)

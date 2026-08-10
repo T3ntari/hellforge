@@ -126,6 +126,15 @@ class NinjaGame:
         self.t = 0.0
         self.fps = 0.0
         self.fsr_preset = "quality"
+        self.weather = {
+            "rain": 1.0,        # 0..1 storm intensity
+            "open_roof": True,  # rainy open trench (no ceiling)
+            "wetness": 1.0,     # puddles + wet sheen
+            "grass": 0.85,      # grass tufts along walls / mud
+            "wind": 0.35,       # rain slant
+            "speed": 2.2,       # rain fall speed
+            "mud": 1.0,         # mud patches
+        }
         self.taa = True
         self.accum = 4
         self.sharpen = 0.6
@@ -224,10 +233,34 @@ class NinjaGame:
         params[36] = 1.0                              # fire_shape
         params[37] = self.width * self.render_scale   # render w (shader dispatch)
         params[38] = self.height * self.render_scale  # render h
+        w = self.weather
+        params[39] = w["rain"]        # rain intensity
+        params[40] = 1.0 if w["open_roof"] else 0.0
+        params[41] = w["wetness"]     # puddle/wet-sheen strength
+        params[42] = w["grass"]       # grass density
+        params[43] = w["wind"]        # rain slant
+        params[44] = w["speed"]       # rain fall speed
+        params[45] = w["mud"]         # mud amount
         params[68] = self.sharpen
         params[69] = self.exposure
         params[70] = float(self.frame_index)
         return params
+
+    @property
+    def weather_preset(self):
+        w = self.weather
+        for name in ("Storm", "Rain", "Light", "Dry"):
+            from ._menu import _WEATHER_MAP
+            m = _WEATHER_MAP[name]
+            if all(abs(w[k] - m[k]) < 1e-6 for k in m):
+                return name
+        return "Storm"
+
+    @weather_preset.setter
+    def weather_preset(self, name):
+        from ._menu import _WEATHER_MAP
+        if name in _WEATHER_MAP:
+            self.weather = dict(_WEATHER_MAP[name])
 
     def frame(self, dt, keys, auto=False):
         """Advance one frame. Returns (frame_rgba, state_dict)."""

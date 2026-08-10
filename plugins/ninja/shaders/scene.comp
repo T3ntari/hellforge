@@ -43,6 +43,14 @@ const uint P_ACCUM        = 35u;
 const uint P_FIRE_SHAPE   = 36u;
 const uint P_WIDTH        = 37u;
 const uint P_HEIGHT       = 38u;
+// weather block (39-45)
+const uint P_RAIN         = 39u;
+const uint P_OPEN_ROOF    = 40u;
+const uint P_WET          = 41u;
+const uint P_GRASS        = 42u;
+const uint P_RAIN_WIND    = 43u;
+const uint P_RAIN_SPEED   = 44u;
+const uint P_MUD          = 45u;
 
 const float STAIR_RISER   = 0.3;
 const float STAIR_TREAD   = 0.5;
@@ -143,11 +151,61 @@ float stairFloor(float z)
     return min(stepIdx * STAIR_RISER, p[P_STAIR_HEIGHT]);
 }
 
+// ---- terrain heightfield: puddle basins (down) + grass tufts (up) ----
+
+float puddleDepth(vec2 px, uint seed)
+{
+    float n = vnoise2(px * 0.05 + 7.71, seed);
+    float n2 = vnoise2(px * 0.11 + 2.43, seed);
+    float basin = smoothstep(0.55, 0.68, n) * smoothstep(0.45, 0.68, n2);
+    float s = px.y - p[P_STAIR_Z0];
+    float onStairs = smoothstep(0.0, 0.4, s)
+        * (1.0 - smoothstep(p[P_STAIR_LEN] - 0.6, p[P_STAIR_LEN] + 0.6, s));
+    float underBrazier = 0.0;
+    float bz = p[P_BRAZ_FIRST_Z] + p[P_BRAZ_SPACING] * 0.5;
+    float nearBrazier = 1.0 - smoothstep(0.5, 1.1, abs(px.y - bz));
+    underBrazier = nearBrazier * (1.0 - smoothstep(0.4, 1.2, abs(px.x)));
+    return p[P_WET] * basin * (1.0 - onStairs) * (1.0 - 0.5 * underBrazier) * 0.06;
+}
+
+float grassField(vec2 px, uint seed)
+{
+    vec2 cell = vec2(0.085, 0.12);
+    vec2 c = floor(px / cell);
+    float h = rand01(hash3i(ivec3(int(c.x), int(c.y), 9), seed));
+    float field = vnoise2(px * 0.3 + 3.13, seed);
+    float mud = 1.0 - smoothstep(0.42, 0.75, field);
+    float nearWall = 1.0 - smoothstep(0.6, 1.5, abs(abs(px.x) - (p[P_HALFWIDTH] - 1.1)));
+    float spread = clamp(0.2 + 0.8 * max(nearWall, mud), 0.0, 1.0);
+    float blade = h * smoothstep(0.12, 0.55, field);
+    return p[P_GRASS] * blade * spread * (0.25 + 0.75 * h);
+}
+
+float grassHeight(vec2 px, uint seed)
+{
+    if (p[P_GRASS] <= 0.001) return 0.0;
+    vec2 cell = vec2(0.085, 0.12);
+    vec2 c = floor(px / cell);
+    float h = rand01(hash3i(ivec3(int(c.x), int(c.y), 11), seed));
+    return grassField(px, seed) * (0.035 + 0.085 * h);
+}
+
+float terrainFloor(vec2 px, uint seed)
+{
+    float s = px.y - p[P_STAIR_Z0];
+    float onStairs = smoothstep(0.0, 0.35, s)
+        * (1.0 - smoothstep(p[P_STAIR_LEN] - 0.35, p[P_STAIR_LEN] + 0.35, s));
+    float base = stairFloor(px.y);
+    float g = grassHeight(px, seed) * (1.0 - onStairs);
+    return base - puddleDepth(px, seed) + g;
+}
+
 float corridorSDF(vec3 q)
 {
     float wall = p[P_HALFWIDTH] - abs(q.x);
-    float ceilD = p[P_CEIL_HEIGHT] - q.y;
-    float floorD = q.y - stairFloor(q.z);
+    float openRoof = p[P_OPEN_ROOF];
+    float ceilD = mix(p[P_CEIL_HEIGHT] - q.y, 1e9, openRoof);
+    float floorD = q.y - terrainFloor(q.xz, floatBitsToUint(p[P_SEED]));
     float gate = p[P_CORRIDOR_LEN] - q.z;
     return min(min(wall, ceilD), min(floorD, gate));
 }
@@ -267,8 +325,31 @@ vec3 floorShade(vec2 px, uint seed)
     float tone = 0.72 + 0.28 * rand01(hash3i(ivec3(ivec2(cell), 0), seed));
     vec3 brickCol = vec3(0.165, 0.155, 0.165) * tone;
     vec3 col = mix(vec3(0.05, 0.048, 0.052), brickCol, mortar);
+
+    float field = vnoise2(px * 0.3 + 3.13, seed);
+    float wet = p[P_WET];
+
+    // puddle: dark reflective water
+    float pud = puddleDepth(px, seed) / max(0.06, 1.0) * 0.9;
+    vec3 puddleCol = vec3(0.028, 0.030, 0.034);
+    col = mix(col, puddleCol, clamp(pud, 0.0, 0.9));
+
+    // mud: dark wet brown where no puddles, near walls / low field
+    float mudAmt = (1.0 - smoothstep(0.45, 0.72, field)) * p[P_MUD]
+        * (1.0 - clamp(pud, 0.0, 1.0));
+    vec3 mudCol = vec3(0.105, 0.068, 0.045);
+    col = mix(col, mudCol, clamp(mudAmt, 0.0, 1.0) * 0.85);
+
+    // grass: green blades (base color; height + spec from SDF/shading)
+    float grass = grassField(px, seed);
+    vec3 grassCol = mix(vec3(0.055, 0.115, 0.05), vec3(0.095, 0.17, 0.06),
+                        rand01(hash3i(ivec3(int(cell.x), int(cell.y), 5), seed)));
+    col = mix(col, grassCol, clamp(grass, 0.0, 1.0));
+
+    // wet sheen darkening + slight rain-sparkle tint
+    col = mix(col, col * 0.72, wet * 0.45);
     float moss = vnoise2(px * 0.14 + vec2(seed & 15u) * 0.31, seed);
-    col = mix(col, vec3(0.09, 0.16, 0.075), smoothstep(0.62, 0.80, moss) * 0.75);
+    col = mix(col, vec3(0.09, 0.16, 0.075), smoothstep(0.62, 0.80, moss) * 0.4 * (1.0 - pud));
     return col;
 }
 
@@ -317,8 +398,8 @@ vec3 stairShade(vec3 q, uint seed)
 int pickMaterial(vec3 q, inout float bd)
 {
     float wall = p[P_HALFWIDTH] - abs(q.x);
-    float ceilD = p[P_CEIL_HEIGHT] - q.y;
-    float floorD = q.y - stairFloor(q.z);
+    float ceilD = mix(p[P_CEIL_HEIGHT] - q.y, 1e9, p[P_OPEN_ROOF]);
+    float floorD = q.y - terrainFloor(q.xz, floatBitsToUint(p[P_SEED]));
     float gate = p[P_CORRIDOR_LEN] - q.z;
     bd = sdBrazierAll(q);
     if (bd < min(min(wall, ceilD), min(floorD, gate))) return 5;
@@ -331,6 +412,20 @@ int pickMaterial(vec3 q, inout float bd)
     if (gate <= min(wall, ceilD)) return 3;
     if (ceilD <= wall) return 2;
     return 1;
+}
+
+float wetnessAt(vec3 q, int mat, uint seed)
+{
+    float wet = p[P_WET];
+    if (mat == 0)
+    {
+        vec2 px = q.xz;
+        float pud = puddleDepth(px, seed) * 14.0;
+        float grass = grassField(px, seed);
+        return clamp(wet * (0.55 + 0.45 * pud + 0.35 * grass), 0.0, 1.0);
+    }
+    if (mat == 4) return wet * 0.8;
+    return wet * 0.75;
 }
 
 vec3 shadeSurface(vec3 q, vec3 n, int mat, uint seed)
@@ -349,6 +444,10 @@ vec3 shadeSurface(vec3 q, vec3 n, int mat, uint seed)
     vec3 moon = vec3(0.05, 0.06, 0.09) * upAmt;
     vec3 col = albedo * (amb + moon);
 
+    float wet = wetnessAt(q, mat, seed);
+    vec3 ro = vec3(p[P_CAM_X], p[P_CAM_Y] + p[P_EYE_HEIGHT], p[P_CAM_Z]);
+    vec3 viewDir = normalize(ro - q);
+
     float t = p[P_TIME];
     for (int i = 0; i < 16; i++)
     {
@@ -361,8 +460,19 @@ vec3 shadeSurface(vec3 q, vec3 n, int mat, uint seed)
         vec3 fl = fireFlicker(float(i), t, seed);
         vec3 lDir = L * inversesqrt(d2);
         float ndl = max(dot(n, lDir), 0.0);
-        col += albedo * fireRamp(0.95) * fl * atten * (0.3 + 0.7 * ndl);
+        vec3 fireCol = fireRamp(0.95) * fl * atten;
+        col += albedo * fireCol * (0.3 + 0.7 * ndl);
+
+        // wet specular: rain-soaked surfaces shine with fire highlights
+        vec3 hvec = normalize(lDir + viewDir);
+        float spec = pow(max(dot(n, hvec), 0.0), 26.0 + 40.0 * wet);
+        col += fireCol * spec * wet * (1.4 + 1.6 * atten);
     }
+
+    // puddles mirror the rainy sky faintly (fresnel)
+    float fres = pow(1.0 - max(dot(n, viewDir), 0.0), 3.0);
+    vec3 skyRef = vec3(0.09, 0.095, 0.12) * (0.4 + 0.6 * p[P_RAIN]);
+    col += skyRef * fres * wet * 0.5;
     return col;
 }
 
@@ -403,6 +513,75 @@ vec3 fireRender(vec3 ro, vec3 rd, float tMax, uint seed)
 }
 
 // =============================================================
+// Rain + sky + puddle ripples
+// =============================================================
+
+// A falling rain streak: drops fall along vertical lines (with wind
+// slant) through a hash-jittered grid; each drop is a short bright
+// segment moving down, looping over a fall height.
+float rainStreak(vec3 q, uint seed)
+{
+    if (p[P_RAIN] <= 0.001) return 0.0;
+    float wind = p[P_RAIN_WIND];
+    float speed = p[P_RAIN_SPEED];
+    vec2 cell = vec2(0.20, 0.20);
+    vec2 c = floor(q.xz / cell);
+    float h = rand01(hash3i(ivec3(int(c.x), int(c.y), 77), seed));
+    vec2 center = (c + 0.5) * cell;
+    center.x += wind * 0.5 * fract(h * 3.7 + p[P_TIME] * 0.07);
+    float dropY = fract(h * 13.7 + p[P_TIME] * speed) * 26.0 - 3.0;
+    vec2 dpos = q.xz - center;
+    float dx = length(dpos);
+    float streak = smoothstep(0.035, 0.012, dx);
+    float dy = abs(q.y - dropY);
+    float seg = 1.0 - smoothstep(0.55, 1.35, dy);
+    float windSlant = 1.0 - smoothstep(0.0, 0.5, abs(dpos.y * wind * 0.3));
+    return streak * seg * windSlant;
+}
+
+// Concentric splash ripples expanding on puddle surfaces + droplet
+// impact glints on wet stone.
+float rainRipples(vec3 q, uint seed)
+{
+    if (p[P_RAIN] <= 0.001) return 0.0;
+    float speed = p[P_RAIN_SPEED];
+    float acc = 0.0;
+    for (int k = 0; k < 3; k++)
+    {
+        vec2 cell = vec2(0.55, 0.55) * float(1 + k);
+        vec2 c = floor(q.xz / cell);
+        float h = rand01(hash3i(ivec3(int(c.x), int(c.y), 83 + k), seed));
+        vec2 center = (c + 0.5) * cell;
+        float ph = fract(h * 7.31 + p[P_TIME] * speed * 0.42 + float(k) * 0.37);
+        float radius = ph * 0.28;
+        float dist = distance(q.xz, center);
+        float ring = exp(-abs(dist - radius) / 0.012) * (1.0 - ph);
+        acc += ring * 0.16;
+    }
+    return acc;
+}
+
+vec3 skyShade(vec3 rd, uint seed)
+{
+    float h = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
+    float cloud1 = vnoise3(rd * 3.1 + vec3(p[P_TIME] * 0.02, 0.0, p[P_TIME] * 0.01), seed);
+    float cloud2 = vnoise3(rd * 7.7 + vec3(0.0, 0.0, p[P_TIME] * 0.03), seed);
+    float cloud = clamp(cloud1 * 0.7 + cloud2 * 0.3, 0.0, 1.0);
+    vec3 top = mix(vec3(0.02, 0.022, 0.03), vec3(0.05, 0.055, 0.075), cloud);
+    vec3 horizon = mix(vec3(0.07, 0.06, 0.055), vec3(0.03, 0.032, 0.045), cloud);
+    vec3 sky = mix(horizon, top, pow(h, 0.7));
+    // faint moon glow through clouds
+    vec3 moonDir = normalize(vec3(0.35, 0.85, -0.4));
+    float moon = pow(max(dot(rd, moonDir), 0.0), 900.0) * 0.25;
+    float moonGlow = pow(max(dot(rd, moonDir), 0.0), 45.0) * 0.05;
+    sky += vec3(0.8, 0.85, 1.0) * (moon + moonGlow * cloud);
+    // rain volume against the sky
+    float rainF = rainStreak(rd * 12.0 + vec3(0.0, p[P_TIME] * 6.0, 0.0), seed);
+    sky += vec3(0.35, 0.38, 0.45) * rainF * p[P_RAIN] * 0.5;
+    return sky;
+}
+
+// =============================================================
 // Main
 // =============================================================
 
@@ -440,12 +619,32 @@ void main()
     }
 
     vec3 col = vec3(0.0);
+    float hitDist = t;
     if (hit)
     {
         vec3 n = calcNormal(hitP);
         float bd = 0.0;
         int mat = pickMaterial(hitP, bd);
         col = shadeSurface(hitP, n, mat, seed);
+        // droplet impacts: bright glints on wet surfaces
+        col += vec3(0.55, 0.60, 0.70) * rainRipples(hitP, seed) * p[P_RAIN];
+    }
+    else if (p[P_OPEN_ROOF] > 0.5)
+    {
+        col = skyShade(rd, seed);
+        t = 60.0;
+    }
+
+    // in-air rain streaks along the ray
+    if (p[P_RAIN] > 0.001 && hit)
+    {
+        float rainAcc = 0.0;
+        for (int k = 1; k <= 4; k++)
+        {
+            vec3 q = ro + rd * (min(float(k) * 1.7, hitDist - 0.1));
+            rainAcc += rainStreak(q, seed);
+        }
+        col += vec3(0.5, 0.55, 0.65) * rainAcc * p[P_RAIN] * 0.9;
     }
 
     float fogAmt = 1.0 - exp(-0.065 * t);
