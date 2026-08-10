@@ -1614,6 +1614,14 @@ def do_help(args):
 
 # Track eshell start time for uptime
 _eshell_start_time = 0
+def _save_history(readline, path):
+    """Persist the console history across sessions (best-effort)."""
+    try:
+        readline.write_history_file(path)
+    except Exception:
+        pass
+
+
 def main():
     global _eshell_start_time
     import time
@@ -1917,6 +1925,22 @@ def main():
         print(f"  {c('Watcher active:', D)} monitoring {len(last_snap)} files every 1s")
 
     _start_plugin_watcher()
+
+    # ── console history: readline gives arrow-up/down command cycling ──
+    _HISTORY_FILE = os.path.expanduser("~/.hellforge_console_history")
+    try:
+        import readline
+        readline.parse_and_bind("set show-all-if-ambiguous on")
+        if os.path.isfile(_HISTORY_FILE):
+            try:
+                readline.read_history_file(_HISTORY_FILE)
+            except Exception:
+                pass
+    except Exception:
+        readline = None
+    if readline is not None:
+        import atexit as _atexit
+        _atexit.register(lambda: _save_history(readline, _HISTORY_FILE))
 
     boot_cmd = os.environ.pop("KRIP_BOOT_CMD", "")
     if boot_cmd:
