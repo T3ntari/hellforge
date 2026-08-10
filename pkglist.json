@@ -129,7 +129,7 @@
       "dependencies": [
         "vulkanizer"
       ],
-      "verification": "a47ecf1b36ae9e9cd0cfd8a0bdf6c237784d5948dd640ff470995efd105ab9b2"
+      "verification": "ef97b45e8068088b01d051beb59c5dbb23d6dc9095ef06359010182c25aaf3db"
     }
   },
   "_description": "Default package list for E Language by Tentari. All plugins integrity-verified via SHA-256 verification codes. Remote verification is opt-in via HF_VERIFY_URL/HF_VERIFY_TOKEN.",
