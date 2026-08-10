@@ -1,0 +1,281 @@
+#version 450
+// =============================================================
+// Ninja — upscale.comp : FSR1-EASU-style edge-adaptive upscale
+// (AMD FSR1, MIT) + lightweight TAA (neighborhood clamp, alpha
+// 0.1) over the INTERNAL-res history buffer.
+// One invocation per OUTPUT pixel, 8x8 workgroups.
+// bindings: 0 Params | 1 LowRes (internal) | 2 History (internal)
+//           | 3 Out (output res, float RGBA)
+// Deterministic: every internal texel is written by exactly one
+// invocation (the last output pixel mapping into that cell).
+// =============================================================
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, binding = 0) buffer Params { float p[]; };
+layout(std430, binding = 1) buffer LowRes { vec4 low[]; };
+layout(std430, binding = 2) buffer Hist   { vec4 hist[]; };
+layout(std430, binding = 3) buffer OutB   { vec4 outb[]; };
+
+// ---- Params index layout (post-processing slots) ----
+const uint P_TAA_ON = 34u;
+const uint P_INT_W  = 37u;
+const uint P_INT_H  = 38u;
+const uint P_OUT_W  = 66u;
+const uint P_OUT_H  = 67u;
+
+const float TAA_BLEND = 0.1;
+
+// ---- AMD FSR1 low-precision approximations (MIT) ----
+float amdRcpLow(float a)
+{
+    return uintBitsToFloat(0x7ef07ebbu - floatBitsToUint(a));
+}
+
+float amdRsqLow(float a)
+{
+    return uintBitsToFloat(0x5f347d74u - (floatBitsToUint(a) >> 1));
+}
+
+// =============================================================
+// Texel fetches (manual buffer index math, clamp-to-edge)
+// =============================================================
+
+vec4 fetchLow(ivec2 px, int iw, int ih)
+{
+    px = clamp(px, ivec2(0, 0), ivec2(iw - 1, ih - 1));
+    return low[px.y * iw + px.x];
+}
+
+vec4 fetchHist(ivec2 px, int iw, int ih)
+{
+    px = clamp(px, ivec2(0, 0), ivec2(iw - 1, ih - 1));
+    return hist[px.y * iw + px.x];
+}
+
+// =============================================================
+// EASU helpers (ported 1:1 from FSR1, float path)
+// =============================================================
+
+float tapLuma(vec3 c)
+{
+    return c.r * 0.5 + c.g + c.b * 0.5;
+}
+
+// Direction/length accumulation for one bilinear quadrant.
+void easuSet(inout vec2 dir, inout float len, float w,
+             float lA, float lB, float lC, float lD, float lE)
+{
+    float dc = lD - lC;
+    float cb = lC - lB;
+    float lenX = max(abs(dc), abs(cb));
+    lenX = amdRcpLow(lenX);
+    float dirX = lD - lB;
+    dir.x += dirX * w;
+    lenX = clamp(abs(dirX) * lenX, 0.0, 1.0);
+    lenX *= lenX;
+    len += lenX * w;
+
+    float ec = lE - lC;
+    float ca = lC - lA;
+    float lenY = max(abs(ec), abs(ca));
+    lenY = amdRcpLow(lenY);
+    float dirY = lE - lA;
+    dir.y += dirY * w;
+    lenY = clamp(abs(dirY) * lenY, 0.0, 1.0);
+    lenY *= lenY;
+    len += lenY * w;
+}
+
+// One lanczos-window tap.
+void easuTap(inout vec3 aC, inout float aW, vec2 off, vec2 dir, vec2 len2,
+             float lob, float clp, vec3 c)
+{
+    vec2 v;
+    v.x = off.x * dir.x + off.y * dir.y;
+    v.y = off.x * (-dir.y) + off.y * dir.x;
+    v *= len2;
+    float d2 = v.x * v.x + v.y * v.y;
+    d2 = min(d2, clp);
+    float wB = (2.0 / 5.0) * d2 + (-1.0);
+    float wA = lob * d2 + (-1.0);
+    wB *= wB;
+    wA *= wA;
+    wB = (25.0 / 16.0) * wB + (-(25.0 / 16.0 - 1.0));
+    float w = wB * wA;
+    aC += c * w;
+    aW += w;
+}
+
+// Catmull-Rom bicubic weights (4 taps), used for the history fetch.
+vec4 cubicWeights(float t)
+{
+    vec4 w;
+    w.x = -0.5 * t * t * t + t * t - 0.5 * t;
+    w.y = 1.5 * t * t * t - 2.5 * t * t + 1.0;
+    w.z = -1.5 * t * t * t + 2.0 * t * t + 0.5 * t;
+    w.w = 0.5 * t * t * t - 0.5 * t * t;
+    return w;
+}
+
+// Bicubic (Catmull-Rom) fetch of the INTERNAL-res history buffer
+// at the upscaled position pp (in internal texel coordinates).
+vec3 bicubicHist(vec2 pp, int iw, int ih)
+{
+    ivec2 b = ivec2(floor(pp)) - ivec2(1, 1);
+    vec2 fr = pp - floor(pp);
+    vec4 wx = cubicWeights(fr.x);
+    vec4 wy = cubicWeights(fr.y);
+    vec3 acc = vec3(0.0);
+    for (int j = 0; j < 4; j++)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            vec3 s = fetchHist(b + ivec2(i, j), iw, ih).rgb;
+            acc += s * (wx[i] * wy[j]);
+        }
+    }
+    return acc;
+}
+
+// =============================================================
+// Main
+// =============================================================
+
+void main()
+{
+    int ow = int(p[P_OUT_W]);
+    int oh = int(p[P_OUT_H]);
+    int iw = int(p[P_INT_W]);
+    int ih = int(p[P_INT_H]);
+    if (ow <= 0 || oh <= 0 || iw <= 0 || ih <= 0) return;
+    int px = int(gl_GlobalInvocationID.x);
+    int py = int(gl_GlobalInvocationID.y);
+    if (px >= ow || py >= oh) return;
+
+    // Position of this output pixel in internal texel coordinates.
+    float sx = float(iw) / float(ow);
+    float sy = float(ih) / float(oh);
+    vec2 pp = vec2((float(px) + 0.5) * sx - 0.5,
+                   (float(py) + 0.5) * sy - 0.5);
+    vec2 fp = floor(pp);
+    vec2 fr = pp - fp;
+    ivec2 f = ivec2(fp);
+
+    // ---- 12-tap kernel (EASU) ----
+    //    b c
+    //  e f g h
+    //  i j k l
+    //    n o
+    vec3 b  = fetchLow(f + ivec2( 0, -1), iw, ih).rgb;
+    vec3 c  = fetchLow(f + ivec2( 1, -1), iw, ih).rgb;
+    vec3 e  = fetchLow(f + ivec2(-1,  0), iw, ih).rgb;
+    vec3 f3 = fetchLow(f + ivec2( 0,  0), iw, ih).rgb;
+    vec3 g  = fetchLow(f + ivec2( 1,  0), iw, ih).rgb;
+    vec3 h  = fetchLow(f + ivec2( 2,  0), iw, ih).rgb;
+    vec3 i  = fetchLow(f + ivec2(-1,  1), iw, ih).rgb;
+    vec3 j  = fetchLow(f + ivec2( 0,  1), iw, ih).rgb;
+    vec3 k  = fetchLow(f + ivec2( 1,  1), iw, ih).rgb;
+    vec3 l  = fetchLow(f + ivec2( 2,  1), iw, ih).rgb;
+    vec3 n  = fetchLow(f + ivec2( 0,  2), iw, ih).rgb;
+    vec3 o  = fetchLow(f + ivec2( 1,  2), iw, ih).rgb;
+
+    // ---- Direction + anisotropic length ----
+    vec2 dir = vec2(0.0);
+    float len = 0.0;
+    float lB = tapLuma(b);
+    float lC = tapLuma(c);
+    float lE = tapLuma(e);
+    float lF = tapLuma(f3);
+    float lG = tapLuma(g);
+    float lH = tapLuma(h);
+    float lI = tapLuma(i);
+    float lJ = tapLuma(j);
+    float lK = tapLuma(k);
+    float lL = tapLuma(l);
+    float lN = tapLuma(n);
+    float lO = tapLuma(o);
+    easuSet(dir, len, (1.0 - fr.x) * (1.0 - fr.y), lB, lE, lF, lG, lJ);
+    easuSet(dir, len, fr.x * (1.0 - fr.y),          lC, lF, lG, lH, lK);
+    easuSet(dir, len, (1.0 - fr.x) * fr.y,          lF, lI, lJ, lK, lN);
+    easuSet(dir, len, fr.x * fr.y,                  lG, lJ, lK, lL, lO);
+
+    // Normalize with approximation, cleanup close to zero.
+    vec2 dir2 = dir * dir;
+    float dirR = dir2.x + dir2.y;
+    bool zro = dirR < (1.0 / 32768.0);
+    float dirRN = zro ? 1.0 : amdRsqLow(dirR);
+    dir = vec2(zro ? 1.0 : dir.x, zro ? 1.0 : dir.y) * dirRN;
+
+    // Transform {0..2} -> {0..1} and shape with square.
+    len = len * 0.5;
+    len *= len;
+    // Stretch kernel {1.0 vert|horz, sqrt(2.0) on diagonal}.
+    float stretch = (dir.x * dir.x + dir.y * dir.y)
+                    * amdRcpLow(max(abs(dir.x), abs(dir.y)));
+    vec2 len2 = vec2(1.0 + (stretch - 1.0) * len, 1.0 + (-0.5) * len);
+    // Window shift and clipping point.
+    float lob = 0.5 + ((1.0 / 4.0 - 0.04) - 0.5) * len;
+    float clp = amdRcpLow(lob);
+
+    // ---- Accumulate 12 taps ----
+    vec3 aC = vec3(0.0);
+    float aW = 0.0;
+    easuTap(aC, aW, vec2( 0.0, -1.0) - fr, dir, len2, lob, clp, b);
+    easuTap(aC, aW, vec2( 1.0, -1.0) - fr, dir, len2, lob, clp, c);
+    easuTap(aC, aW, vec2(-1.0,  1.0) - fr, dir, len2, lob, clp, i);
+    easuTap(aC, aW, vec2( 0.0,  1.0) - fr, dir, len2, lob, clp, j);
+    easuTap(aC, aW, vec2( 0.0,  0.0) - fr, dir, len2, lob, clp, f3);
+    easuTap(aC, aW, vec2(-1.0,  0.0) - fr, dir, len2, lob, clp, e);
+    easuTap(aC, aW, vec2( 1.0,  1.0) - fr, dir, len2, lob, clp, k);
+    easuTap(aC, aW, vec2( 2.0,  1.0) - fr, dir, len2, lob, clp, l);
+    easuTap(aC, aW, vec2( 2.0,  0.0) - fr, dir, len2, lob, clp, h);
+    easuTap(aC, aW, vec2( 1.0,  0.0) - fr, dir, len2, lob, clp, g);
+    easuTap(aC, aW, vec2( 1.0,  2.0) - fr, dir, len2, lob, clp, o);
+    easuTap(aC, aW, vec2( 0.0,  2.0) - fr, dir, len2, lob, clp, n);
+
+    // Normalize and dering: clamp to min/max of the 4 nearest texels.
+    vec3 min4 = min(min(f3, g), min(j, k));
+    vec3 max4 = max(max(f3, g), max(j, k));
+    vec3 col = min(max4, max(min4, aC / max(aW, 1e-6)));
+
+    // ---- TAA: lightweight neighborhood clamp (when enabled) ----
+    if (p[P_TAA_ON] >= 0.5)
+    {
+        // Current frame's 3x3 neighborhood (internal res) -> min/max.
+        ivec2 cc = clamp(f, ivec2(0, 0), ivec2(iw - 1, ih - 1));
+        vec3 mn = vec3(1e30);
+        vec3 mx = vec3(-1e30);
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                vec3 t = fetchLow(cc + ivec2(dx, dy), iw, ih).rgb;
+                mn = min(mn, t);
+                mx = max(mx, t);
+            }
+        }
+        // Bicubic history sample at the same (un-jittered) UV.
+        vec3 hs = bicubicHist(pp, iw, ih);
+        vec3 hc = clamp(hs, mn, mx);
+        col = mix(col, hc, TAA_BLEND);
+    }
+
+    // ---- Write output (output res) ----
+    outb[py * ow + px] = vec4(col, 1.0);
+
+    // ---- Refresh history = current low-res frame (internal res) ----
+    // Exactly one invocation per internal texel: the last output
+    // pixel whose position maps into the cell writes it.
+    if (f.x >= 0 && f.x < iw && f.y >= 0 && f.y < ih)
+    {
+        int cx2 = int(floor((float(px) + 1.5) * sx - 0.5));
+        int cy2 = int(floor((float(py) + 1.5) * sy - 0.5));
+        bool lastX = (cx2 > f.x) || (px + 1 >= ow);
+        bool lastY = (cy2 > f.y) || (py + 1 >= oh);
+        if (lastX && lastY)
+        {
+            hist[f.y * iw + f.x] = low[f.y * iw + f.x];
+        }
+    }
+}

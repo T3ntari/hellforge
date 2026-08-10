@@ -82,15 +82,31 @@ def register(api):
                 api.add_boot_step(f"Radical: GPU active ({gpu_name}{sel_str}{vram_str})", "done")
             else:
                 api.set_config("radical_available", False)
+                api.add_command("radical", _cmd, "Radical: radical status|benchmark|shaders|gpu|vram|info")
                 api.add_boot_step(f"Radical: engine init failed ({eng.diagnostic})", "skip")
         except Exception as e:
             api.set_config("radical_available", False)
+            api.add_command("radical", _cmd, "Radical: radical status|benchmark|shaders|gpu|vram|info")
             api.add_boot_step(f"Radical: init error ({e})", "skip")
     else:
         reason = gpu_info.get("reason", "no GPU detected")
         api.set_config("radical_available", False)
         api.add_boot_step(f"Radical: unavailable ({reason})", "skip")
         api.add_command("radical", _cmd, "Radical: radical status|info")
+
+    api.add_help_section("Radical (GPU math)", [
+        "radical status                  GPU + engine status",
+        "radical benchmark               Run GPU shader benchmark",
+        "radical shaders                 Shader cache stats",
+        "radical gpu <idx|list>          Select / list GPUs",
+        "radical vram                    VRAM usage",
+        "radical info                    Engine + evaluator info",
+        "",
+        "Radical is the GPU math core: compiles E math ASTs to GLSL",
+        "compute shaders, evaluates them on the GPU, and accelerates",
+        "matrix ops via RadicalEngine. Also feeds the math evaluator",
+        "chain used by every plugin (tensorsharp -> radical -> lure).",
+    ])
 
     try:
         from .shader_cache import get_cache_stats

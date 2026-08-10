@@ -1,0 +1,457 @@
+#version 450
+// =============================================================
+// Ninja — scene.comp : ray-marched corridor scene, compute
+// One invocation per pixel, 8x8 workgroup. Writes current frame
+// to Out (binding 1). History (binding 2) reserved for TAA/upscale.
+// Deterministic: all randomness derives from (seed, t, position).
+// =============================================================
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, binding = 0) buffer Params { float p[]; };
+layout(std430, binding = 1) buffer Out   { vec4 o[]; };
+layout(std430, binding = 2) buffer Hist  { vec4 h[]; };
+
+// ---- Params index layout ----
+const uint P_CAM_X        = 0u;
+const uint P_CAM_Y        = 1u;
+const uint P_CAM_Z        = 2u;
+const uint P_YAW          = 3u;
+const uint P_PITCH        = 4u;
+const uint P_FOV          = 5u;
+const uint P_TIME         = 6u;
+const uint P_SEED         = 7u;
+const uint P_JIT_X        = 8u;
+const uint P_JIT_Y        = 9u;
+const uint P_RENDER_SCALE = 10u;
+const uint P_EYE_HEIGHT   = 11u;
+const uint P_HALFWIDTH    = 12u;
+const uint P_CORRIDOR_LEN = 13u;
+const uint P_STAIR_Z0     = 14u;
+const uint P_STAIR_LEN    = 15u;
+const uint P_STAIR_HEIGHT = 16u;
+const uint P_BRAZ_SPACING = 17u;
+const uint P_BRAZ_FIRST_Z = 18u;
+const uint P_CEIL_HEIGHT  = 19u;
+const uint P_FIRE_FREQ    = 20u;
+const uint P_FIRE_AMP     = 21u;
+const uint P_FIRE_WIND    = 22u;
+const uint P_PAL_SHIFT    = 23u;
+const uint P_PHASE0       = 24u;
+const uint P_TAA_ON       = 34u;
+const uint P_ACCUM        = 35u;
+const uint P_FIRE_SHAPE   = 36u;
+const uint P_WIDTH        = 37u;
+const uint P_HEIGHT       = 38u;
+
+const float STAIR_RISER   = 0.3;
+const float STAIR_TREAD   = 0.5;
+const int   MAX_STEPS     = 128;
+const float MAX_T         = 64.0;
+const float EPS           = 0.0025;
+const float STEP_CAP      = 0.6;
+
+// =============================================================
+// Hashing + noise (deterministic; seed from params)
+// =============================================================
+
+uint hashU(uint x)
+{
+    x ^= x >> 16u;
+    x *= 0x7feb352du;
+    x ^= x >> 15u;
+    x *= 0x846ca68bu;
+    x ^= x >> 16u;
+    return x;
+}
+
+uint hash3i(ivec3 c, uint seed)
+{
+    uint h = hashU(uint(c.x));
+    h = hashU(h ^ uint(c.y) * 0x9E3779B1u);
+    h = hashU(h ^ uint(c.z) * 0x85EBCA77u);
+    return hashU(h ^ seed);
+}
+
+float rand01(uint h)
+{
+    return float(h >> 8u) * (1.0 / 16777216.0);
+}
+
+float vnoise3(vec3 p, uint seed)
+{
+    ivec3 i = ivec3(floor(p));
+    vec3 f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    float c000 = rand01(hash3i(i + ivec3(0, 0, 0), seed));
+    float c100 = rand01(hash3i(i + ivec3(1, 0, 0), seed));
+    float c010 = rand01(hash3i(i + ivec3(0, 1, 0), seed));
+    float c110 = rand01(hash3i(i + ivec3(1, 1, 0), seed));
+    float c001 = rand01(hash3i(i + ivec3(0, 0, 1), seed));
+    float c101 = rand01(hash3i(i + ivec3(1, 0, 1), seed));
+    float c011 = rand01(hash3i(i + ivec3(0, 1, 1), seed));
+    float c111 = rand01(hash3i(i + ivec3(1, 1, 1), seed));
+    float a = mix(mix(c000, c100, u.x), mix(c010, c110, u.x), u.y);
+    float b = mix(mix(c001, c101, u.x), mix(c011, c111, u.x), u.y);
+    return mix(a, b, u.z);
+}
+
+float vnoise2(vec2 p, uint seed)
+{
+    ivec2 i = ivec2(floor(p));
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    float c00 = rand01(hash3i(ivec3(i, 0), seed));
+    float c10 = rand01(hash3i(ivec3(i + ivec2(1, 0), 0), seed));
+    float c01 = rand01(hash3i(ivec3(i + ivec2(0, 1), 0), seed));
+    float c11 = rand01(hash3i(ivec3(i + ivec2(1, 1), 0), seed));
+    return mix(mix(c00, c10, u.x), mix(c01, c11, u.x), u.y);
+}
+
+float vnoise1(float x, uint seed)
+{
+    float i = floor(x);
+    float f = fract(x);
+    float u = f * f * (3.0 - 2.0 * f);
+    float a = rand01(hashU(floatBitsToUint(i) ^ seed));
+    float b = rand01(hashU(floatBitsToUint(i + 1.0) ^ seed));
+    return mix(a, b, u);
+}
+
+float fbm3(vec3 p, uint seed)
+{
+    float s = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 4; i++)
+    {
+        s += a * vnoise3(p, seed);
+        p = p * 2.03 + vec3(17.0 + 31.0 * float(i));
+        a *= 0.5;
+    }
+    return s * (1.0 / 0.9375);
+}
+
+// =============================================================
+// Scene SDF
+// =============================================================
+
+float stairFloor(float z)
+{
+    float s = z - p[P_STAIR_Z0];
+    if (s <= 0.0) return 0.0;
+    float stepIdx = floor(s / STAIR_TREAD);
+    return min(stepIdx * STAIR_RISER, p[P_STAIR_HEIGHT]);
+}
+
+float corridorSDF(vec3 q)
+{
+    float wall = p[P_HALFWIDTH] - abs(q.x);
+    float ceilD = p[P_CEIL_HEIGHT] - q.y;
+    float floorD = q.y - stairFloor(q.z);
+    float gate = p[P_CORRIDOR_LEN] - q.z;
+    return min(min(wall, ceilD), min(floorD, gate));
+}
+
+float sdTorus(vec3 q, float R, float r)
+{
+    vec2 t = vec2(length(q.xz) - R, q.y);
+    return length(t) - r;
+}
+
+float sdCappedCylinder(vec3 q, float h, float r)
+{
+    vec2 d = abs(vec2(length(q.xz), q.y)) - vec2(r, h);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+float sdBrazierPart(vec3 q)
+{
+    float handle = sdCappedCylinder(q - vec3(0.0, 0.475, 0.0), 0.475, 0.05);
+    float bowl = sdTorus(q - vec3(0.0, 0.95, 0.0), 0.19, 0.055);
+    return min(handle, bowl);
+}
+
+float brazierX(float i)
+{
+    return (mod(i, 2.0) < 1.0) ? -(p[P_HALFWIDTH] - 0.6) : (p[P_HALFWIDTH] - 0.6);
+}
+
+float sdBrazierAll(vec3 q)
+{
+    float d = 1e9;
+    float z0 = p[P_BRAZ_FIRST_Z];
+    float sp = p[P_BRAZ_SPACING];
+    float len = p[P_CORRIDOR_LEN];
+    for (int i = 0; i < 16; i++)
+    {
+        float bz = z0 + float(i) * sp;
+        if (bz > len + 0.5) break;
+        if (abs(q.z - bz) > 1.6) continue;
+        float bx = brazierX(float(i));
+        d = min(d, sdBrazierPart(q - vec3(bx, 0.0, bz)));
+    }
+    return d;
+}
+
+float sceneSDF(vec3 q)
+{
+    return min(corridorSDF(q), sdBrazierAll(q));
+}
+
+vec3 calcNormal(vec3 q)
+{
+    const float e = 0.004;
+    vec2 k = vec2(1.0, -1.0);
+    return normalize(
+        k.xyy * sceneSDF(q + k.xyy * e) +
+        k.yyx * sceneSDF(q + k.yyx * e) +
+        k.yxy * sceneSDF(q + k.yxy * e) +
+        k.xxx * sceneSDF(q + k.xxx * e));
+}
+
+// =============================================================
+// Surface shading
+// =============================================================
+
+float brazierPhase(float i)
+{
+    return p[P_PHASE0 + uint(mod(i, 10.0))];
+}
+
+vec3 fireRamp(float n)
+{
+    float ps = p[P_PAL_SHIFT];
+    float t = clamp(n + ps * 0.25, 0.0, 1.0);
+    vec3 c0 = vec3(0.478, 0.055, 0.055);
+    vec3 c1 = vec3(1.000, 0.416, 0.000);
+    vec3 c2 = vec3(1.000, 0.835, 0.302);
+    vec3 c3 = vec3(1.000, 1.000, 1.000);
+    vec3 c = mix(c0, c1, smoothstep(0.0, 0.45, t));
+    c = mix(c, c2, smoothstep(0.30, 0.72, t));
+    c = mix(c, c3, smoothstep(0.70, 1.0, t));
+    return c;
+}
+
+float fireDensity(vec3 q, float i, float t, uint seed)
+{
+    float phase = brazierPhase(i);
+    float freq = p[P_FIRE_FREQ];
+    float wind = p[P_FIRE_WIND];
+    vec3 qq = vec3(q.x * 2.2, q.y * 2.6, q.z * 2.2);
+    vec3 tv = vec3(t * 0.4 + phase * 3.1, -t * 1.35, t * wind * 0.8 + phase);
+    float n1 = fbm3(qq * freq + tv, seed);
+    vec3 warp = (vec3(n1, n1 * 0.7, n1) - 0.5) * 1.4;
+    float n2 = fbm3(qq * freq + warp + tv * 0.8 + vec3(t * 0.2), seed);
+    float n = pow(max(n2, 0.0), p[P_FIRE_SHAPE]);
+    float mask = smoothstep(-0.55, 0.05, q.y) * (1.0 - smoothstep(0.30, 0.80, q.y));
+    return n * mask;
+}
+
+vec3 fireFlicker(float i, float t, uint seed)
+{
+    float phase = brazierPhase(i);
+    float freq = p[P_FIRE_FREQ];
+    float amp = p[P_FIRE_AMP];
+    float f = 0.65 + 0.35 * vnoise1(t * freq + phase * 7.0 + float(seed & 255u), seed);
+    return vec3(f * amp);
+}
+
+vec3 floorShade(vec2 px, uint seed)
+{
+    vec2 brick = vec2(1.1, 0.55);
+    vec2 cell = floor(px / brick);
+    vec2 f = fract(px / brick);
+    float rowOff = mod(cell.y, 2.0) * 0.5;
+    f.x = mod(f.x + rowOff, 1.0);
+    float mortar = smoothstep(0.02, 0.07, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
+    float tone = 0.72 + 0.28 * rand01(hash3i(ivec3(ivec2(cell), 0), seed));
+    vec3 brickCol = vec3(0.165, 0.155, 0.165) * tone;
+    vec3 col = mix(vec3(0.05, 0.048, 0.052), brickCol, mortar);
+    float moss = vnoise2(px * 0.14 + vec2(seed & 15u) * 0.31, seed);
+    col = mix(col, vec3(0.09, 0.16, 0.075), smoothstep(0.62, 0.80, moss) * 0.75);
+    return col;
+}
+
+vec3 wallShade(vec2 yz, uint seed)
+{
+    vec2 block = vec2(0.55, 1.25);
+    vec2 cell = floor(yz / block);
+    vec2 f = fract(yz / block);
+    float rowOff = mod(cell.y, 2.0) * 0.5;
+    f = vec2(f.x, mod(f.y + rowOff, 1.0));
+    float mortar = smoothstep(0.03, 0.09, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
+    float tone = 0.68 + 0.32 * rand01(hash3i(ivec3(ivec2(cell), 1), seed));
+    vec3 stone = vec3(0.175, 0.165, 0.170) * tone;
+    return mix(vec3(0.06, 0.058, 0.062), stone, mortar);
+}
+
+vec3 ceilShade(vec3 q)
+{
+    float center = 1.0 - smoothstep(0.0, p[P_HALFWIDTH], abs(q.x));
+    return vec3(0.10, 0.088, 0.095) * (0.55 + 0.45 * center);
+}
+
+vec3 gateShade(vec3 q, uint seed)
+{
+    float plank = floor(q.x / 0.22);
+    float pf = fract(q.x / 0.22);
+    float plankV = smoothstep(0.03, 0.09, min(pf, 1.0 - pf));
+    float tone = 0.66 + 0.34 * rand01(hash3i(ivec3(int(plank), 2, 0), seed));
+    vec3 wood = vec3(0.21, 0.145, 0.09) * tone;
+    float yf = fract(q.y / 0.8);
+    float band = smoothstep(0.0, 0.05, yf) * (1.0 - smoothstep(0.10, 0.15, yf));
+    vec3 iron = vec3(0.05, 0.05, 0.055);
+    return mix(wood * plankV, iron, band * 0.9);
+}
+
+vec3 stairShade(vec3 q, uint seed)
+{
+    float s = q.z - p[P_STAIR_Z0];
+    float stepIdx = floor(s / STAIR_TREAD);
+    float tone = 0.7 + 0.3 * rand01(hash3i(ivec3(int(stepIdx), 3, 0), seed));
+    vec3 stone = vec3(0.195, 0.185, 0.19) * tone;
+    float edge = smoothstep(0.0, 0.10, fract(s / STAIR_TREAD));
+    return stone * (0.72 + 0.28 * edge);
+}
+
+int pickMaterial(vec3 q, inout float bd)
+{
+    float wall = p[P_HALFWIDTH] - abs(q.x);
+    float ceilD = p[P_CEIL_HEIGHT] - q.y;
+    float floorD = q.y - stairFloor(q.z);
+    float gate = p[P_CORRIDOR_LEN] - q.z;
+    bd = sdBrazierAll(q);
+    if (bd < min(min(wall, ceilD), min(floorD, gate))) return 5;
+    if (floorD <= min(min(wall, ceilD), gate))
+    {
+        float s = q.z - p[P_STAIR_Z0];
+        if (s > 0.0 && s <= p[P_STAIR_LEN] + STAIR_TREAD) return 4;
+        return 0;
+    }
+    if (gate <= min(wall, ceilD)) return 3;
+    if (ceilD <= wall) return 2;
+    return 1;
+}
+
+vec3 shadeSurface(vec3 q, vec3 n, int mat, uint seed)
+{
+    vec3 albedo;
+    if (mat == 0) albedo = floorShade(q.xz, seed);
+    else if (mat == 1) albedo = wallShade(vec2(q.y, q.z), seed);
+    else if (mat == 2) albedo = ceilShade(q);
+    else if (mat == 3) albedo = gateShade(q, seed);
+    else if (mat == 4) albedo = stairShade(q, seed);
+    else albedo = mix(vec3(0.20, 0.13, 0.075), vec3(0.055, 0.052, 0.058),
+                      smoothstep(0.82, 0.95, q.y));
+
+    float upAmt = max(n.y, 0.0);
+    vec3 amb = vec3(0.045, 0.038, 0.042);
+    vec3 moon = vec3(0.05, 0.06, 0.09) * upAmt;
+    vec3 col = albedo * (amb + moon);
+
+    float t = p[P_TIME];
+    for (int i = 0; i < 16; i++)
+    {
+        float bz = p[P_BRAZ_FIRST_Z] + float(i) * p[P_BRAZ_SPACING];
+        if (bz > p[P_CORRIDOR_LEN] + 0.5) break;
+        vec3 C = vec3(brazierX(float(i)), 1.55, bz);
+        vec3 L = C - q;
+        float d2 = dot(L, L) + 0.05;
+        float atten = 1.0 / (1.0 + d2 * 0.16);
+        vec3 fl = fireFlicker(float(i), t, seed);
+        vec3 lDir = L * inversesqrt(d2);
+        float ndl = max(dot(n, lDir), 0.0);
+        col += albedo * fireRamp(0.95) * fl * atten * (0.3 + 0.7 * ndl);
+    }
+    return col;
+}
+
+// =============================================================
+// Fire volume + glow billboards
+// =============================================================
+
+vec3 fireRender(vec3 ro, vec3 rd, float tMax, uint seed)
+{
+    vec3 col = vec3(0.0);
+    float t = p[P_TIME];
+    for (int i = 0; i < 16; i++)
+    {
+        float bz = p[P_BRAZ_FIRST_Z] + float(i) * p[P_BRAZ_SPACING];
+        if (bz > p[P_CORRIDOR_LEN] + 0.5) break;
+        vec3 C = vec3(brazierX(float(i)), 1.55, bz);
+        vec3 fl = fireFlicker(float(i), t, seed);
+
+        vec3 oc = ro - C;
+        float tb = -dot(oc, rd);
+        if (tb > 0.0 && tb < tMax)
+        {
+            vec3 q = ro + rd * tb - C;
+            float r = length(q);
+            if (r < 0.55)
+            {
+                float n = fireDensity(q, float(i), t, seed);
+                col += fireRamp(n) * n * 1.9 * max(fl.x, 0.001);
+            }
+        }
+
+        vec3 dirC = C - ro;
+        float ang = atan(length(cross(rd, dirC)), dot(rd, dirC));
+        float g = exp(-(ang * ang) / 0.0009) * 0.4 + exp(-(ang * ang) / 0.02) * 0.3;
+        col += fireRamp(0.9) * g * fl;
+    }
+    return col;
+}
+
+// =============================================================
+// Main
+// =============================================================
+
+void main()
+{
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint w = uint(p[P_WIDTH]);
+    uint h = uint(p[P_HEIGHT]);
+    if (x >= w || y >= h) return;
+    uint seed = floatBitsToUint(p[P_SEED]);
+
+    vec3 ro = vec3(p[P_CAM_X], p[P_CAM_Y] + p[P_EYE_HEIGHT], p[P_CAM_Z]);
+    float yaw = p[P_YAW];
+    float pitch = p[P_PITCH];
+    vec3 fwd = vec3(cos(pitch) * sin(yaw), sin(pitch), -cos(pitch) * cos(yaw));
+    vec3 right = normalize(cross(fwd, vec3(0.0, 1.0, 0.0)));
+    vec3 up = cross(right, fwd);
+    float tanF = tan(p[P_FOV] * 0.5);
+    float aspect = float(w) / float(h);
+    float ndcX = (2.0 * (float(x) + 0.5 + p[P_JIT_X]) / float(w) - 1.0) * tanF * aspect;
+    float ndcY = (1.0 - 2.0 * (float(y) + 0.5 + p[P_JIT_Y]) / float(h)) * tanF;
+    vec3 rd = normalize(fwd + right * ndcX + up * ndcY);
+
+    float t = 0.0;
+    vec3 hitP = vec3(0.0);
+    bool hit = false;
+    for (int i = 0; i < MAX_STEPS; i++)
+    {
+        vec3 q = ro + rd * t;
+        float d = sceneSDF(q);
+        if (d < EPS) { hit = true; hitP = q; break; }
+        t += min(d, STEP_CAP);
+        if (t > MAX_T) break;
+    }
+
+    vec3 col = vec3(0.0);
+    if (hit)
+    {
+        vec3 n = calcNormal(hitP);
+        float bd = 0.0;
+        int mat = pickMaterial(hitP, bd);
+        col = shadeSurface(hitP, n, mat, seed);
+    }
+
+    float fogAmt = 1.0 - exp(-0.065 * t);
+    vec3 fogCol = vec3(0.045, 0.032, 0.028);
+    col = mix(col, fogCol, fogAmt);
+    col += fireRender(ro, rd, MAX_T, seed) * (1.0 - fogAmt * 0.7);
+
+    o[y * w + x] = vec4(col, 1.0);
+}

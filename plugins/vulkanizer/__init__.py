@@ -37,6 +37,16 @@ def register(api):
             _api = VulkanAPI(inst)
             api.set_config("vulkanizer_available", True)
             api.add_command("vulkanizer", _cmd, "Vulkanizer: vulkanizer status|devices|info")
+            api.add_help_section("Vulkanizer (Vulkan API)", [
+                "vulkanizer status        Instance + GPU + device status",
+                "vulkanizer devices       List physical devices",
+                "vulkanizer info          Extensions + raytrace + upscale info",
+                "",
+                "Low-level Vulkan library the Ninja game engine is built on:",
+                "instance/device selection, logical device + queues, buffers,",
+                "descriptors, compute pipelines (SPIR-V), dispatch + sync.",
+                "The Ninja plugin uses this API for its entire render path.",
+            ])
             gpu = inst.gpu_info
             api.add_boot_step(
                 f"Vulkanizer: Vulkan {gpu.get('vulkan_version', '1.0')} active ({gpu.get('name', 'Unknown GPU')})",

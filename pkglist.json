@@ -24,7 +24,7 @@
       "dependencies": [
         "lupa"
       ],
-      "verification": "d8f3945ffc4f07badd749be70a518f39b2fb0a3552b4244840491109220a4a43"
+      "verification": "88ac14bf217776f4b2f5fb7d86883b33b8e9a640e7e01c1e14e765ea2d3f439f"
     },
     "portbaby": {
       "version": "1.0.0",
@@ -44,7 +44,7 @@
       "url": "file://plugins/eaudio/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "2195a35fb1ef00b6d7fc1db4c90976398afa4643e5d82d386a193fb757b453d6"
+      "verification": "53b03f15eb38551a13c8e8f9e9fd9cf4da33fd63278aa574895824ebb99d9177"
     },
     "openapi": {
       "version": "1.0.0",
@@ -54,7 +54,7 @@
       "url": "file://plugins/openapi/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "7316234d9e6a10be809a7b8664813f781af3bb42136abf9824dd2302cfec6b10"
+      "verification": "1b9c18e73a09233da33e0d29b67c9f76e542fc7b5ce2a11fafa4a8466cc07567"
     },
     "radical": {
       "version": "1.0.0",
@@ -64,7 +64,7 @@
       "url": "file://plugins/radical/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "bcbe94fd30194305248ad8df4a2cc77c241910a7595b176680593593c647b37c"
+      "verification": "78efe20995305c98fe20746ef1e317e81660344b1af016f9cd8ac7a61d4e28b2"
     },
     "tensorsharp": {
       "version": "1.0.0",
@@ -74,7 +74,7 @@
       "url": "file://plugins/tensorsharp/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "ce173db3f98b6560ac0f3c2e95b59dbec4e0fb17bbc895d9a2c53e60155be5a2"
+      "verification": "c91f2e737eaf55582178fd30b3236a2db232a5884938562cc79dd2d7bd4e9d1b"
     },
     "vulkanizer": {
       "version": "1.0.0",
@@ -84,7 +84,7 @@
       "url": "file://plugins/vulkanizer/__init__.py",
       "update_url": "",
       "dependencies": [],
-      "verification": "2125775aa5655c7917ce452dcc1b1c8364e01561d95076177adc10629a9894b9"
+      "verification": "ddecc0b2f4cc0df727f22edf912489ad1caaf2a18ff2b90916746e2ed1844cd8"
     },
     "launcher": {
       "version": "1.0.0",
@@ -118,6 +118,18 @@
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,krip,hypervisor,sandbox",
       "url": "file://plugins/krip/__init__.py",
       "verification": "c77a601853bc01585da00c62b10af6b900396136b05e76b7b247f1c7739f2081"
+    },
+    "ninja": {
+      "version": "1.0.0",
+      "description": "Ninja corridor walker — Vulkan compute ray-marched game (FSR 3.1 menu, TAA, accumulation, Lua fire)",
+      "author": "Tentari",
+      "tags": "HELLFORGE,GAME,VULKAN,NINJA,FSR,TAA",
+      "url": "file://plugins/ninja/__init__.py",
+      "update_url": "",
+      "dependencies": [
+        "vulkanizer"
+      ],
+      "verification": "a47ecf1b36ae9e9cd0cfd8a0bdf6c237784d5948dd640ff470995efd105ab9b2"
     }
   },
   "_description": "Default package list for E Language by Tentari. All plugins integrity-verified via SHA-256 verification codes. Remote verification is opt-in via HF_VERIFY_URL/HF_VERIFY_TOKEN.",

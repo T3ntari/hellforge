@@ -1,0 +1,51 @@
+#version 450
+// =============================================================
+// Ninja — accumulate.comp : optional N-frame accumulation over
+// the OUTPUT-res float RGBA buffer.
+// One invocation per output pixel, 8x8 workgroups.
+// bindings: 0 Params | 1 In (output res) | 2 Acc (output res)
+// p[35] <= 1: pass-through. Else running average of
+// min(p[35], 256) frames; p[70] frame index 0 starts fresh.
+// Deterministic: per-invocation read-modify-write of its own
+// element only.
+// =============================================================
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, binding = 0) buffer Params { float p[]; };
+layout(std430, binding = 1) buffer InB   { vec4 inb[]; };
+layout(std430, binding = 2) buffer AccB  { vec4 acc[]; };
+
+// ---- Params index layout (post-processing slots) ----
+const uint P_ACCUM  = 35u;
+const uint P_OUT_W  = 66u;
+const uint P_OUT_H  = 67u;
+const uint P_FRAME  = 70u;
+
+const float MAX_FRAMES = 256.0;
+
+void main()
+{
+    int ow = int(p[P_OUT_W]);
+    int oh = int(p[P_OUT_H]);
+    if (ow <= 0 || oh <= 0) return;
+    int px = int(gl_GlobalInvocationID.x);
+    int py = int(gl_GlobalInvocationID.y);
+    if (px >= ow || py >= oh) return;
+    int idx = py * ow + px;
+
+    float nf = p[P_ACCUM];
+    if (nf <= 1.0)
+    {
+        acc[idx] = inb[idx];
+        return;
+    }
+    float n = min(nf, MAX_FRAMES);
+    if (floor(p[P_FRAME] + 0.5) <= 0.5)
+    {
+        // First frame of an accumulation run: start fresh.
+        acc[idx] = inb[idx];
+        return;
+    }
+    acc[idx] = acc[idx] * ((n - 1.0) / n) + inb[idx] * (1.0 / n);
+}

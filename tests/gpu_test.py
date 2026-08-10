@@ -386,6 +386,7 @@ def test_vulkanizer_pipeline_api():
     print(f"   Ray tracing: {rt.get('available', False)}")
     uc = api.upscale.info
     print(f"   Upscale: Tensor Cores={uc.get('tensor_cores', False)}, {uc.get('frames_processed', 0)} frames")
+    api.shutdown()
 test("Vulkanizer: VulkanAPI sub-APIs (pipeline, buffer, command, raytrace, upscale)", test_vulkanizer_pipeline_api)
 
 
@@ -408,6 +409,7 @@ def test_vulkanizer_command_api():
     api.command.destroy_fence(fence)
     api.command.destroy_pool(pool)
     print(f"   Command pool, buffer, fence: allocated + destroyed")
+    api.shutdown()
 test("Vulkanizer: CommandAPI pool + buffer + fence", test_vulkanizer_command_api)
 
 

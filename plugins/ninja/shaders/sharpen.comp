@@ -1,0 +1,126 @@
+#version 450
+// =============================================================
+// Ninja — sharpen.comp : RCAS (AMD FSR1, MIT) contrast-adaptive
+// sharpening + ACES filmic tonemap (Narkowicz) + gamma 2.2,
+// packed to uint8 RGBA (little-endian, index y*w+x).
+// One invocation per output pixel, 8x8 workgroups.
+// bindings: 0 Params | 1 In (output res, float RGBA) | 2 Out8 (uint[])
+// =============================================================
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, binding = 0) buffer Params { float p[]; };
+layout(std430, binding = 1) buffer InB   { vec4 inb[]; };
+layout(std430, binding = 2) buffer Out8  { uint o[]; };
+
+// ---- Params index layout (post-processing slots) ----
+const uint P_OUT_W  = 66u;
+const uint P_OUT_H  = 67u;
+const uint P_SHARP  = 68u;
+const uint P_EXP    = 69u;
+
+const float RCAS_LIMIT = 0.25 - (1.0 / 16.0);
+const float GAMMA_INV  = 1.0 / 2.2;
+const float EPS        = 1e-9;
+
+// ---- AMD FSR1 medium-precision rcp approximation (MIT) ----
+float amdRcpMed(float a)
+{
+    float b = uintBitsToFloat(0x7ef19fffu - floatBitsToUint(a));
+    return b * (-b * a + 2.0);
+}
+
+// =============================================================
+// Texel fetch (manual buffer index math, clamp-to-edge)
+// =============================================================
+
+vec4 fetchIn(ivec2 px, int ow, int oh)
+{
+    px = clamp(px, ivec2(0, 0), ivec2(ow - 1, oh - 1));
+    return inb[px.y * ow + px.x];
+}
+
+float tapLuma(vec3 c)
+{
+    return c.r * 0.5 + c.g + c.b * 0.5;
+}
+
+// =============================================================
+// Main
+// =============================================================
+
+void main()
+{
+    int ow = int(p[P_OUT_W]);
+    int oh = int(p[P_OUT_H]);
+    if (ow <= 0 || oh <= 0) return;
+    int px = int(gl_GlobalInvocationID.x);
+    int py = int(gl_GlobalInvocationID.y);
+    if (px >= ow || py >= oh) return;
+
+    // ---- RCAS: 5-tap cross, contrast-adaptive luma weights ----
+    //    b
+    //  d e f
+    //    h
+    ivec2 sp = ivec2(px, py);
+    vec3 b = fetchIn(sp + ivec2( 0, -1), ow, oh).rgb;
+    vec3 d = fetchIn(sp + ivec2(-1,  0), ow, oh).rgb;
+    vec4 ee = fetchIn(sp, ow, oh);
+    vec3 e = ee.rgb;
+    vec3 f = fetchIn(sp + ivec2( 1,  0), ow, oh).rgb;
+    vec3 h = fetchIn(sp + ivec2( 0,  1), ow, oh).rgb;
+
+    // Luma times 2.
+    float bL = tapLuma(b);
+    float dL = tapLuma(d);
+    float eL = tapLuma(e);
+    float fL = tapLuma(f);
+    float hL = tapLuma(h);
+
+    // Noise detection (part of RCAS; suppresses sharpening of noise).
+    float nz = 0.25 * bL + 0.25 * dL + 0.25 * fL + 0.25 * hL - eL;
+    nz = clamp(abs(nz) * amdRcpMed(max(max(max(bL, dL), eL), max(fL, hL))
+                   - min(min(min(bL, dL), eL), min(fL, hL))), 0.0, 1.0);
+    nz = -0.5 * nz + 1.0;
+
+    // Min and max of the ring, per channel.
+    float mn4R = min(min(b.r, d.r), min(f.r, h.r));
+    float mn4G = min(min(b.g, d.g), min(f.g, h.g));
+    float mn4B = min(min(b.b, d.b), min(f.b, h.b));
+    float mx4R = max(max(b.r, d.r), max(f.r, h.r));
+    float mx4G = max(max(b.g, d.g), max(f.g, h.g));
+    float mx4B = max(max(b.b, d.b), max(f.b, h.b));
+
+    // Peak range limiters (with degenerate-neighborhood guards).
+    float hitMinR = min(mn4R, e.r) / max(4.0 * mx4R, EPS);
+    float hitMinG = min(mn4G, e.g) / max(4.0 * mx4G, EPS);
+    float hitMinB = min(mn4B, e.b) / max(4.0 * mx4B, EPS);
+    float hitMaxR = (1.0 - max(mx4R, e.r)) / max(4.0 * mn4R - 4.0, EPS);
+    float hitMaxG = (1.0 - max(mx4G, e.g)) / max(4.0 * mn4G - 4.0, EPS);
+    float hitMaxB = (1.0 - max(mx4B, e.b)) / max(4.0 * mn4B - 4.0, EPS);
+    float lobeR = max(-hitMinR, hitMaxR);
+    float lobeG = max(-hitMinG, hitMaxG);
+    float lobeB = max(-hitMinB, hitMaxB);
+
+    // Contrast-adaptive lobe, scaled by RCAS strength p[68] (0..1).
+    float strength = clamp(p[P_SHARP], 0.0, 1.0);
+    float lobe = max(-RCAS_LIMIT, min(max(lobeR, max(lobeG, lobeB)), 0.0))
+                 * strength;
+    lobe *= nz;
+
+    // Resolve.
+    float rcpL = amdRcpMed(4.0 * lobe + 1.0);
+    vec3 col = (e + lobe * (b + d + h + f)) * rcpL;
+
+    // ---- Tonemap: ACES filmic (Narkowicz) with exposure ----
+    vec3 x = col * p[P_EXP];
+    vec3 tm = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+
+    // ---- Gamma 2.2 -> uint8 RGBA pack (little-endian) ----
+    vec3 c8 = clamp(pow(tm, vec3(GAMMA_INV)), vec3(0.0), vec3(1.0));
+    uint r = uint(round(c8.r * 255.0));
+    uint g = uint(round(c8.g * 255.0));
+    uint b8 = uint(round(c8.b * 255.0));
+    uint a = uint(clamp(round(ee.a * 255.0), 0.0, 255.0));
+    o[py * ow + px] = r | (g << 8u) | (b8 << 16u) | (a << 24u);
+}
