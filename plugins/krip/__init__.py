@@ -713,7 +713,8 @@ def _banner():
     for i, ln in enumerate(lines):
         if not ln.strip():
             continue
-        col = _grad[int(i * len(_grad) / max(n - 1, 1))]
+        col = _grad[min(len(_grad) - 1,
+                          int(i * len(_grad) / max(n - 1, 1)))]
         out.append("  " + col + ln.rstrip() + "\033[0m")
     # version: tiny grey HELLFORGE + version, tight under the art
     ver = "dev"

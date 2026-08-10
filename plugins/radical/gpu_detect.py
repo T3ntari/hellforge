@@ -440,6 +440,9 @@ def _try_glfw(info):
 
 def _try_pygame(info):
     try:
+        import os as _os2
+        if not (_os2.environ.get("DISPLAY") or _os2.environ.get("WAYLAND_DISPLAY")):
+            _os2.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
         import pygame
         pygame.init()
         pygame.display.set_mode((1, 1), pygame.OPENGL | pygame.HIDDEN)

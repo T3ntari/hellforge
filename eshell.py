@@ -6,6 +6,8 @@ Supports compiling to .mid, .wav, .mp3, .mp4, .ec, .eic, .ee, .ecc
 """
 
 import os
+
+os.environ.setdefault("PYOPENGL_PLATFORM", "glx")
 import json
 import urllib.request
 import subprocess
@@ -154,7 +156,8 @@ def banner():
         _n = len(_lines)
         print("")
         for _i, _ln in enumerate(_lines):
-            _c = _grad[int(_i * len(_grad) / max(_n - 1, 1))]
+            _c = _grad[min(len(_grad) - 1,
+                           int(_i * len(_grad) / max(_n - 1, 1)))]
             print("  " + _c + _ln.rstrip() + "\033[0m")
         print(f"  {c('HELLFORGE', D)}  {c(ver, D)}")
         print("")

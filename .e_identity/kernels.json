@@ -2,6 +2,46 @@
   "entries": [
     {
       "id": "ep_core",
+      "version": "dev",
+      "mode": "normal",
+      "tag": "vdev",
+      "current": false,
+      "when": "2026-08-10 21:03",
+      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
+      "detail": "HELLFORGE OS kernel"
+    },
+    {
+      "id": "ep_core:safemode",
+      "version": "dev",
+      "mode": "safemode",
+      "tag": "vdev",
+      "current": false,
+      "when": "2026-08-10 21:03",
+      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
+      "detail": "HELLFORGE OS kernel \u2014 safe mode"
+    },
+    {
+      "id": "ep_core",
+      "version": "0.1.14.58-beta",
+      "mode": "normal",
+      "tag": "v0.1.14.58-beta",
+      "current": true,
+      "when": "2026-08-10 21:06",
+      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
+      "detail": "HELLFORGE OS kernel"
+    },
+    {
+      "id": "ep_core:safemode",
+      "version": "0.1.14.58-beta",
+      "mode": "safemode",
+      "tag": "v0.1.14.58-beta",
+      "current": true,
+      "when": "2026-08-10 21:06",
+      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
+      "detail": "HELLFORGE OS kernel \u2014 safe mode"
+    },
+    {
+      "id": "ep_core",
       "version": "0.1.14.57-beta",
       "mode": "normal",
       "tag": "v0.1.14.57-beta",
@@ -497,26 +537,6 @@
       "tag": "v0.1.14.31-beta",
       "current": false,
       "when": "2026-08-10 10:14",
-      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
-      "detail": "HELLFORGE OS kernel \u2014 safe mode"
-    },
-    {
-      "id": "ep_core",
-      "version": "dev",
-      "mode": "normal",
-      "tag": "vdev",
-      "current": true,
-      "when": "2026-08-10 21:03",
-      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
-      "detail": "HELLFORGE OS kernel"
-    },
-    {
-      "id": "ep_core:safemode",
-      "version": "dev",
-      "mode": "safemode",
-      "tag": "vdev",
-      "current": true,
-      "when": "2026-08-10 21:03",
       "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
       "detail": "HELLFORGE OS kernel \u2014 safe mode"
     }

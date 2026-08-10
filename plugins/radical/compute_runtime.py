@@ -292,6 +292,8 @@ _global_context = None
 
 
 def _ensure_context():
+    import os as _os
+    _os.environ.setdefault("PYOPENGL_PLATFORM", "glx")
     """Ensure an OpenGL context exists for compute operations.
     Returns context info or None."""
     global _global_context
@@ -322,8 +324,12 @@ def _ensure_context():
     except Exception:
         pass
 
-    # Try pygame
+    # Try pygame — headless boxes must use the offscreen SDL driver,
+    # otherwise SDL's driver probing initializes GTK (Gtk-WARNING)
     try:
+        import os as _os2
+        if not (_os2.environ.get("DISPLAY") or _os2.environ.get("WAYLAND_DISPLAY")):
+            _os2.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
         import pygame
         if not pygame.get_init():
             pygame.init()

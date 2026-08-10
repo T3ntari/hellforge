@@ -19,6 +19,8 @@ Regenerate after intentional core changes:
 import hashlib
 import json
 import os
+import time
+import tempfile
 from pathlib import Path
 
 PROJECT_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -544,8 +546,22 @@ def x_rotate():
     return x_verify()[0]
 
 
-def remote_version(timeout=10):
-    """Latest version tag on GitHub via git ls-remote (no API token)."""
+_REMOTE_CACHE = os.path.join(tempfile.gettempdir(), "hellforge_remote_version")
+_REMOTE_TTL = 45.0
+
+
+def remote_version(timeout=2):
+    """Latest version tag on GitHub via git ls-remote (no API token).
+    Cached to a temp file (45s TTL) so the boot menu, the security check
+    and the update prompt share one fast lookup."""
+    try:
+        import os as _os
+        if _os.path.isfile(_REMOTE_CACHE):
+            if time.time() - _os.path.getmtime(_REMOTE_CACHE) < _REMOTE_TTL:
+                with open(_REMOTE_CACHE) as _f:
+                    return _f.read().strip() or None
+    except Exception:
+        pass
     import subprocess
     try:
         r = subprocess.run(
@@ -564,12 +580,18 @@ def remote_version(timeout=10):
                 return (0, 0, 0, 0)
             g = m.groups()
             return (int(g[0]), int(g[1]), int(g[2]), int(g[3]) if g[3] else 0)
-        return max(tags, key=key) if tags else None
+        latest = max(tags, key=key) if tags else None
+        try:
+            with open(_REMOTE_CACHE, "w") as _f:
+                _f.write(latest or "")
+        except Exception:
+            pass
+        return latest
     except Exception:
         return None
 
 
-def y_verify_online(timeout=15):
+def y_verify_online(timeout=6):
     """Technique Y check: compare the local version key against the live
     SECURITY_HASH.txt at the version tag on GitHub. Returns
     (ok, detail)."""

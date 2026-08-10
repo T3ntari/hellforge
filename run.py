@@ -24,6 +24,8 @@ Modes:
 """
 
 import os
+
+os.environ.setdefault("PYOPENGL_PLATFORM", "glx")
 import sys
 import subprocess
 import time

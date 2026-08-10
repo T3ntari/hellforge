@@ -154,8 +154,23 @@ def safe_boot(stream_out=print, input_fn=input, ask_update=True):
         return "safemode-force" if forced else "safemode-stay"
 
     stream_out("  \033[32m[security] X verified (hidden digest matches core)\033[0m")
-    # 2) network probe
-    online = SH.remote_version(timeout=4) is not None
+    # 2+3) network probe and technique Y run CONCURRENTLY (cached probe
+    #       means the menu check is instant; Y is capped at 6s)
+    import threading as _th
+    _results = {}
+
+    def _probe():
+        _results["online"] = SH.remote_version(timeout=2) is not None
+
+    def _ycheck():
+        _results["y"] = SH.y_verify_online(timeout=6)
+
+    _t1 = _th.Thread(target=_probe, daemon=True)
+    _t2 = _th.Thread(target=_ycheck, daemon=True)
+    _t1.start(); _t2.start()
+    _t1.join(timeout=3); _t2.join(timeout=7)
+
+    online = _results.get("online", False)
     if not online:
         stream_out("  \033[90m[security] offline — X is the proof, skipping Y\033[0m")
         # X is the proof offline; rotate the hidden layout for next init
@@ -163,7 +178,7 @@ def safe_boot(stream_out=print, input_fn=input, ask_update=True):
         return "offline-ok"
 
     # 3) online: technique Y + version sync
-    y_ok, y_detail = SH.y_verify_online(timeout=15)
+    y_ok, y_detail = _results.get("y", (False, "Y check did not finish"))
     if not y_ok:
         stream_out("  \033[31m[security] technique Y FAILED\033[0m")
         stream_out(f"  \033[90m{y_detail}\033[0m")
