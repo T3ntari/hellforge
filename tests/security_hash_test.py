@@ -61,9 +61,11 @@ check("X: tampered covered file is flagged", test_x_flags_covered_tamper)
 def test_x_flags_fragment_tamper():
     SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
     txt = open(SH.X_FILE).read()
-    m = re.search(r'(_x\d+ = ")([0-9a-f]+)(")', txt)
-    assert m, "X file should contain fragments"
-    open(SH.X_FILE, "w").write(txt[:m.start(2)] + "deadbeef" + txt[m.end(2):])
+    # any hex fragment, whatever the random layout style
+    m = re.search(r'("[0-9a-f]{4,}")', txt)
+    assert m, "X file should contain hex fragments"
+    hexval = m.group(1)
+    open(SH.X_FILE, "w").write(txt.replace(hexval, '"deadbeef"', 1))
     ok, _ = SH.x_verify()
     assert not ok, "X must flag altered fragments"
     SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
