@@ -5,8 +5,8 @@
   "mods": {},
   "plugins": {
     "talisman": {
-      "version": "1.0.0",
-      "description": "Audio culling & occlusion engine. Psychoacoustic masking â€” removes inaudible notes on compile. Run 'talisman on|off'.",
+      "version": "1.1.0",
+      "description": "Audio culling, privacy & QOL: local mode, backup, inspect, stats",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,culling,occlusion,masking,privacy",
       "url": "file://plugins/talisman/__init__.py",
@@ -16,7 +16,7 @@
     },
     "lure": {
       "version": "3.0.0",
-      "description": "Lua Runtime Accelerator for E. LuaJIT-powered hot-path parsing, 3-10x speedup on compilation. Batch line parsing, scale quantization, MIDI tick calculation. GIL-free parallel execution via lupa.",
+      "description": "Lua Runtime Accelerator for E — LuaJIT-powered hot-path parsing + async compile",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,luajit,jit,compiler,acceleration,async",
       "url": "file://plugins/lure/__init__.py",
@@ -28,7 +28,7 @@
     },
     "portbaby": {
       "version": "1.0.0",
-      "description": "Syntax version porting for E Language. Convert between v1 machine, v1 human, v2 semantic, v3 shorthand, and v4 polyrhythm/generative syntax. Loss percentage reporting. Multi-file project generation with index.ei + parts/ + project.enx.",
+      "description": "Syntax version porting for E Language",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,conversion,syntax,porting,v1,v2,v3,v4",
       "url": "file://plugins/portbaby/__init__.py",
@@ -38,7 +38,7 @@
     },
     "eaudio": {
       "version": "1.0.0",
-      "description": "E Language plugin: eaudio",
+      "description": "Low-level Audio API — device management, buffers, 3D spatial, effects",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,audio,spatial,dsp,effects,3d",
       "url": "file://plugins/eaudio/__init__.py",
@@ -48,7 +48,7 @@
     },
     "openapi": {
       "version": "1.0.0",
-      "description": "E Language plugin: openapi",
+      "description": "Low-level OpenGL Graphics API — context, shaders, buffers, textures, rendering pipeline",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,opengl,graphics,rendering,api",
       "url": "file://plugins/openapi/__init__.py",
@@ -58,7 +58,7 @@
     },
     "radical": {
       "version": "1.0.0",
-      "description": "E Language plugin: radical",
+      "description": "GPU Shader Math Core — GLSL compute shader evaluation, multi-GPU, VRAM control",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,gpu,compute,shader,glsl,math",
       "url": "file://plugins/radical/__init__.py",
@@ -68,7 +68,7 @@
     },
     "tensorsharp": {
       "version": "1.0.0",
-      "description": "E Language plugin: tensorsharp",
+      "description": "NVIDIA Tensor Core acceleration — mixed-precision matrix math",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,cuda,tensorcore,nvidia,matmul",
       "url": "file://plugins/tensorsharp/__init__.py",
@@ -78,7 +78,7 @@
     },
     "vulkanizer": {
       "version": "1.0.0",
-      "description": "E Language plugin: vulkanizer",
+      "description": "Low-level Vulkan API — instance, pipeline, buffers, commands, ray tracing, upscaling",
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,vulkan,compute,raytracing,upscaling",
       "url": "file://plugins/vulkanizer/__init__.py",
@@ -87,7 +87,7 @@
       "verification": "2125775aa5655c7917ce452dcc1b1c8364e01561d95076177adc10629a9894b9"
     },
     "launcher": {
-      "version": "1.0.0.0",
+      "version": "1.0.0",
       "description": "New window launching & process management — open, player, shell, log, ps, kill",
       "author": "REGAS",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,launcher,window,process,detach",
@@ -98,16 +98,18 @@
     },
     "humanize": {
       "version": "1.0.0",
-      "description": "MoE humanization - de-robots MIDI with micro-timing + velocity expression (@humanize:nn)",
+      "description": "MoE humanization - de-robots MIDI with micro-timing + velocity expression",
       "author": "REGAS",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,humanize,moe,ml,expression,timing",
       "url": "file://plugins/humanize/__init__.py",
       "update_url": "",
-      "dependencies": []
+      "dependencies": [],
+      "verification": "1e79d06925d43581803364c4fcf18f4d8471d18db008b7c71c15c09b99c25689"
     },
     "llm": {
-      "version": "1.11.0",
-      "description": "LLM copilot — OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation"
+      "version": "1.0.0",
+      "description": "LLM copilot — OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation",
+      "verification": "dc82988ec9b108b08f121ddd456691e7d67cff148190e0f0f67a71ed02a6fe03"
     },
     "krip": {
       "version": "1.0.0",
