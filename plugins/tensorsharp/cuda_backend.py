@@ -199,8 +199,27 @@ class TensorSHARPEngine:
         except Exception:
             return self._fallback(ast_dict, variables)
 
+    _cublas_ok = None
+
+    def _cublas_available(self):
+        """Preflight: CuPy matmul hard-crashes (SIGSEGV) when the CUDA
+        math libraries are missing — check before ever touching CuPy."""
+        if TensorSHARPEngine._cublas_ok is None:
+            try:
+                import ctypes.util
+                lib = (ctypes.util.find_library("cublasLt")
+                       or ctypes.util.find_library("cublas"))
+                TensorSHARPEngine._cublas_ok = lib is not None
+            except Exception:
+                TensorSHARPEngine._cublas_ok = False
+        return TensorSHARPEngine._cublas_ok
+
     def matmul(self, A, B):
         """Matrix multiply using Tensor Cores via CuPy."""
+        if not self._cublas_available():
+            self.diagnostic = (self.diagnostic or "") + (
+                " | cublas missing — matmul offline")
+            return None
         try:
             import cupy as cp
             import numpy as np
