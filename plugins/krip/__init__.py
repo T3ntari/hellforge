@@ -636,8 +636,6 @@ def _draw_menu(entries, sel, countdown, stream_out):
         kern = e["id"].replace("ep_core", "ep_core")
         line = (f"  {mark} {kern:<18} v{e.get('version', '?')}"
                 f"  [{e.get('mode', 'normal')}]")
-        if e.get("model") and e["model"] != "(none)":
-            line += f"  · model {e['model']}"
         if e.get("when"):
             line += f"  · {e['when']}"
         lines.append(line)
@@ -645,12 +643,13 @@ def _draw_menu(entries, sel, countdown, stream_out):
         lines.append("")
         lines.append(f"  booting {entries[sel]['id']} in {countdown}s — "
                      "press any key to interrupt")
-    lines.append("  ↑/↓ select · Enter boot · Ctrl+C console")
+    lines.append("  ↑/↓ select · Enter boot · c console · Ctrl+C console")
     stream_out("\n".join(lines))
 
 
 def _read_key_raw(timeout):
-    """Blocking key read with timeout (termios raw). Returns key name or None."""
+    """Blocking key read with timeout (termios raw + os.read — buffered
+    stdin breaks arrow keys). Returns key name or None."""
     import select
     import termios
     import tty
@@ -661,20 +660,22 @@ def _read_key_raw(timeout):
         r, _, _ = select.select([fd], [], [], timeout)
         if not r:
             return None
-        ch = sys.stdin.read(1)
-        if ch == "\x1b":
+        ch = os.read(fd, 1)
+        if ch == b"\x1b":
             r2, _, _ = select.select([fd], [], [], 0.05)
             if r2:
-                seq = sys.stdin.read(2)
-                if seq == "[A":
+                seq = os.read(fd, 2)
+                if seq == b"[A":
                     return "up"
-                if seq == "[B":
+                if seq == b"[B":
                     return "down"
             return "escape"
-        if ch in ("\x03", "\x1a"):
+        if ch in (b"\x03", b"\x1a"):
             return "ctrl-c"
-        if ch in ("\r", "\n"):
+        if ch in (b"\r", b"\n"):
             return "enter"
+        if ch.lower() == b"c":
+            return "console"
         return "key"
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
@@ -696,6 +697,20 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
             break
     if interactive is None:
         interactive = sys.stdin.isatty()
+
+    # only the present kernel and the one before it
+    vers = []
+    for e in entries:
+        if e["version"] not in vers:
+            vers.append(e["version"])
+        if len(vers) == 2:
+            break
+    entries = [e for e in entries if e["version"] in vers]
+    sel = 0
+    for i, e in enumerate(entries):
+        if e.get("current") and e.get("mode") == "normal":
+            sel = i
+            break
 
     if not interactive:
         _draw_menu(entries, sel, None, stream_out)
@@ -737,7 +752,7 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
             sel = (sel + 1) % len(entries)
         elif key == "enter":
             return "boot", entries[sel]
-        elif key == "ctrl-c":
+        elif key in ("ctrl-c", "console"):
             stream_out("\n  → console")
             return "console", None
         elif key == "escape":
