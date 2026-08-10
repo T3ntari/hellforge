@@ -23,6 +23,7 @@ import shlex
 import signal
 import subprocess
 import threading
+import time
 
 VERSION = "1.0.0"
 author = "Tentari"
@@ -41,6 +42,7 @@ _config = {
 }
 
 PROJECT_DIR = None
+_last_api = None
 
 
 # ── helpers ───────────────────────────────────────────────────────────
@@ -118,7 +120,8 @@ def _apply_rlimits(mem_mb):
     try:
         import resource
         limit = mem_mb * 1024 * 1024
-        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+        # soft-only: the hard limit stays infinite so it can be raised back
+        resource.setrlimit(resource.RLIMIT_AS, (limit, resource.RLIM_INFINITY))
         return f"{mem_mb} MB"
     except Exception as e:
         return f"not applied ({e})"
@@ -249,12 +252,69 @@ def sandbox_status():
         return "\n".join(out)
 
 
+def _edit_config(stream_out=print, input_fn=input):
+    """Open krip.json in nano; AUTO-RELOAD the config the moment it is
+    saved (a watcher polls the file and re-applies memory/cpu/engine/gpu
+    live while the editor is open)."""
+    path = _config_path()
+    if not os.path.isfile(path):
+        save_config_file()
+    editor = os.environ.get("KRIP_EDITOR") or "nano"
+    editor_cmd = shlex.split(editor)
+    stream_out(f"  editing {path} with {editor} — saving the file "
+               "auto-reloads K-rip live")
+    stopped = threading.Event()
+
+    def watch():
+        last = None
+        try:
+            last = os.path.getmtime(path)
+        except Exception:
+            pass
+        while not stopped.is_set():
+            time.sleep(0.8)
+            try:
+                m = os.path.getmtime(path)
+            except Exception:
+                continue
+            if m != last:
+                last = m
+                try:
+                    _load(_last_api)
+                    _save(_last_api)
+                    _apply_rlimits(_config["mem_mb"])
+                    _apply_affinity(_config["cpu_threads"])
+                    stream_out(f"  ⚡ krip.json saved — reloaded live "
+                               f"(mem {_config['mem_mb']}MB, cpu "
+                               f"{_config['cpu_threads']}, gpu {_config['gpu']}, "
+                               f"engine {_config['engine']})")
+                except Exception as e:
+                    stream_out(f"  reload error: {e}")
+
+    import time as _t
+    th = threading.Thread(target=watch, daemon=True)
+    th.start()
+    try:
+        code = subprocess.call(editor_cmd + [path])
+        if code != 0:
+            stream_out(f"  editor exited with {code}")
+    finally:
+        stopped.set()
+        th.join(timeout=1)
+    _load(_last_api)
+    _save(_last_api)
+    _apply_rlimits(_config["mem_mb"])
+    _apply_affinity(_config["cpu_threads"])
+    return f"  config edit done — applied from {path}"
+
+
 # ── the krip command ──────────────────────────────────────────────────
 
 def _cmd(args, api=None):
-    global PROJECT_DIR
+    global PROJECT_DIR, _last_api
     if api is not None:
         PROJECT_DIR = getattr(api, "project_dir", None) or PROJECT_DIR
+        _last_api = api
     if not args:
         return _cmd(["status"], api)
     sub = args[0].lower()
@@ -352,6 +412,27 @@ def _cmd(args, api=None):
                                _config["cpu_threads"], _config["gpu"])
         return "  sandbox subcommands: run | list | kill | status"
 
+    if sub == "edit":
+        return _edit_config(stream_out=print, input_fn=input)
+
+    if sub == "boot":
+        from . import boot_menu
+        result = boot_menu()
+        if result[0] == "boot":
+            boot_entry(result[1])
+        return "  boot menu finished (console)"
+
+    if sub == "kernels":
+        entries = load_kernels()
+        if not entries:
+            return "  no kernels registered"
+        lines = ["  HELLFORGE OS — installed kernels:"]
+        for e in entries:
+            cur = " *" if e.get("current") else ""
+            lines.append(f"    {e['id']:<18} v{e.get('version', '?')}"
+                         f"  [{e.get('mode', 'normal')}]{cur}")
+        return "\n".join(lines)
+
     if sub == "config":
         lines = [
             f"  krip config file: {_config_path()}",
@@ -397,6 +478,264 @@ def _cmd(args, api=None):
             "sandbox ... | os")
 
 
+
+
+# ──────────────────────────────────────────────────────────────────────
+# K-rip boot manager — GRUB-like kernel menu for HELLFORGE OS.
+# Entries: ep_core (normal/safemode) for the current kernel and the
+# previous kernel versions (rolled forward on every update). 3-second
+# countdown auto-boots the default; any key stops it; arrow up/down
+# selects; Enter boots; Ctrl+C drops to the console.
+# ──────────────────────────────────────────────────────────────────────
+
+def _kernels_path():
+    return os.path.join(PROJECT_DIR or os.getcwd(), ".e_identity", "kernels.json")
+
+
+def _dedup_kernels(entries):
+    """One pair (normal + safemode) per version, newest first."""
+    by_ver = {}
+    for e in entries:
+        key = e.get("version", "?")
+        by_ver.setdefault(key, {})
+        by_ver[key][e.get("mode", "normal")] = e
+    out = []
+    for ver in sorted(by_ver, reverse=True):
+        pair = by_ver[ver]
+        for mode in ("normal", "safemode"):
+            if mode in pair:
+                out.append(pair[mode])
+    return out
+
+
+def load_kernels():
+    """Kernel registry: list of entry dicts (deduped, newest first)."""
+    try:
+        with open(_kernels_path()) as f:
+            data = json.load(f)
+        entries = data.get("entries", [])
+        return _dedup_kernels(entries) if isinstance(entries, list) else []
+    except Exception:
+        return []
+
+
+def _save_kernels(entries):
+    try:
+        os.makedirs(os.path.dirname(_kernels_path()), exist_ok=True)
+        with open(_kernels_path(), "w") as f:
+            json.dump({"entries": entries}, f, indent=2)
+    except Exception:
+        pass
+
+
+def _kernel_meta():
+    """Version + details for the current kernel."""
+    ver = "dev"
+    try:
+        from ep_compiler.security_hash import local_version
+        ver = local_version().lstrip("v")
+    except Exception:
+        pass
+    model = "(none)"
+    try:
+        import json as _j
+        cfg = _j.load(open(os.path.join(PROJECT_DIR or os.getcwd(),
+                                        ".plugin_config.json")))
+        model = cfg.get("llm_model") or cfg.get("llm_agent_model") or "(none)"
+    except Exception:
+        pass
+    return ver, model
+
+
+def record_current_kernel():
+    """Ensure the current version is registered (normal + safemode entries).
+    If the version changed, the old current becomes a previous kernel."""
+    ver, model = _kernel_meta()
+    entries = load_kernels()
+    current = [e for e in entries if e.get("current")]
+    if any(e.get("version") == ver and e.get("mode") == "normal" for e in current):
+        return entries
+    # version changed -> demote old current to previous
+    for e in entries:
+        if e.get("current"):
+            e["current"] = False
+    # one pair per version: drop stale entries of this version
+    entries = [e for e in entries if e.get("version") != ver]
+    import time as _t
+    stamp = _t.strftime("%Y-%m-%d %H:%M")
+    entries.append({"id": "ep_core", "version": ver, "mode": "normal",
+                    "tag": f"v{ver}" if not ver.startswith("v") else ver,
+                    "current": True, "when": stamp, "model": model,
+                    "detail": "HELLFORGE OS kernel"})
+    entries.append({"id": "ep_core:safemode", "version": ver, "mode": "safemode",
+                    "tag": f"v{ver}" if not ver.startswith("v") else ver,
+                    "current": True, "when": stamp, "model": model,
+                    "detail": "HELLFORGE OS kernel — safe mode"})
+    _save_kernels(entries)
+    return entries
+
+
+def snapshot_previous_kernel():
+    """Called by the updater BEFORE switching versions: the current kernel
+    becomes a bootable previous entry (rollback target). The current entry
+    stays current — demotion happens in record_current_kernel once the
+    version actually changes."""
+    ver, model = _kernel_meta()
+    entries = load_kernels()
+    modes = [e.get("mode") for e in entries
+             if e.get("version") == ver and not e.get("current")]
+    if "normal" in modes and "safemode" in modes:
+        return entries
+    # drop stale same-version entries so each version keeps one pair
+    entries = [e for e in entries if e.get("version") != ver or e.get("current")]
+    import time as _t
+    stamp = _t.strftime("%Y-%m-%d %H:%M")
+    if "normal" not in modes:
+        entries.append({"id": "ep_core", "version": ver, "mode": "normal",
+                        "tag": f"v{ver}" if not ver.startswith("v") else ver,
+                        "current": False, "when": stamp, "model": model,
+                        "detail": "HELLFORGE OS kernel — previous"})
+    if "safemode" not in modes:
+        entries.append({"id": "ep_core:safemode", "version": ver, "mode": "safemode",
+                        "tag": f"v{ver}" if not ver.startswith("v") else ver,
+                        "current": False, "when": stamp, "model": model,
+                        "detail": "HELLFORGE OS kernel — previous (safe)"})
+    _save_kernels(entries)
+    return entries
+
+
+def boot_entry(entry, stream_out=print):
+    """Boot a kernel entry. Returns exit code."""
+    from ep_compiler import security_hash as SH
+    ver, _m = _kernel_meta()
+    if entry.get("version") != ver and entry.get("tag"):
+        stream_out(f"  booting previous kernel {entry['tag']} "
+                   "(safe update — nothing lost)...")
+        from ep_compiler.update import safe_update
+        code = safe_update(entry["tag"], stream_out=stream_out)
+        if code != 0:
+            stream_out("  failed to boot previous kernel")
+            return code
+    if entry.get("mode") == "safemode":
+        stream_out("  entering SAFE MODE")
+        from ep_compiler.safemode import enter_safemode
+        enter_safemode("manual — kernel " + entry.get("version", ""),
+                       "user selected ep_core:safemode", stream_out)
+    return 0
+
+
+def _draw_menu(entries, sel, countdown, stream_out):
+    import time as _t
+    lines = []
+    lines.append("")
+    lines.append("  ╔════════════════════════════════════════════════════╗")
+    lines.append("  ║          HELLFORGE OS — K-rip boot manager         ║")
+    lines.append("  ╚════════════════════════════════════════════════════╝")
+    for i, e in enumerate(entries):
+        mark = "▶" if i == sel else " "
+        kern = e["id"].replace("ep_core", "ep_core")
+        line = (f"  {mark} {kern:<18} v{e.get('version', '?')}"
+                f"  [{e.get('mode', 'normal')}]")
+        if e.get("model") and e["model"] != "(none)":
+            line += f"  · model {e['model']}"
+        if e.get("when"):
+            line += f"  · {e['when']}"
+        lines.append(line)
+    if countdown is not None:
+        lines.append("")
+        lines.append(f"  booting {entries[sel]['id']} in {countdown}s — "
+                     "press any key to interrupt")
+    lines.append("  ↑/↓ select · Enter boot · Ctrl+C console")
+    stream_out("\n".join(lines))
+
+
+def _read_key_raw(timeout):
+    """Blocking key read with timeout (termios raw). Returns key name or None."""
+    import select
+    import termios
+    import tty
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        r, _, _ = select.select([fd], [], [], timeout)
+        if not r:
+            return None
+        ch = sys.stdin.read(1)
+        if ch == "\x1b":
+            r2, _, _ = select.select([fd], [], [], 0.05)
+            if r2:
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    return "up"
+                if seq == "[B":
+                    return "down"
+            return "escape"
+        if ch in ("\x03", "\x1a"):
+            return "ctrl-c"
+        if ch in ("\r", "\n"):
+            return "enter"
+        return "key"
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
+    """GRUB-like menu. Returns ("boot", entry) or ("console", None)."""
+    record_current_kernel()
+    entries = load_kernels()
+    if not entries:
+        record_current_kernel()
+        entries = load_kernels()
+    if not entries:
+        return "console", None
+    sel = 0
+    for i, e in enumerate(entries):
+        if e.get("current") and e.get("mode") == "normal":
+            sel = i
+            break
+    if interactive is None:
+        interactive = sys.stdin.isatty()
+
+    if not interactive:
+        _draw_menu(entries, sel, None, stream_out)
+        stream_out("  (non-interactive — Enter to boot the default, "
+                   "'console' for console, or an entry number)")
+        raw = input_fn("boot> ").strip().lower()
+        if raw == "console":
+            return "console", None
+        if raw.isdigit():
+            i = int(raw)
+            if 0 <= i < len(entries):
+                return "boot", entries[i]
+        return "boot", entries[sel]
+
+    countdown = timeout
+    stopped = False
+    while True:
+        _draw_menu(entries, sel, None if stopped else countdown, stream_out)
+        if not stopped and countdown is not None:
+            key = _read_key_raw(0.25)
+            if key is None:
+                countdown -= 0.25
+                if countdown <= 0:
+                    return "boot", entries[sel]
+                continue
+            stopped = True
+        else:
+            key = _read_key_raw(None)
+        if key == "up":
+            sel = (sel - 1) % len(entries)
+        elif key == "down":
+            sel = (sel + 1) % len(entries)
+        elif key == "enter":
+            return "boot", entries[sel]
+        elif key == "ctrl-c":
+            stream_out("\n  → console")
+            return "console", None
+        elif key == "escape":
+            stopped = True
+
 # ── plugin entry ──────────────────────────────────────────────────────
 
 def register(api):
@@ -405,6 +744,7 @@ def register(api):
     _load(api)
     api.add_command("krip", lambda args: _cmd(args, api),
                     "K-rip hypervisor: mem/cpu/gpu/engine/vulkanrt/tensor/sandbox/os")
+    record_current_kernel()
     drivers = _driver_table()
     api.add_boot_step(f"K-rip: hypervisor armed from {CONFIG_FILE_NAME} "
                       f"(mem {_config['mem_mb']}MB, cpu {_config['cpu_threads']}, "

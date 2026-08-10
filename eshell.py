@@ -1599,6 +1599,20 @@ def main():
     except Exception as e:
         print(f"  \033[90m[security] check skipped: {e}\033[0m")
 
+    # ── K-rip boot manager (GRUB-like kernel menu) — skip with
+    #    KRIP_NO_MENU=1; 'console' drops straight to this shell ──
+    if os.environ.get("KRIP_NO_MENU") != "1":
+        try:
+            import plugins.krip as _krip
+            _krip._last_api = None
+            from ep_core import _plugin_api as _kapi
+            _krip.PROJECT_DIR = str(getattr(_kapi, "project_dir", project_dir))
+            _boot = _krip.boot_menu(print, input)
+            if _boot[0] == "boot":
+                _krip.boot_entry(_boot[1], print)
+        except Exception:
+            pass
+
     # ── Project directory resolution: --project flag > HELLFORGE_PROJECT env > cwd ──
     project_dir = None
     if "--project" in sys.argv:

@@ -138,6 +138,13 @@ def safe_update(target_tag, progress=None, stream_out=print):
     stream_out(f"  updating to {target_tag} — backing up your data first...")
     backup_user_data(step)
 
+    # K-rip kernel registry: the current kernel becomes a bootable previous
+    try:
+        from plugins.krip import snapshot_previous_kernel
+        snapshot_previous_kernel()
+    except Exception:
+        pass
+
     stream_out("  fetching from GitHub...")
     rc, err = _git(["fetch", "origin", "tag", target_tag])
     if rc != 0:

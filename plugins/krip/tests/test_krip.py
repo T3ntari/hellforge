@@ -50,10 +50,13 @@ check("gpu env: auto/all/ids + multi-GPU", test_gpu_env)
 
 
 def test_mem_apply():
+    import resource as _r
     r = K._apply_rlimits(0)
     assert r == "unlimited"
     r = K._apply_rlimits(512)
     assert r == "512 MB"
+    # restore (soft-only limit) so the rest of the suite is unaffected
+    _r.setrlimit(_r.RLIMIT_AS, (_r.RLIM_INFINITY, _r.RLIM_INFINITY))
 check("mem: unlimited + budget apply", test_mem_apply)
 
 
@@ -136,6 +139,8 @@ def test_config_file_init():
     K._config["mem_mb"] = 0
     K._cmd(["reload"], api)
     assert K._config["mem_mb"] == 256, "reload must read the saved file"
+    import resource as _r
+    _r.setrlimit(_r.RLIMIT_AS, (_r.RLIM_INFINITY, _r.RLIM_INFINITY))
 check("config: krip.json read at init, save, reload", test_config_file_init)
 
 
@@ -149,6 +154,78 @@ def test_config_file_missing_defaults():
     assert K._config["engine"] == "vulkan"
     assert K._config["gpu"] == "auto"
 check("config: no krip.json -> built-in defaults", test_config_file_missing_defaults)
+
+
+def test_boot_registry_rollback():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    K.record_current_kernel()
+    K.snapshot_previous_kernel()
+    with mock.patch.object(K, "_kernel_meta",
+                           return_value=("0.9.9-beta", "m1")):
+        K.record_current_kernel()
+    entries = K.load_kernels()
+    vers = [e["version"] for e in entries]
+    assert vers.count("0.9.9-beta") == 2, vers
+    assert vers.count("0.1.14.29-beta") == 2, vers
+    cur = [e for e in entries if e.get("current")]
+    assert all(e["version"] == "0.9.9-beta" for e in cur)
+check("boot: registry rolls old latest to previous, new becomes current", test_boot_registry_rollback)
+
+
+def test_boot_menu_default_and_console():
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    K.record_current_kernel()
+    r = K.boot_menu(lambda l, **k: None, lambda p='': '', interactive=False)
+    assert r[0] == "boot" and r[1]["mode"] == "normal", r
+    r = K.boot_menu(lambda l, **k: None, lambda p='': 'console', interactive=False)
+    assert r[0] == "console", r
+check("boot: menu defaults to normal kernel, console via input", test_boot_menu_default_and_console)
+
+
+def test_boot_menu_numbered_selection():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    K.record_current_kernel()
+    with mock.patch.object(K, "_kernel_meta",
+                           return_value=("0.9.9-beta", "m1")):
+        K.record_current_kernel()
+    r = K.boot_menu(lambda l, **k: None, lambda p='': '1', interactive=False)
+    assert r[1]["version"] == "0.9.9-beta", r
+check("boot: numbered selection picks a previous kernel", test_boot_menu_numbered_selection)
+
+
+def test_edit_uses_editor_and_reloads():
+    import tempfile, subprocess as _sp
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    K._last_api = None
+    K._load(None)
+    # fake editor: writes a new mem value into krip.json
+    editor = sys.executable + " -c 'import json,sys; d=json.load(open(sys.argv[1])); d[\"mem_mb\"]=768; json.dump(d,open(sys.argv[1],\"w\"),indent=2)'"
+    old = os.environ.get("KRIP_EDITOR")
+    os.environ["KRIP_EDITOR"] = editor
+    try:
+        K._cmd(["edit"], None)
+    finally:
+        if old is None:
+            os.environ.pop("KRIP_EDITOR", None)
+        else:
+            os.environ["KRIP_EDITOR"] = old
+    assert K._config["mem_mb"] == 768, K._config["mem_mb"]
+check("edit: editor writes config, K-rip reloads it", test_edit_uses_editor_and_reloads)
+
+
+# restore any memory budget the tests applied, so the process is unharmed
+try:
+    import resource as _r
+    _r.setrlimit(_r.RLIMIT_AS, (_r.RLIM_INFINITY, _r.RLIM_INFINITY))
+except Exception:
+    pass
 
 
 print(f"\nKRIP TESTS: {passed}/{passed + failed} passed")
