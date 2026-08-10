@@ -227,7 +227,7 @@ Aliases: `build`→compile, `glass`→gui, `plugins`→plugin, `?`→help,
   Goose TUIs focused inside the project root, feeding them
   `knowledge/full.md` + `knowledge/samples-index.md` and the personas from
   `knowledge/agents.md`.
-- **example_plugin.py** — single-file reference plugin: `register(api)`,
+- **reference plugin** — `examples/plugins/example_plugin.py`: `register(api)`,
   `api.register_variable_handler`, `api.register_syntax` ($repeat_n variable
   handler + `@shuffle` syntax demo).
 

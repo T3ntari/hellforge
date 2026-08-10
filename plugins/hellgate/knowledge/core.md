@@ -67,7 +67,7 @@ samples table: `samples-index.md`; personas: `agents.md`.
   DSP...). `talisman/` — audio culling + privacy.
 - `launcher/` — window/process mgmt. `learner/` — tutorial.
   `hellgate/` — this pack (launches the agent TUIs).
-- `example_plugin.py` — reference plugin (variable-handler + syntax hooks).
+- reference plugin example: `examples/plugins/example_plugin.py`.
 - Plugin API: `add_command`, `api.on("post_compile", cb)` (feed-forward,
   return None = unchanged), `register_syntax`, `register_directive`,
   `register_math_evaluator`, `register_gc`, `require(pkgs)`.

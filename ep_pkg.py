@@ -689,15 +689,7 @@ def init():
             "updated": datetime.now().isoformat(),
             "url": "",
             "mods": {},
-            "plugins": {
-                "example_plugin": {
-                    "version": "1.0.0",
-                    "description": "Adds $repeat and @shuffle syntax to the language",
-                    "author": "E Lang Team",
-                    "tags": "syntax,variables",
-                    "url": "",
-                }
-            },
+            "plugins": {},
         }
         save(default)
 

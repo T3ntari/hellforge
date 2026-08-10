@@ -36,7 +36,7 @@
 audio) · `radical/` (GPU math) · `vulkanizer/` (Vulkan compute) ·
 `tensorsharp/` (tensor cores) · `openapi/` (OpenGL) · `lure/` (LuaJIT
 accelerator) · `talisman/` (event culling) ·
-`launcher/`, `learner/`, `portbaby/` (conversion), `example_plugin.py`.
+`launcher/`, `learner/`, `portbaby/` (conversion). The single-file reference plugin lives in `examples/plugins/example_plugin.py`.
 
 ## tests/
 

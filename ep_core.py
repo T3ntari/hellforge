@@ -1611,7 +1611,9 @@ def restore_all(target_dir=None):
             if r:
                 restored += 1
         else:
-            _ok(f"Plugin {name} already present ({count} files)")
+            real = sum(1 for f in (target_dir / name).rglob("*")
+                       if f.is_file() and "__pycache__" not in f.parts)
+            _ok(f"Plugin {name} present ({real} files)")
     if restored == 0:
         _ok("All bundled plugins present")
     return restored
@@ -1638,6 +1640,7 @@ def embed_info(name=None):
 def init():
     """Initialize core system: load plugins, mods, encryptors."""
     # Load custom encryptors from encryption/
+    _enc_names = []
     if ENCRYPTION_DIR.exists():
         sys.path.insert(0, str(ENCRYPTION_DIR))
         for f in sorted(ENCRYPTION_DIR.glob("*.py")):
@@ -1647,9 +1650,12 @@ def init():
                 mod = _load_module(f, f"encryption.{f.stem}", security_scan=False)
                 if mod and hasattr(mod, "register_encryptor"):
                     mod.register_encryptor(_register_encryptor)
-                    print(f"  > Encryption loaded: {f.stem}")
+                    _enc_names.append(f.stem)
             except Exception as e:
                 print(f"  > Encryption error {f.name}: {e}")
+    if _enc_names:
+        print(f"  \033[90m[encryption] {len(_enc_names)} module(s): "
+              f"{', '.join(_enc_names)}\033[0m")
 
     load_plugins()
     load_mods()
