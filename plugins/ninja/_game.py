@@ -320,8 +320,8 @@ class NinjaGame:
         when a display exists; glfw+PyOpenGL fallback; terminal session
         otherwise (W/S fwd/back, A/D strafe, Q/E turn, Shift run, M menu,
         Q/Esc quit)."""
-        display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-        if display:
+        display = self._detect_display()
+        if display is not None:
             if _module_importable("pygame"):
                 return self._play_window_pygame(dt)
             if _module_importable("glfw") and _module_importable("OpenGL.GL"):
@@ -329,6 +329,31 @@ class NinjaGame:
             print("  Ninja: display present but no window backend "
                   "(pip install pygame) — falling back to terminal mode")
         return self._play_terminal(dt)
+
+    @staticmethod
+    def _detect_display():
+        """Find a display when DISPLAY/WAYLAND_DISPLAY are not exported:
+        Wayland sockets and X sockets on the local machine."""
+        if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+            return True
+        found = False
+        runtime = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
+        try:
+            wl = [d for d in os.listdir(runtime) if d.startswith("wayland-")]
+            if wl:
+                os.environ["WAYLAND_DISPLAY"] = sorted(wl)[0]
+                found = True
+        except Exception:
+            pass
+        try:
+            xs = [d for d in os.listdir("/tmp/.X11-unix")
+                  if d.startswith("X")]
+            if xs and not found:
+                os.environ["DISPLAY"] = ":" + sorted(xs)[0][1:]
+                found = True
+        except Exception:
+            pass
+        return found
 
     def _play_window_pygame(self, dt):
         """pygame/SDL window — opens on any machine with a display
