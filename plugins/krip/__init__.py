@@ -956,6 +956,55 @@ def _spawn_eshell(stream_out=print):
     return _spawn([sys.executable, path], name="console", stream_out=stream_out)
 
 
+def console_mode(stream_out=print, input_fn=input):
+    """The hypervisor console — where Ctrl+C / 'c' at the boot menu lands.
+    A krip-level prompt, no OS boot: inspect the machine, boot the OS,
+    or launch the game."""
+    B, C, D, R = "\033[1m", "\033[36m", "\033[2m", "\033[0m"
+    stream_out(f"\n  {B}KRIP CONSOLE — hypervisor prompt{R}")
+    stream_out(f"  {D}help | status | boot | game | eshell | mem | cpu | gpu |"
+               f" engine | vulkanrt | tensor | sandbox | os | kernels |"
+               f" config | edit | quit{R}")
+    while True:
+        try:
+            line = input_fn("  console> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            stream_out("\n  back to the terminal")
+            return 0
+        if not line:
+            continue
+        parts = line.split()
+        cmd = parts[0].lower()
+        if cmd in ("quit", "exit", "q"):
+            stream_out("  console exited — back to the terminal")
+            return 0
+        if cmd in ("help", "?"):
+            stream_out("  " + " | ".join(
+                ["help", "status", "boot", "game", "eshell", "mem",
+                 "cpu", "gpu", "engine", "vulkanrt", "tensor", "sandbox",
+                 "os", "kernels", "config", "edit", "quit"]))
+            continue
+        if cmd in ("game", "ninja"):
+            os.environ["KRIP_BOOT_CMD"] = "ninja"
+            stream_out(f"  {C}boot → ninja game{R}")
+            return _spawn_eshell(stream_out)
+        if cmd in ("eshell", "shell", "os"):
+            return _spawn_eshell(stream_out)
+        if cmd == "boot":
+            r = boot_menu(stream_out, input_fn)
+            if r[0] == "boot":
+                boot_entry(r[1], stream_out)
+            return 0
+        if cmd in ("mem", "cpu", "gpu", "engine", "vulkanrt", "tensor",
+                   "sandbox", "kernels", "config", "edit", "status"):
+            try:
+                stream_out(_cmd(parts))
+            except Exception as e:
+                stream_out(f"  error: {e}")
+            continue
+        stream_out(f"  {D}unknown: {cmd} — try help{R}")
+
+
 def hypervisor_entry(argv, stream_out=print, input_fn=input):
     """The hypervisor entry — krip launches everything else."""
     record_current_kernel()
@@ -978,6 +1027,10 @@ def hypervisor_entry(argv, stream_out=print, input_fn=input):
                     else:
                         stream_out("  update complete — kernels refreshed")
                     continue  # re-show the menu with the new kernel
+                if r[0] == "console":
+                    # the console is the hypervisor prompt itself — no
+                    # re-spawn, no OS boot ceremony
+                    return console_mode(stream_out, input_fn)
                 break
         return _spawn_eshell(stream_out)
     a = argv[0].lower()
@@ -986,7 +1039,12 @@ def hypervisor_entry(argv, stream_out=print, input_fn=input):
             stream_out("  usage: krip run <cmd...>")
             return 1
         return _spawn(argv[1:], name="cmd", stream_out=stream_out)
-    if a in ("eshell", "shell", "console"):
+    if a in ("eshell", "shell"):
+        return _spawn_eshell(stream_out)
+    if a == "console":
+        return console_mode(stream_out, input_fn)
+    if a in ("game", "ninja"):
+        os.environ["KRIP_BOOT_CMD"] = "ninja"
         return _spawn_eshell(stream_out)
     if a in ("hellgate", "gate", "hg"):
         run_py = os.path.join(PROJECT_DIR or os.getcwd(), "run.py")
