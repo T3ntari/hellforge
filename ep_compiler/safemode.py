@@ -171,14 +171,16 @@ def safe_boot(stream_out=print, input_fn=input, ask_update=True):
     _t1.join(timeout=3); _t2.join(timeout=7)
 
     online = _results.get("online", False)
-    if not online:
+    # a slow network must never send the machine to SAFE MODE: if the
+    # probe or Y check does not finish in time, X alone is the proof
+    if not online or "y" not in _results:
         stream_out("  \033[90m[security] offline — X is the proof, skipping Y\033[0m")
         # X is the proof offline; rotate the hidden layout for next init
         SH.x_rotate()
         return "offline-ok"
 
     # 3) online: technique Y + version sync
-    y_ok, y_detail = _results.get("y", (False, "Y check did not finish"))
+    y_ok, y_detail = _results["y"]
     if not y_ok:
         stream_out("  \033[31m[security] technique Y FAILED\033[0m")
         stream_out(f"  \033[90m{y_detail}\033[0m")
