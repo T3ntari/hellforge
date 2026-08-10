@@ -296,6 +296,34 @@ def _random_fname():
     ))
 
 
+IDENTITY_FILES = (".e_identity/secret.key", ".e_identity/identity.json",
+                  ".e_identity/.device_id")
+
+
+def identity_digest():
+    """SHA-256 over the local identity files (secret.key, identity.json,
+    .device_id). 'none' when no identity exists yet. Tampering with any of
+    them is detected at the next init (carried inside the X store)."""
+    parts = []
+    for rel in IDENTITY_FILES:
+        p = PROJECT_DIR / rel
+        if p.is_file():
+            try:
+                parts.append(rel + ":" + p.read_bytes().hex())
+            except Exception:
+                pass
+    if not parts:
+        return "none"
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def reembed():
+    """Re-hide X with the CURRENT bundle + identity digest — call after
+    legitimate identity changes (create identity, rotate device id)."""
+    _tag, key = load_version_key()
+    x_embed(digest_bundle(compute_manifest()), key or "")
+
+
 def x_embed(bundle, y=None):
     """Hide X (the digest) and Y (the version key) as very small 1-2 line
     fragments, each in its own random-named file, inside a freshly created
@@ -327,6 +355,14 @@ def x_embed(bundle, y=None):
             fn = _random_fname()
         (inner / fn).write_text(random.choice(_FRAG_STYLES).format(hex=chunk) + "\n")
         entries[fn] = ("y", pos, chunk)
+
+    # identity digest — an extra store entry kind 'i'
+    ident_fn = _random_fname()
+    while ident_fn in entries:
+        ident_fn = _random_fname()
+    ident = identity_digest()
+    (inner / ident_fn).write_text("id: " + ident + "\n")
+    entries[ident_fn] = ("i", 0, ident)
 
     order_dir = _order_root() / uuid.uuid4().hex[:8]
     order_dir.mkdir(parents=True, exist_ok=True)
@@ -377,7 +413,7 @@ def _x_extract():
         if store_rel is None or not entries:
             return None, None, None
         store = (PROJECT_DIR / store_rel)
-        by_kind = {"x": {}, "y": {}}
+        by_kind = {"x": {}, "y": {}, "i": {}}
         for kind, pos, fn in entries:
             p = store / fn
             if not p.is_file():
@@ -386,6 +422,11 @@ def _x_extract():
             import re as _re
             for line in txt.splitlines():
                 line = line.strip()
+                if kind == "i":
+                    m = _re.fullmatch(r"id: ([0-9a-f]+)", line)
+                    if m:
+                        by_kind[kind][pos] = m.group(1)
+                    continue
                 for style in _FRAG_STYLES:
                     tpl = style.format(hex="{HEX}")
                     pat = _re.escape(tpl).replace(_re.escape("{HEX}"),
@@ -398,7 +439,8 @@ def _x_extract():
             return None, None, None
         bundle = "".join(by_kind["x"][i] for i in sorted(by_kind["x"]))
         y = "".join(by_kind["y"][i] for i in sorted(by_kind["y"])) if by_kind["y"] else ""
-        return bundle, y, order_file
+        ident = "".join(by_kind["i"][i] for i in sorted(by_kind["i"])) if by_kind["i"] else None
+        return bundle, y, ident, order_file
     except Exception:
         return None, None, None
 
@@ -409,7 +451,7 @@ def x_verify():
     The order file is DELETED immediately after use, and a fresh random
     layout is embedded for the next init. On failure the store is kept as
     evidence. Returns (ok, detail)."""
-    bundle, y, order_file = _x_extract()
+    bundle, y, ident, order_file = _x_extract()
     if bundle is None:
         # nothing hidden yet -> first-run embed from the current state
         cur = digest_bundle(compute_manifest())
@@ -420,6 +462,10 @@ def x_verify():
     if bundle != current:
         return False, ("X fragment digest does not match the current core "
                        "structure — a covered file was altered")
+    cur_ident = identity_digest()
+    if ident is not None and ident != cur_ident:
+        return False, ("identity files altered — secret.key / identity.json / "
+                       ".device_id changed since the last verification")
     tag, committed_y = load_version_key()
     if committed_y:
         if y != committed_y:

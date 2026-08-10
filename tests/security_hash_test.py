@@ -130,5 +130,28 @@ def test_digest_size():
 check("digest: 128-512 hex chars, triple", test_digest_size)
 
 
+def test_identity_tamper_flags():
+    import ep_compiler.security_hash as SHm
+    sk = SHm.PROJECT_DIR / ".e_identity" / "secret.key"
+    if not sk.is_file():
+        check("X: identity tamper flags (no identity present — skipped)", lambda: None)
+        return
+    SHm.reembed()
+    ok, _ = SHm.x_verify()
+    assert ok, "precondition: verify passes"
+    orig = sk.read_bytes()
+    try:
+        sk.write_bytes(b"tampered-key-bytes")
+        ok, detail = SHm.x_verify()
+        assert not ok, "identity tamper must be flagged"
+        assert "identity files altered" in detail, detail
+    finally:
+        sk.write_bytes(orig)
+    SHm.reembed()
+    ok, _ = SHm.x_verify()
+    assert ok, "restored identity must verify again"
+check("X: secret.key tamper flags the system, reembed restores", test_identity_tamper_flags)
+
+
 print(f"\nSECURITY HASH TESTS: {passed}/{passed + failed} passed")
 sys.exit(0 if failed == 0 else 1)

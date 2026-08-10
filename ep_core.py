@@ -1009,6 +1009,12 @@ def creatidentity(name, social=None):
         f.write("secret.key\n")
     global _IDENTITY
     _IDENTITY = identity
+    # refresh the hidden identity digest so the new identity verifies
+    try:
+        from ep_compiler.security_hash import reembed
+        reembed()
+    except Exception:
+        pass
     return identity
 
 

@@ -130,6 +130,12 @@ def _cmd_rotate_id():
             dev_path.unlink()
         new_id = get_device_id()
         print(f"  Device ID rotated: {new_id[:16]}...")
+        try:
+            from ep_compiler.security_hash import reembed
+            reembed()
+            print("  identity digest refreshed")
+        except Exception:
+            pass
         print(f"  Your session will be treated as a new device by the backend")
     except Exception as e:
         print(f"  Rotate failed: {e}")
