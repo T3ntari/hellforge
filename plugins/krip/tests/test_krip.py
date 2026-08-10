@@ -160,6 +160,7 @@ def test_boot_registry_rollback():
     import tempfile, unittest.mock as mock
     tmp = tempfile.mkdtemp()
     K.PROJECT_DIR = tmp
+    cur_ver, _ = K._kernel_meta()
     K.record_current_kernel()
     K.snapshot_previous_kernel()
     with mock.patch.object(K, "_kernel_meta",
@@ -168,7 +169,7 @@ def test_boot_registry_rollback():
     entries = K.load_kernels()
     vers = [e["version"] for e in entries]
     assert vers.count("0.9.9-beta") == 2, vers
-    assert vers.count("0.1.14.29-beta") == 2, vers
+    assert vers.count(cur_ver) == 2, vers
     cur = [e for e in entries if e.get("current")]
     assert all(e["version"] == "0.9.9-beta" for e in cur)
 check("boot: registry rolls old latest to previous, new becomes current", test_boot_registry_rollback)

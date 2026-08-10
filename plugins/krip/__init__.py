@@ -284,7 +284,7 @@ def _edit_config(stream_out=print, input_fn=input):
                     _save(_last_api)
                     _apply_rlimits(_config["mem_mb"])
                     _apply_affinity(_config["cpu_threads"])
-                    stream_out(f"  ⚡ krip.json saved — reloaded live "
+                    stream_out(f"  [krip] krip.json saved — reloaded live "
                                f"(mem {_config['mem_mb']}MB, cpu "
                                f"{_config['cpu_threads']}, gpu {_config['gpu']}, "
                                f"engine {_config['engine']})")
@@ -632,7 +632,7 @@ def _draw_menu(entries, sel, countdown, stream_out):
     lines.append("  ║          HELLFORGE OS — K-rip boot manager         ║")
     lines.append("  ╚════════════════════════════════════════════════════╝")
     for i, e in enumerate(entries):
-        mark = "▶" if i == sel else " "
+        mark = ">" if i == sel else " "
         kern = e["id"].replace("ep_core", "ep_core")
         line = (f"  {mark} {kern:<18} v{e.get('version', '?')}"
                 f"  [{e.get('mode', 'normal')}]")
