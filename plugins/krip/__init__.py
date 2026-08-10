@@ -693,19 +693,39 @@ _S = {
 
 
 def _banner():
-    """HELLFORGE OS banner."""
-    return (
-        "\n"
-        "   ██░ ██ ███████  ██▓     ██▓     ▄████▄  ██████  ▄████▄  ███████ ███████\n"
-        "  ▓██░ ██▒██  ██  ▓██▒    ▓██▒    ▒██▀ ▀█ ▒██    ▒ ▒██▀ ▀█ ██     ██  ██\n"
-        "  ▒██▀▀██░██ ░██  ▒██░    ▒██░    ▒▓█    ▄░ ▓██▄   ▒▓█    ▄▒██████ ██  ██\n"
-        "  ░▓█ ░██ ██ ░██  ▒██░    ▒██░    ▒▓▓▄ ▄██▒ ▒   ██▒▒▓▓▄ ▄██░▓█  ██ ██  ██\n"
-        "  ░▓█▒░██▓███████ ░██████▒░██████▒▒ ▓███▀ ░▒██████▒▒▒ ▓███▀ ▒██████ ███████\n"
-        "   ▒ ░░▒░▒░ ▒░▓  ░ ░ ▒░▓  ░ ░ ▒░▓  ░░ ░▒ ▒  ░░ ▒░▓  ░  ░ ▒ ▒  ░ ▒░▓  ░░ ▒░▓  ░\n"
-        "   ▒ ░▒░ ░░ ░ ▒  ░ ░ ░ ▒  ░ ░ ░ ▒  ░  ░  ▒   ░ ▒ ▒░  ░ ░ ▒   ░ ▒ ▒░  ░ ▒  ░\n"
-        "   ░  ░░ ░  ░ ░     ░ ░     ░ ░    ░        ░ ░ ░ ▒   ░ ░ ░ ░   ░ ░ ▒    ░ ░\n"
-        "   ░  ░  ░    ░  ░    ░  ░    ░  ░  ░ ░      ░ ░   ░  ░   ░ ░ ░    ░  ░   ░  ░\n"
-    )
+    """HELLFORGE OS banner — pyfiglet art with a fire gradient and the
+    version beneath. Falls back to plain text if pyfiglet is missing."""
+    art_text = ""
+    try:
+        import pyfiglet
+        art_text = pyfiglet.figlet_format("HELLFORGE", font="big").rstrip("\n")
+    except Exception:
+        art_text = (
+            "   HELLFORGE\n"
+            "   OS  —  hypervisor ready"
+        )
+    # fire gradient across the art lines: deep red -> orange -> yellow
+    _grad = ("\033[38;5;196m", "\033[38;5;208m", "\033[38;5;214m",
+             "\033[38;5;220m", "\033[38;5;228m", "\033[38;5;230m")
+    out = ["\n"]
+    lines = art_text.split("\n")
+    n = len(lines)
+    for i, ln in enumerate(lines):
+        if not ln.strip():
+            continue
+        col = _grad[int(i * len(_grad) / max(n - 1, 1))]
+        out.append("  " + col + ln.rstrip() + "\033[0m")
+    # version: tiny grey HELLFORGE + version, tight under the art
+    ver = "dev"
+    try:
+        from ep_compiler.security_hash import local_version
+        ver = local_version() or "dev"
+    except Exception:
+        pass
+    out.append("")
+    out.append("  \033[2;90mHELLFORGE\033[0m")
+    out.append(f"  \033[2;37m{ver}\033[0m")
+    return "\n".join(out)
 
 
 def _draw_menu(entries, sel, countdown, stream_out, new_ver=None):

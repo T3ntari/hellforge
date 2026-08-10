@@ -1,5 +1,26 @@
+import os
+
 """OPENapi GLContext — raw OpenGL context, window, extensions, debug.
 This is the lowest layer. Game engines create one context and build on top."""
+
+
+def _display_available():
+    """True when a display is reachable (env, Wayland or X sockets) —
+    avoids glfw.init() warnings on headless machines."""
+    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    try:
+        runtime = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
+        if os.path.isdir(runtime) and any(
+                d.startswith("wayland-") for d in os.listdir(runtime)):
+            return True
+        if os.path.isdir("/tmp/.X11-unix") and any(
+                d.startswith("X") for d in os.listdir("/tmp/.X11-unix")):
+            return True
+    except Exception:
+        pass
+    return False
+
 
 import os
 import sys
@@ -26,9 +47,17 @@ class GLContext:
         self._init()
 
     def _init(self):
+        if not _display_available():
+            self.diagnostic = "no display (headless)"
+            return
         try:
+            import warnings
             import glfw
-            if not glfw.init():
+            glfw.set_error_callback(lambda *a: None)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                ok = glfw.init()
+            if not ok:
                 self.diagnostic = "glfw init failed"
                 return
 

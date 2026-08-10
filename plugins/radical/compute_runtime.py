@@ -298,10 +298,18 @@ def _ensure_context():
     if _global_context is not None:
         return _global_context
 
-    # Try glfw
+    # Try glfw (only when a display exists; headless -> pygame/OSMesa path)
     try:
+        import os as _os
+        if not (_os.environ.get("DISPLAY") or _os.environ.get("WAYLAND_DISPLAY")):
+            raise RuntimeError("no display")
+        import warnings as _w
         import glfw
-        if glfw.init():
+        glfw.set_error_callback(lambda *a: None)
+        with _w.catch_warnings():
+            _w.simplefilter("ignore")
+            _ok = glfw.init()
+        if _ok:
             glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
             glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 4)
             glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)

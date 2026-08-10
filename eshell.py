@@ -126,10 +126,34 @@ def _load_sys_limits():
 
 def banner():
     RED_ = RED
-    print(f"\n  {c('███████████████████████████████████████', RED_)}")
-    print(f"  {c('█', RED_)}     {c('H E L L F O R G E', B)}     {c('█', RED_)}")
-    print(f"  {c('█', RED_)}   {c('v1.0.0.0 ALPHA', D)}   {c('█', RED_)}")
-    print(f"  {c('███████████████████████████████████████', RED_)}")
+    ver = "dev"
+    try:
+        from ep_compiler.security_hash import local_version
+        ver = local_version() or "dev"
+    except Exception:
+        pass
+    art_text = ""
+    try:
+        import pyfiglet
+        art_text = pyfiglet.figlet_format("HELLFORGE", font="big").rstrip("\n")
+    except Exception:
+        art_text = None
+    if art_text:
+        _grad = ("\033[38;5;196m", "\033[38;5;208m", "\033[38;5;214m",
+                 "\033[38;5;220m", "\033[38;5;228m", "\033[38;5;230m")
+        _lines = [ln for ln in art_text.split("\n") if ln.strip()]
+        _n = len(_lines)
+        print("")
+        for _i, _ln in enumerate(_lines):
+            _c = _grad[int(_i * len(_grad) / max(_n - 1, 1))]
+            print("  " + _c + _ln.rstrip() + "\033[0m")
+        print(f"  {c('HELLFORGE', D)}  {c(ver, D)}")
+        print("")
+    else:
+        print(f"\n  {c('███████████████████████████████████████', RED_)}")
+        print(f"  {c('█', RED_)}     {c('H E L L F O R G E', B)}     {c('█', RED_)}")
+        print(f"  {c('█', RED_)}   {c(ver, D)}   {c('█', RED_)}")
+        print(f"  {c('███████████████████████████████████████', RED_)}")
     print(f"  {c('CORE-EXPANSION: REGAS', RED_)}  {c('| Signed: TENTARI', D)}")
     print(f"  {c('Type help for commands  |  Run sign --setup to register', D)}\n")
 
