@@ -659,15 +659,20 @@ def check_versions(pkg_type=None):
                 continue
             meta = get_installed_meta(f)
             inst = meta["version"]
-            avail = pkgs.get(pt, {}).get(meta["name"], {}).get("version", "?")
-            checks.append((meta["name"], pt, inst, avail))
+            entry = pkgs.get(pt, {}).get(meta["name"], {})
+            avail = entry.get("version", "?")
+            # bundled (no update_url) = part of the repo, always in sync
+            if not entry.get("update_url"):
+                checks.append((meta["name"], pt, inst, avail, True))
+            else:
+                checks.append((meta["name"], pt, inst, avail, False))
 
     if not checks:
         return print(f"  {c('no packages to check', D)}")
 
     rows = []
-    for name, pt, inst, avail in checks:
-        if inst == "?" or avail == "?" or inst == avail:
+    for name, pt, inst, avail, bundled in checks:
+        if bundled or inst == "?" or avail == "?" or inst == avail:
             status = c("✓", GREEN)
         else:
             status = c("⬆", YELLOW) if compare_versions(inst, avail) < 0 else c("•", D)

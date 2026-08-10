@@ -1707,6 +1707,11 @@ def main():
             for _name, _path in _find_pkgs(_dir):
                 _installed = _get_meta(_path)
                 _avail = _pkg_data.get(_ptype, {}).get(_name, {})
+                # only real registry entries (with update_url) are updatable —
+                # bundled plugins ship with the repo and are never 'updatable',
+                # no matter what pkglist.json's version field says
+                if not _avail.get("update_url"):
+                    continue
                 if _installed and _avail:
                     _iv = _installed.get("version", "?")
                     _av = _avail.get("version", "?")
