@@ -1015,11 +1015,18 @@ def console_mode(stream_out=print, input_fn=input):
     while True:
         try:
             line = input_fn("  kernel> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            stream_out("\n  back to the boot menu")
+        except EOFError:
+            stream_out("\n  back to the terminal")
             return 0
+        except KeyboardInterrupt:
+            # Ctrl+C is copy, not quit — only 'exit' leaves the console
+            stream_out("  ^C  (Ctrl+C is copy — type exit to quit, or press Esc twice)")
+            continue
         if not line:
             continue
+        if line in ("\x1b", "\x1b\x1b", "\033", "\033\033"):
+            stream_out("  console exited — back to the terminal")
+            return 0
         parts = line.split()
         cmd = parts[0].lower()
         if cmd in ("quit", "exit", "q"):

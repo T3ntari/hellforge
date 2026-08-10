@@ -31,6 +31,15 @@ def c(text, color=""):
     return f"{color}{text}{R}" if color and sys.stdout.isatty() else text
 
 
+# readline handle (module-level so prompt helpers can see it)
+_RLINE = None
+try:
+    import readline as _readline
+    _RLINE = _readline
+except Exception:
+    _RLINE = None
+
+
 # ── System Resource Helpers ──
 
 def _get_thread_semaphore():
@@ -1638,6 +1647,15 @@ def do_help(args):
 
 # Track eshell start time for uptime
 _eshell_start_time = 0
+def _rl_prompt(prompt):
+    """Wrap ANSI escapes in \001/\002 so readline counts them as
+    zero-width — without this the ESC bytes leak into the console."""
+    if _RLINE is None:
+        return prompt
+    import re as _re
+    return _re.sub(r"(\x1b\[[0-9;]*m)", "\001\1\002", prompt)
+
+
 def _save_history(readline, path):
     """Persist the console history across sessions (best-effort)."""
     try:
@@ -1952,19 +1970,15 @@ def main():
 
     # ── console history: readline gives arrow-up/down command cycling ──
     _HISTORY_FILE = os.path.expanduser("~/.hellforge_console_history")
-    try:
-        import readline
-        readline.parse_and_bind("set show-all-if-ambiguous on")
-        if os.path.isfile(_HISTORY_FILE):
-            try:
-                readline.read_history_file(_HISTORY_FILE)
-            except Exception:
-                pass
-    except Exception:
-        readline = None
-    if readline is not None:
+    if _RLINE is not None:
+        try:
+            _RLINE.parse_and_bind("set show-all-if-ambiguous on")
+            if os.path.isfile(_HISTORY_FILE):
+                _RLINE.read_history_file(_HISTORY_FILE)
+        except Exception:
+            pass
         import atexit as _atexit
-        _atexit.register(lambda: _save_history(readline, _HISTORY_FILE))
+        _atexit.register(lambda: _save_history(_RLINE, _HISTORY_FILE))
 
     boot_cmd = os.environ.pop("KRIP_BOOT_CMD", "")
     if boot_cmd:
@@ -1982,11 +1996,14 @@ def main():
         try:
             cwd = os.getcwd()
             if len(cwd) > 50: cwd = "..." + cwd[-47:]
-            user = input(f"  {c('HELLFORGE', RED)} {c(cwd, GREY)} {c('>', RED)} ").strip()
+            _prompt = _rl_prompt(
+                f"  {c('HELLFORGE', RED)} {c(cwd, GREY)} {c('>', RED)} ")
+            user = input(_prompt).strip()
         except EOFError:
             print(f"\n  {c('bye', GREY)}"); break
         except KeyboardInterrupt:
-            print(f"\n  {c('^C', D)}"); continue
+            print(f"\n  {c('^C', D)}  {c('(Ctrl+C is copy — type exit to quit)', D)}")
+            continue
         if not user: continue
         if user.lower() in ("exit", "quit"):
             print(f"  {c('bye', CYAN)}"); break
@@ -1994,8 +2011,12 @@ def main():
         cmd = parts[0].lower()
         args = parts[1:]
         if cmd in cmds:
-            try: cmds[cmd](args)
-            except Exception as e: print(f"  {c(f'error: {e}', RED)}")
+            try:
+                cmds[cmd](args)
+            except KeyboardInterrupt:
+                print(f"\n  {c('^C', D)}  {c('(Ctrl+C is copy — type exit to quit)', D)}")
+            except Exception as e:
+                print(f"  {c(f'error: {e}', RED)}")
         else:
             print(f"  {c(f'unknown: {cmd}', RED)} {c('try help', D)}")
 
