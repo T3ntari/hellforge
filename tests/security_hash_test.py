@@ -26,20 +26,34 @@ def check(name, fn):
         print(f"  [FAIL] {name}: {e}")
 
 
+def _embed():
+    from ep_compiler.security_hash import load_version_key
+    tag, key = load_version_key()
+    SH.x_embed(SH.digest_bundle(SH.compute_manifest()), key or "")
+
+
+def _fragment_files():
+    store = SH.PROJECT_DIR / ".e_identity" / ".integrity" / ".store"
+    return [f for d2 in store.iterdir() if d2.is_dir()
+            for d3 in d2.iterdir() if d3.is_dir()
+            for f in d3.iterdir() if f.is_file()]
+
+
 def test_x_verify_clean():
-    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
+    _embed()
     ok, detail = SH.x_verify()
     assert ok, f"X must verify after embed: {detail}"
 check("X: clean embed verifies", test_x_verify_clean)
 
 
 def test_x_rotation_changes_layout():
-    p1 = open(SH.X_FILE).read()
-    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
-    p2 = open(SH.X_FILE).read()
+    _embed()
+    before = sorted(str(f) for f in _fragment_files())
+    SH.x_verify()  # consumes + re-embeds fresh
+    after = sorted(str(f) for f in _fragment_files())
     ok, _ = SH.x_verify()
     assert ok, "rotated X must still verify"
-    assert p1 != p2, "rotation must change the hidden layout"
+    assert before != after, "rotation must change the hidden layout"
 check("X: rotation re-randomizes layout, still verifies", test_x_rotation_changes_layout)
 
 
@@ -54,21 +68,36 @@ def test_x_flags_covered_tamper():
     finally:
         with open(os.path.join(ROOT, "eshell.py"), "w") as f:
             f.write(orig)
-    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
+    _embed()
 check("X: tampered covered file is flagged", test_x_flags_covered_tamper)
 
 
+def _current_store_dir():
+    """The store dir referenced by the CURRENT order file."""
+    import ep_compiler.security_hash as S
+    of = S._find_order_file()
+    assert of is not None, "order file must exist"
+    for ln in of.read_text().splitlines():
+        if ln.startswith("store="):
+            return S.PROJECT_DIR / ln.split("=", 1)[1]
+    raise AssertionError("no store= line in order file")
+
+
 def test_x_flags_fragment_tamper():
-    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
-    txt = open(SH.X_FILE).read()
-    # any hex fragment, whatever the random layout style
-    m = re.search(r'("[0-9a-f]{4,}")', txt)
-    assert m, "X file should contain hex fragments"
-    hexval = m.group(1)
-    open(SH.X_FILE, "w").write(txt.replace(hexval, '"deadbeef"', 1))
+    _embed()
+    store_dir = _current_store_dir()
+    files = [f for f in store_dir.iterdir() if f.is_file()]
+    assert files, "fragment files must exist"
+    tgt = files[0]
+    txt = tgt.read_text()
+    m = re.search(r"[0-9a-f.]+", txt)
+    assert m, "fragment file should contain a hex chunk"
+    tgt.write_text(txt[:m.start()] + "deadbeef" + txt[m.end():])
     ok, _ = SH.x_verify()
     assert not ok, "X must flag altered fragments"
-    SH.x_embed(SH.digest_bundle(SH.compute_manifest()))
+    _embed()
+    ok, _ = SH.x_verify()
+    assert ok, "re-embedded X must verify"
 check("X: altered fragments are flagged", test_x_flags_fragment_tamper)
 
 

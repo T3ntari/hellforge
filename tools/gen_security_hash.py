@@ -71,8 +71,8 @@ def main():
     out.append(f"AGGREGATE={bundle}")
     MANIFEST_PATH.write_text("\n".join(out) + "\n")
 
-    # Technique X — hide the digest in random fragments in the core.
-    x_embed(bundle)
+    # Technique X + Y — hide digest + version key in random fragment files.
+    x_embed(bundle, key)
 
     print(f"  wrote {MANIFEST_PATH}")
     print(f"  version key : {tag} = {y_key(bundle, tag)[:24]}...")

@@ -168,10 +168,12 @@ def safe_update(target_tag, progress=None, stream_out=print):
             stream_out(f"  warning: could not restore stashed work: {err}")
     step(90)
 
-    # fresh X layout + integrity re-check
+    # fresh X + Y layout + integrity re-check
     try:
-        from ep_compiler.security_hash import digest_bundle, compute_manifest, x_embed
-        x_embed(digest_bundle(compute_manifest()))
+        from ep_compiler.security_hash import (digest_bundle, compute_manifest,
+                                               load_version_key, x_embed)
+        tag, key = load_version_key()
+        x_embed(digest_bundle(compute_manifest()), key or "")
     except Exception:
         pass
     step(100)

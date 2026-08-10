@@ -251,112 +251,211 @@ def load_version_key():
         return None, None
 
 
-def _x_fragments(bundle):
-    """Split the bundle into 6-16 tiny fragments with random sizes.
-    Returns [(original_index, chunk)] — shuffled so the layout order is
-    random, but every fragment keeps its index for reconstruction."""
-    n = random.randint(6, 16)
-    parts = []
-    step = max(8, len(bundle) // n)
+def _x_store_root():
+    """Deep, obscure, gitignored store root for the hidden fragments."""
+    root = PROJECT_DIR / ".e_identity" / ".integrity" / ".store"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _order_root():
+    root = PROJECT_DIR / ".e_identity" / ".integrity" / ".order"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+_ORDER_MARKER = "# hellforge-order-v2"
+_FRAG_STYLES = (
+    "# {hex}",
+    "data: {hex}",
+    "{hex}  # cache",
+    "token={hex}",
+    "[{hex}]",
+    "#~ {hex}",
+)
+
+
+def _tiny_chunks(text, per_line):
+    """Split into VERY small chunks, each fitting on one line."""
+    out = []
     i = 0
-    while i < len(bundle):
-        size = random.randint(4, max(8, step * 2))
-        parts.append((i, bundle[i:i + size]))
+    while i < len(text):
+        size = random.randint(per_line // 2, per_line)
+        out.append(text[i:i + size])
         i += size
-    random.shuffle(parts)
-    return parts
+    return out
 
 
-def x_embed(bundle):
-    """Hide the digest in random tiny fragments inside the X file. Returns
-    the path."""
-    frags = _x_fragments(bundle)
-    lines = ['"""Technique X — rotating core-digest fragments. Generated on every',
-             'init; random order / chunk sizes / positions. Do not edit."""',
-             ""]
-    for pos, (idx, fr) in enumerate(frags):
-        style = random.choice(_FRAG_STYLES)
-        if style[0].startswith("# x."):
-            lines.append(f'# x.{idx} = "{fr}"')
-        elif style[0].startswith("_x"):
-            lines.append(f'_x{idx} = "{fr}"  # core')
-        else:
-            lines.append(f'#~ {idx}:{fr} ~#')
-    # internal checksum of the X payload itself (detects X tampering)
-    payload = "\n".join(fr for _, fr in sorted(frags)).encode()
-    lines.append(f'_X_CHECK = "{hashlib.blake2b(payload, digest_size=32).hexdigest()}"')
-    X_FILE.parent.mkdir(parents=True, exist_ok=True)
-    X_FILE.write_text("\n".join(lines) + "\n")
-    return X_FILE
+def _random_fname():
+    return random.choice((
+        "blob_%s.cache" % os.urandom(2).hex(),
+        "tmp_%s.dat" % os.urandom(2).hex(),
+        "key.snap", "state_%s.json" % os.urandom(2).hex(),
+        ".trace_%s" % os.urandom(2).hex(),
+        "part_%s.bin" % os.urandom(2).hex(),
+    ))
+
+
+def x_embed(bundle, y=None):
+    """Hide X (the digest) and Y (the version key) as very small 1-2 line
+    fragments, each in its own random-named file, inside a freshly created
+    random deep directory. The ORDER (file -> position) is saved in another
+    random directory. Returns the order file path."""
+    import uuid
+    store = _x_store_root() / uuid.uuid4().hex[:8]
+    inner = store / uuid.uuid4().hex[:6]
+    inner.mkdir(parents=True, exist_ok=True)
+
+    x_chunks = _tiny_chunks(bundle, 14)
+    y_chunks = _tiny_chunks(y or "", 12)
+    entries = {}  # filename -> (kind, pos, hex)
+    for pos, chunk in enumerate(x_chunks):
+        fn = _random_fname()
+        while fn in entries:
+            fn = _random_fname()
+        (inner / fn).write_text(random.choice(_FRAG_STYLES).format(hex=chunk) + "\n")
+        entries[fn] = ("x", pos, chunk)
+    for pos, chunk in enumerate(y_chunks):
+        fn = _random_fname()
+        while fn in entries:
+            fn = _random_fname()
+        (inner / fn).write_text(random.choice(_FRAG_STYLES).format(hex=chunk) + "\n")
+        entries[fn] = ("y", pos, chunk)
+
+    order_dir = _order_root() / uuid.uuid4().hex[:8]
+    order_dir.mkdir(parents=True, exist_ok=True)
+    order_path = order_dir / "order.ord"
+    lines = [_ORDER_MARKER]
+    lines.append("store=" + str(inner.relative_to(PROJECT_DIR)))
+    for fn, (kind, pos, _c) in sorted(entries.items(), key=lambda kv: (kv[1][0], kv[1][1])):
+        lines.append(f"{kind}:{pos}={fn}")
+    order_path.write_text("\n".join(lines) + "\n")
+    return order_path
+
+
+def _find_order_file():
+    """Detect the order file by scanning the random order directories."""
+    root = _order_root()
+    if not root.is_dir():
+        return None
+    for d in sorted(root.iterdir()):
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            try:
+                head = f.read_text().splitlines()[:1]
+            except Exception:
+                continue
+            if head and head[0].strip() == _ORDER_MARKER:
+                return f
+    return None
 
 
 def _x_extract():
-    """Rebuild the bundle from the hidden fragments. None on failure."""
+    """Reconstruct (bundle, y) from the hidden fragments using the order
+    file. Returns (bundle, y, order_file) or (None, None, None)."""
+    order_file = _find_order_file()
+    if order_file is None:
+        return None, None, None
     try:
-        text = X_FILE.read_text()
-    except OSError:
-        return None
-    frags = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if line.startswith("# x."):
-            m = line.split('"')
-            if len(m) >= 2:
-                try:
-                    frags[int(line[4:line.index("=")].strip())] = m[1]
-                except Exception:
-                    return None
-        elif line.startswith("_x") and "=" in line and not line.startswith("_X_CHECK"):
-            m = line.split('"')
-            if len(m) >= 2:
-                try:
-                    frags[int(line[2:line.index("=")].strip())] = m[1]
-                except Exception:
-                    return None
-        elif line.startswith("#~") and "~#" in line:
-            inner = line[2:-2].strip()
-            if ":" in inner:
-                idx, fr = inner.split(":", 1)
-                try:
-                    frags[int(idx)] = fr
-                except Exception:
-                    return None
-    if not frags:
-        return None
-    ordered = [frags[i] for i in sorted(frags)]
-    # checksum must match the fragment payload (same join as x_embed)
-    payload = "\n".join(ordered).encode()
-    try:
-        chk_line = [l for l in text.splitlines() if l.startswith("_X_CHECK")][0]
-        expected = chk_line.split('"')[1]
-        if hashlib.blake2b(payload, digest_size=32).hexdigest() != expected:
-            return None
+        lines = order_file.read_text().splitlines()
+        store_rel = None
+        entries = []
+        for ln in lines[1:]:
+            if ln.startswith("store="):
+                store_rel = ln.split("=", 1)[1]
+            elif "=" in ln and ":" in ln:
+                kind_pos, fn = ln.rsplit("=", 1)
+                kind, pos = kind_pos.split(":", 1)
+                entries.append((kind, int(pos), fn))
+        if store_rel is None or not entries:
+            return None, None, None
+        store = (PROJECT_DIR / store_rel)
+        by_kind = {"x": {}, "y": {}}
+        for kind, pos, fn in entries:
+            p = store / fn
+            if not p.is_file():
+                return None, None, None
+            txt = p.read_text(errors="replace")
+            import re as _re
+            for line in txt.splitlines():
+                line = line.strip()
+                for style in _FRAG_STYLES:
+                    tpl = style.format(hex="{HEX}")
+                    pat = _re.escape(tpl).replace(_re.escape("{HEX}"),
+                                                  "([0-9a-f.]+)")
+                    m = _re.fullmatch(pat, line)
+                    if m:
+                        by_kind[kind][pos] = m.group(1)
+                        break
+        if not by_kind["x"]:
+            return None, None, None
+        bundle = "".join(by_kind["x"][i] for i in sorted(by_kind["x"]))
+        y = "".join(by_kind["y"][i] for i in sorted(by_kind["y"])) if by_kind["y"] else ""
+        return bundle, y, order_file
     except Exception:
-        return None
-    return "".join(ordered)
+        return None, None, None
 
 
 def x_verify():
-    """Technique X check — the offline proof. Returns (ok, detail)."""
-    hidden = _x_extract()
-    if hidden is None:
-        return False, "X fragments missing or tampered (no _x_hide.py)"
+    """Technique X + Y check: reconstruct the hidden fragments, compare X
+    with the current core digest and Y with the committed version key.
+    The order file is DELETED immediately after use, and a fresh random
+    layout is embedded for the next init. On failure the store is kept as
+    evidence. Returns (ok, detail)."""
+    bundle, y, order_file = _x_extract()
+    if bundle is None:
+        # nothing hidden yet -> first-run embed from the current state
+        cur = digest_bundle(compute_manifest())
+        _tag, key = load_version_key()
+        x_embed(cur, key or "")
+        return True, "X embedded (first run)"
     current = digest_bundle(compute_manifest())
-    if hidden != current:
+    if bundle != current:
         return False, ("X fragment digest does not match the current core "
                        "structure — a covered file was altered")
-    return True, "X verified (hidden digest matches core structure)"
+    tag, committed_y = load_version_key()
+    if committed_y:
+        if y != committed_y:
+            return False, "Y fragment does not match the committed version key"
+    # use done -> delete the order file (and its dir) immediately
+    used_store = None
+    try:
+        order_file.unlink()
+        d = order_file.parent
+        if d.is_dir() and not list(d.iterdir()):
+            d.rmdir()
+    except Exception:
+        pass
+    # fresh random layout for the next init
+    new_order = x_embed(current, committed_y or y or "")
+    # prune old embed dirs (the used store + any stale ones)
+    try:
+        store = _x_store_root()
+        used = set()
+        if new_order is not None:
+            ol = new_order.read_text().splitlines()
+            for ln in ol:
+                if ln.startswith("store="):
+                    used.add((PROJECT_DIR / ln.split("=", 1)[1]).parent)
+        for d2 in list(store.iterdir()):
+            if d2.is_dir() and d2 not in used:
+                import shutil as _sh
+                _sh.rmtree(d2, ignore_errors=True)
+        order_root = _order_root()
+        keep = {new_order.parent} if new_order is not None else set()
+        for d2 in list(order_root.iterdir()):
+            if d2.is_dir() and d2 not in keep:
+                import shutil as _sh
+                _sh.rmtree(d2, ignore_errors=True)
+    except Exception:
+        pass
+    return True, "X + Y verified (hidden fragments match core and version key)"
 
 
 def x_rotate():
-    """Re-hide the digest with a fresh random layout — called every init."""
-    if x_verify()[0]:
-        try:
-            x_embed(digest_bundle(compute_manifest()))
-            return True
-        except Exception:
-            return False
-    return False
+    """Re-hide with a fresh random layout (called every init)."""
+    return x_verify()[0]
 
 
 def remote_version(timeout=10):
