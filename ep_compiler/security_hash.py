@@ -317,14 +317,39 @@ def identity_digest():
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
+def identity_consistency():
+    """secret.key (ed25519 seed) must derive the public key stored in
+    identity.json. Catches tampering even if the digest was re-baselined."""
+    sk = PROJECT_DIR / ".e_identity" / "secret.key"
+    idp = PROJECT_DIR / ".e_identity" / "identity.json"
+    if not sk.is_file() or not idp.is_file():
+        return True, "no identity pair to cross-check"
+    try:
+        import re as _re
+        import ep_core
+        txt = sk.read_text().strip()
+        m = _re.search(r"[0-9a-fA-F]+$", txt)
+        if not m or len(m.group(0)) < 64:
+            return True, "cannot cross-check (non-standard key format)"
+        seed = bytes.fromhex(m.group(0))
+        _seed_hex, pub = ep_core.ed25519_generate_key(seed)
+        data = json.loads(idp.read_text())
+        if data.get("public_key") != pub:
+            return False, ("identity inconsistent — secret.key does not match "
+                           "identity.json (tampered key)")
+    except Exception:
+        return True, "cannot cross-check (key unreadable)"
+    return True, "identity consistent"
+
+
 def reembed():
     """Re-hide X with the CURRENT bundle + identity digest — call after
     legitimate identity changes (create identity, rotate device id)."""
     _tag, key = load_version_key()
-    x_embed(digest_bundle(compute_manifest()), key or "")
+    x_embed(digest_bundle(compute_manifest()), key or "", identity_digest())
 
 
-def x_embed(bundle, y=None):
+def x_embed(bundle, y=None, ident=None):
     """Hide X (the digest) and Y (the version key) as very small 1-2 line
     fragments, each in its own random-named file, inside a freshly created
     random deep directory. The ORDER (file -> position) is saved in another
@@ -356,7 +381,13 @@ def x_embed(bundle, y=None):
         (inner / fn).write_text(random.choice(_FRAG_STYLES).format(hex=chunk) + "\n")
         entries[fn] = ("y", pos, chunk)
 
-    # identity digest — an extra store entry kind 'i'
+    # identity digest — an extra store entry kind 'i'. When ident is not
+    # given, PRESERVE the previously stored (trusted) digest instead of
+    # absorbing whatever the current files contain — only explicit identity
+    # changes (creatidentity / rotate-id) pass a fresh digest.
+    if ident is None:
+        _b, _y, prev_ident, _of = _x_extract()
+        ident = prev_ident or identity_digest()
     ident_fn = _random_fname()
     while ident_fn in entries:
         ident_fn = _random_fname()
@@ -398,7 +429,7 @@ def _x_extract():
     file. Returns (bundle, y, order_file) or (None, None, None)."""
     order_file = _find_order_file()
     if order_file is None:
-        return None, None, None
+        return None, None, None, None
     try:
         lines = order_file.read_text().splitlines()
         store_rel = None
@@ -411,13 +442,13 @@ def _x_extract():
                 kind, pos = kind_pos.split(":", 1)
                 entries.append((kind, int(pos), fn))
         if store_rel is None or not entries:
-            return None, None, None
+            return None, None, None, None
         store = (PROJECT_DIR / store_rel)
         by_kind = {"x": {}, "y": {}, "i": {}}
         for kind, pos, fn in entries:
             p = store / fn
             if not p.is_file():
-                return None, None, None
+                return None, None, None, None
             txt = p.read_text(errors="replace")
             import re as _re
             for line in txt.splitlines():
@@ -436,13 +467,13 @@ def _x_extract():
                         by_kind[kind][pos] = m.group(1)
                         break
         if not by_kind["x"]:
-            return None, None, None
+            return None, None, None, None
         bundle = "".join(by_kind["x"][i] for i in sorted(by_kind["x"]))
         y = "".join(by_kind["y"][i] for i in sorted(by_kind["y"])) if by_kind["y"] else ""
         ident = "".join(by_kind["i"][i] for i in sorted(by_kind["i"])) if by_kind["i"] else None
         return bundle, y, ident, order_file
     except Exception:
-        return None, None, None
+        return None, None, None, None
 
 
 def x_verify():
@@ -466,6 +497,9 @@ def x_verify():
     if ident is not None and ident != cur_ident:
         return False, ("identity files altered — secret.key / identity.json / "
                        ".device_id changed since the last verification")
+    _cons_ok, cons_detail = identity_consistency()
+    if not _cons_ok:
+        return False, cons_detail
     tag, committed_y = load_version_key()
     if committed_y:
         if y != committed_y:
@@ -479,8 +513,8 @@ def x_verify():
             d.rmdir()
     except Exception:
         pass
-    # fresh random layout for the next init
-    new_order = x_embed(current, committed_y or y or "")
+    # fresh random layout for the next init (identity digest preserved)
+    new_order = x_embed(current, committed_y or y or "", ident)
     # prune old embed dirs (the used store + any stale ones)
     try:
         store = _x_store_root()

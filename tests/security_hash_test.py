@@ -153,5 +153,29 @@ def test_identity_tamper_flags():
 check("X: secret.key tamper flags the system, reembed restores", test_identity_tamper_flags)
 
 
+def test_identity_crosscheck_after_reembed():
+    """Even if a re-embed absorbs a tampered key, the seed<->pubkey
+    cross-check still flags it."""
+    import ep_compiler.security_hash as SHm
+    sk = SHm.PROJECT_DIR / ".e_identity" / "secret.key"
+    idp = SHm.PROJECT_DIR / ".e_identity" / "identity.json"
+    if not sk.is_file() or not idp.is_file():
+        check("X: cross-check flags re-baselined tamper (skipped)", lambda: None)
+        return
+    orig = sk.read_bytes()
+    try:
+        sk.write_bytes(b"00" * 32)
+        SHm.reembed()  # absorb attempt
+        ok, detail = SHm.x_verify()
+        assert not ok, "cross-check must flag the absorbed tamper"
+        assert "does not match identity.json" in detail, detail
+    finally:
+        sk.write_bytes(orig)
+    SHm.reembed()
+    ok, _ = SHm.x_verify()
+    assert ok, "restored identity must verify"
+check("X: seed/pubkey cross-check flags re-baselined tamper", test_identity_crosscheck_after_reembed)
+
+
 print(f"\nSECURITY HASH TESTS: {passed}/{passed + failed} passed")
 sys.exit(0 if failed == 0 else 1)
