@@ -1566,6 +1566,27 @@ def do_clear(args):
     os.system("cls" if os.name == "nt" else "clear")
     banner()
 
+def _plugin_availability():
+    """Boot-time capability state per plugin, from the config flags each
+    plugin sets on register — answers 'why doesn't this work here?'"""
+    from ep_core import _plugin_configs as _pc
+    states = [
+        ("vulkanizer", "Vulkan GPU", _pc.get("vulkanizer_available")),
+        ("radical", "GPU math (GL)", _pc.get("radical_available")),
+        ("tensorsharp", "CUDA tensor cores", _pc.get("tensorsharp_available")),
+        ("openapi", "OpenGL window", _pc.get("openapi_available")),
+        ("lure", "LuaJIT engine", _pc.get("lure_available")),
+        ("eaudio", "audio devices", _pc.get("eaudio_available")),
+    ]
+    out = []
+    for name, label, ok in states:
+        if ok:
+            out.append(f"  {c('✓', GREEN)} {c(name, CYAN):<12} {label} ready")
+        else:
+            out.append(f"  {c('⚠', YELLOW)} {c(name, CYAN):<12} {label} unavailable here")
+    return out
+
+
 def do_help(args):
     lines = []
     lines.append(f"\n  {c('Commands:', B)}")
@@ -1597,6 +1618,14 @@ def do_help(args):
     lines.append(f"  {c('audio', CYAN)} <cmd>   Audio devices & config (devices/set-device/config)")
     lines.append(f"  {c('clear', CYAN)}          Clear screen")
     lines.append(f"  {c('exit', CYAN)}           Quit")
+
+    # Plugin availability — what actually works on this machine
+    try:
+        lines.append("")
+        lines.append(f"  {c('Plugin availability', B)}")
+        lines += _plugin_availability()
+    except Exception:
+        pass
 
     # Plugin help sections — plugins write their own, in two accepted
     # formats: plain lines ("  ai status ...") or (cmd, desc) pairs.

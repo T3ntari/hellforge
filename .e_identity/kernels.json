@@ -22,10 +22,50 @@
     },
     {
       "id": "ep_core",
+      "version": "0.1.14.60-beta",
+      "mode": "normal",
+      "tag": "v0.1.14.60-beta",
+      "current": true,
+      "when": "2026-08-10 21:28",
+      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
+      "detail": "HELLFORGE OS kernel"
+    },
+    {
+      "id": "ep_core:safemode",
+      "version": "0.1.14.60-beta",
+      "mode": "safemode",
+      "tag": "v0.1.14.60-beta",
+      "current": true,
+      "when": "2026-08-10 21:28",
+      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
+      "detail": "HELLFORGE OS kernel \u2014 safe mode"
+    },
+    {
+      "id": "ep_core",
+      "version": "0.1.14.59-beta",
+      "mode": "normal",
+      "tag": "v0.1.14.59-beta",
+      "current": false,
+      "when": "2026-08-10 21:28",
+      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
+      "detail": "HELLFORGE OS kernel \u2014 previous"
+    },
+    {
+      "id": "ep_core:safemode",
+      "version": "0.1.14.59-beta",
+      "mode": "safemode",
+      "tag": "v0.1.14.59-beta",
+      "current": false,
+      "when": "2026-08-10 21:28",
+      "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
+      "detail": "HELLFORGE OS kernel \u2014 previous (safe)"
+    },
+    {
+      "id": "ep_core",
       "version": "0.1.14.58-beta",
       "mode": "normal",
       "tag": "v0.1.14.58-beta",
-      "current": true,
+      "current": false,
       "when": "2026-08-10 21:06",
       "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
       "detail": "HELLFORGE OS kernel"
@@ -35,7 +75,7 @@
       "version": "0.1.14.58-beta",
       "mode": "safemode",
       "tag": "v0.1.14.58-beta",
-      "current": true,
+      "current": false,
       "when": "2026-08-10 21:06",
       "model": "hf.co/bartowski/Qwen2.5-Coder-3B-Instruct-Abliterated-GGUF:latest",
       "detail": "HELLFORGE OS kernel \u2014 safe mode"
