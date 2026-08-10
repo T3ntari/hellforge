@@ -1573,6 +1573,19 @@ def do_help(args):
     except Exception:
         pass
 
+    # Append plugin-registered commands (krip, and any other plugin command)
+    try:
+        from ep_core import _eshell_commands
+        extra = sorted(n for n in _eshell_commands if n not in ("help", "?"))
+        if extra:
+            lines.append("")
+            lines.append(f"  {c('Plugin commands', B)}")
+            for name in extra:
+                _handler, help_text = _eshell_commands[name]
+                lines.append(f"  {c(name, CYAN)}  {help_text or ''}")
+    except Exception:
+        pass
+
     lines.append(f"")
     lines.append(f"  {c('Built-in examples:', D)}")
     lines.append(f"    mod list             List installed mods")
@@ -1606,7 +1619,7 @@ def main():
             import plugins.krip as _krip
             _krip._last_api = None
             from ep_core import _plugin_api as _kapi
-            _krip.PROJECT_DIR = str(getattr(_kapi, "project_dir", project_dir))
+            _krip.PROJECT_DIR = str(getattr(_kapi, "project_dir", PROJECT_DIR))
             _boot = _krip.boot_menu(print, input)
             if _boot[0] == "boot":
                 _krip.boot_entry(_boot[1], print)
