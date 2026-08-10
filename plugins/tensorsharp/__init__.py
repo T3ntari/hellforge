@@ -17,13 +17,16 @@ def register(api):
     api.add_boot_step(f"Tensorsharp v{VERSION}", "loading")
     global _engine
 
-    # Check if Radical is available
-    try:
-        from plugins.radical import get_engine as get_radical
-        radical = get_radical()
-        radical_ok = radical and radical.available
-    except Exception:
-        radical_ok = False
+    # Check if Radical is available (config flag set by Radical's own
+    # register — robust against plugin scan order)
+    radical_ok = bool(api.get_config("radical_available"))
+    if not radical_ok:
+        try:
+            from plugins.radical import get_engine as get_radical
+            radical = get_radical()
+            radical_ok = bool(radical and radical.available)
+        except Exception:
+            radical_ok = False
 
     if not radical_ok:
         api.set_config("tensorsharp_available", False)
@@ -61,6 +64,17 @@ def register(api):
         api.add_boot_step(f"Tensorsharp: init failed ({e})", "skip")
         api.add_command("tensorsharp", _cmd, "TensorSHARP: tensorsharp status|info")
 
+    api.add_help_section("TensorSHARP (CUDA tensor cores)", [
+        "tensorsharp status       Tensor-core + CUDA status",
+        "tensorsharp benchmark    matmul GFLOPS benchmark",
+        "tensorsharp cores        Tensor core capabilities",
+        "tensorsharp info         Engine + evaluator info",
+        "",
+        "Tensor-core matmul accelerator + math AST evaluator (priority 3",
+        "in the evaluator chain). The Ninja game menu reports its TFLOPS",
+        "line when CUDA matmul is online.",
+    ])
+
 
 def get_engine():
     return _engine
@@ -83,9 +97,13 @@ def _cmd(args):
         else:
             print(f"  TensorSHARP v{VERSION}")
             print(f"  Status: inactive")
-            print(f"  Requires: NVIDIA GPU + CUDA Toolkit + CuPy")
-            print(f"  Install: pip install cupy-cuda12x")
-            print(f"  Or: pip install cupy (auto-detects CUDA version)")
+            diag = _engine.diagnostic if _engine else "not initialized"
+            print(f"  Reason: {diag}")
+            try:
+                import cupy  # noqa
+                print(f"  CuPy: installed")
+            except ImportError:
+                print(f"  CuPy: not installed (pip install cupy-cuda12x)")
 
     elif args[0] == "cores":
         if _engine and _engine.available:

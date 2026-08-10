@@ -56,6 +56,15 @@ def register(api):
         api.set_config("lure_async_available", False)
         api.add_boot_step(f"LURE: async engine not available ({diag})", "skip")
 
+    api.add_help_section("LURE (LuaJIT)", [
+        "lure status           LuaJIT engine + module status",
+        "lure benchmark        Parse/eval benchmark",
+        "lure async            Async engine status (32 workers)",
+        "",
+        "LuaJIT accelerator: compiler/events/quantizer/math modules.",
+        "The Ninja game animates its brazier fire with a Lua script",
+        "evaluated every frame (bit-identical Python twin fallback).",
+    ])
 
 def get_engine():
     """Return the LUREngine singleton."""

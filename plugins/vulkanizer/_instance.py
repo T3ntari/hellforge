@@ -22,7 +22,7 @@ class VkInstance:
 
     def _init(self):
         try:
-            import vulkan as vk
+            from . import _vk as vk
 
             app_info = vk.VkApplicationInfo(
                 sType=vk.VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -30,33 +30,25 @@ class VkInstance:
                 applicationVersion=vk.VK_MAKE_VERSION(1, 0, 0),
                 pEngineName="E Shell",
                 engineVersion=vk.VK_MAKE_VERSION(1, 0, 0),
-                apiVersion=vk.VK_API_VERSION_1_3,
+                apiVersion=vk.VK_MAKE_VERSION(1, 3, 0),
             )
 
-            try:
-                self.instance = vk.vkCreateInstance(
-                    vk.VkInstanceCreateInfo(
-                        sType=vk.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-                        pApplicationInfo=app_info,
-                    )
-                )
-            except Exception:
-                app_info.apiVersion = vk.VK_API_VERSION_1_2
+            created = False
+            for _major, _minor, _patch in ((1, 3, 0), (1, 2, 0), (1, 0, 0)):
                 try:
+                    app_info.apiVersion = vk.VK_MAKE_VERSION(_major, _minor, _patch)
                     self.instance = vk.vkCreateInstance(
                         vk.VkInstanceCreateInfo(
                             sType=vk.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                             pApplicationInfo=app_info,
                         )
                     )
+                    created = True
+                    break
                 except Exception:
-                    app_info.apiVersion = vk.VK_API_VERSION_1_0
-                    self.instance = vk.vkCreateInstance(
-                        vk.VkInstanceCreateInfo(
-                            sType=vk.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-                            pApplicationInfo=app_info,
-                        )
-                    )
+                    continue
+            if not created:
+                raise RuntimeError("vkCreateInstance failed on all API versions")
 
             devices = vk.vkEnumeratePhysicalDevices(self.instance)
             if not devices:
@@ -117,7 +109,7 @@ class VkInstance:
 
     def _cleanup(self):
         try:
-            import vulkan as vk
+            from . import _vk as vk
             if self.instance:
                 vk.vkDestroyInstance(self.instance, None)
         except Exception:

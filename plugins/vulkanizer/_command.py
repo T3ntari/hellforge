@@ -2,16 +2,22 @@
 
 
 class CommandAPI:
-    """Command buffer recording, submission, and synchronization."""
+    """Command pool, command buffers, submit, synchronization."""
 
     def __init__(self, instance):
         self.instance = instance
 
+    def _dev(self):
+        dev = getattr(self.instance, "device", None)
+        if dev is not None and getattr(dev, "device", None) is not None:
+            return dev.device
+        return self._dev()
+
     def create_pool(self, queue_family_index=0):
         """Create a command pool."""
-        import vulkan as vk
+        from . import _vk as vk
         pool = vk.vkCreateCommandPool(
-            self.instance.physical_device,
+            self._dev(),
             vk.VkCommandPoolCreateInfo(
                 sType=vk.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
                 queueFamilyIndex=queue_family_index,
@@ -22,9 +28,9 @@ class CommandAPI:
 
     def allocate_buffer(self, pool, count=1):
         """Allocate command buffers from a pool."""
-        import vulkan as vk
+        from . import _vk as vk
         buffers = vk.vkAllocateCommandBuffers(
-            self.instance.physical_device,
+            self._dev(),
             vk.VkCommandBufferAllocateInfo(
                 sType=vk.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                 commandPool=pool,
@@ -36,7 +42,7 @@ class CommandAPI:
 
     def begin(self, cmd_buffer):
         """Begin recording a command buffer."""
-        import vulkan as vk
+        from . import _vk as vk
         vk.vkBeginCommandBuffer(
             cmd_buffer,
             vk.VkCommandBufferBeginInfo(
@@ -47,17 +53,17 @@ class CommandAPI:
 
     def end(self, cmd_buffer):
         """End recording a command buffer."""
-        import vulkan as vk
+        from . import _vk as vk
         vk.vkEndCommandBuffer(cmd_buffer)
 
     def dispatch(self, cmd_buffer, group_count_x, group_count_y=1, group_count_z=1):
         """Record a compute dispatch command."""
-        import vulkan as vk
+        from . import _vk as vk
         vk.vkCmdDispatch(cmd_buffer, group_count_x, group_count_y, group_count_z)
 
     def pipeline_barrier(self, cmd_buffer):
         """Record a full memory barrier (for shader read-after-write)."""
-        import vulkan as vk
+        from . import _vk as vk
         vk.vkCmdPipelineBarrier(
             cmd_buffer,
             vk.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -73,9 +79,16 @@ class CommandAPI:
 
     def submit(self, cmd_buffer, queue=None, fence=None):
         """Submit a command buffer to a queue."""
-        import vulkan as vk
+        from . import _vk as vk
+        _q = queue
+        if _q is None:
+            _dev = getattr(self.instance, "device", None)
+            if _dev is not None and getattr(_dev, "queue", None) is not None:
+                _q = _dev.queue
+        if _q is None:
+            _q = 0
         vk.vkQueueSubmit(
-            queue or 0,
+            _q,
             1, [vk.VkSubmitInfo(
                 sType=vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
                 commandBufferCount=1,
@@ -86,9 +99,9 @@ class CommandAPI:
 
     def create_fence(self, signaled=False):
         """Create a fence for CPU-GPU synchronization."""
-        import vulkan as vk
+        from . import _vk as vk
         fence = vk.vkCreateFence(
-            self.instance.physical_device,
+            self._dev(),
             vk.VkFenceCreateInfo(
                 sType=vk.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
                 flags=vk.VK_FENCE_CREATE_SIGNALED_BIT if signaled else 0,
@@ -98,9 +111,9 @@ class CommandAPI:
 
     def create_semaphore(self):
         """Create a semaphore for GPU-GPU synchronization."""
-        import vulkan as vk
+        from . import _vk as vk
         sem = vk.vkCreateSemaphore(
-            self.instance.physical_device,
+            self._dev(),
             vk.VkSemaphoreCreateInfo(
                 sType=vk.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
             )
@@ -109,21 +122,30 @@ class CommandAPI:
 
     def wait_for_fence(self, fence, timeout_ns=100000000000):
         """Wait for a fence (default 100s timeout)."""
-        import vulkan as vk
-        vk.vkWaitForFences(self.instance.physical_device, 1, [fence], True, timeout_ns)
+        from . import _vk as vk
+        vk.vkWaitForFences(self._dev(), 1, [fence], True, timeout_ns)
 
     def reset_fence(self, fence):
-        import vulkan as vk
-        vk.vkResetFences(self.instance.physical_device, 1, [fence])
+        from . import _vk as vk
+        vk.vkResetFences(self._dev(), 1, [fence])
 
     def destroy_pool(self, pool):
-        import vulkan as vk
-        vk.vkDestroyCommandPool(self.instance.physical_device, pool, None)
+        from . import _vk as vk
+        vk.vkDestroyCommandPool(self._dev(), pool, None)
 
     def destroy_fence(self, fence):
-        import vulkan as vk
-        vk.vkDestroyFence(self.instance.physical_device, fence, None)
+        from . import _vk as vk
+        vk.vkDestroyFence(self._dev(), fence, None)
 
     def destroy_semaphore(self, sem):
-        import vulkan as vk
-        vk.vkDestroySemaphore(self.instance.physical_device, sem, None)
+        from . import _vk as vk
+        vk.vkDestroySemaphore(self._dev(), sem, None)
+
+    def bind_compute(self, cmd_buffer, pipeline, pipeline_layout, desc_set):
+        """Bind a compute pipeline + descriptor set in one call."""
+        from . import _vk as vk
+        vk.vkCmdBindPipeline(cmd_buffer, vk.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline)
+        vk.vkCmdBindDescriptorSets(
+            cmd_buffer, vk.VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout,
+            0, 1, [desc_set], 0, [],
+        )

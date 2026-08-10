@@ -15,6 +15,8 @@ Example engine in examples/opengl_engine.py
 
 Install: pip install PyOpenGL glfw numpy"""
 
+import os
+
 VERSION = "1.0.0"
 author = "Tentari"
 description = "Low-level OpenGL Graphics API — context, shaders, buffers, textures, rendering pipeline"
@@ -68,7 +70,13 @@ def _cmd(args):
         else:
             print(f"  OPENapi v{VERSION}")
             print(f"  Status: inactive")
-            print(f"  Install: pip install PyOpenGL glfw")
+            try:
+                import OpenGL  # noqa
+                gl_ok = "installed"
+            except ImportError:
+                gl_ok = "missing (pip install PyOpenGL glfw)"
+            print(f"  PyOpenGL: {gl_ok}")
+            print(f"  Display: {'present' if (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')) else 'none — headless'}")
 
     elif args[0] == "extensions":
         if _api and _api.available:

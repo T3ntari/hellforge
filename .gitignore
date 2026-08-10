@@ -56,3 +56,12 @@ hellgate-state/
 ep_compiler/_x_hide.py
 SECURITY_HASH.local
 .backup_update/
+
+# Runtime identity store (re-randomized every boot — never tracked)
+.e_identity/.integrity/
+.e_identity/.order/
+.e_identity/.store/
+plugins/ninja/screenshots/
+plugins/ninja/screenshots/*.png
+plugins/ninja/screenshots/*.ppm
+!plugins/ninja/screenshots/.gitkeep

@@ -52,6 +52,15 @@ def register(api):
         api.add_command("eaudio", _cmd, "EAudio: eaudio status|info")
 
 
+    api.add_help_section("EAudio (audio)", [
+        "eaudio status          Audio engine + devices",
+        "eaudio devices         List audio devices",
+        "eaudio info            Capabilities",
+        "",
+        "Spatial audio: device, buffer synthesis, 3D positioning,",
+        "doppler, reverb/delay/compressor/EQ effects.",
+    ])
+
 def get_api():
     return _api
 
