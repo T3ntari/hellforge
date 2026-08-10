@@ -21,7 +21,7 @@ import sys
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
-HELLGATE_VERSION = "0.1.14.50"
+HELLGATE_VERSION = "0.1.14.51"
 
 HELLGATE_DIR = os.path.dirname(os.path.abspath(__file__))
 
