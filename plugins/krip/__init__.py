@@ -681,7 +681,7 @@ def _draw_menu(entries, sel, countdown, stream_out):
                      f"{countdown:.2f}s — press any key to interrupt" + S["reset"])
         lines.append("")
     lines.append(S["bar"] + "  ↑/↓ select   Enter boot   c console   "
-                 "Ctrl+C console  " + S["reset"])
+                 "Esc exit   Ctrl+C console  " + S["reset"])
     stream_out("\n".join(lines))
 
 
@@ -794,7 +794,8 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
             stream_out("\n  → console")
             return "console", None
         elif key == "escape":
-            stopped = True
+            stream_out("\n  → krip exited — back to the terminal")
+            return "exit", None
 
 
 
@@ -857,6 +858,9 @@ def hypervisor_entry(argv, stream_out=print, input_fn=input):
             r = boot_menu(stream_out, input_fn)
             if r[0] == "boot":
                 boot_entry(r[1], stream_out)
+            elif r[0] == "exit":
+                stream_out("  krip exited — back to the terminal")
+                return 0
         return _spawn_eshell(stream_out)
     a = argv[0].lower()
     if a in ("run", "exec"):

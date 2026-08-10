@@ -263,5 +263,26 @@ def test_hypervisor_entry_status():
 check("hypervisor: krip status", test_hypervisor_entry_status)
 
 
+def test_escape_exits_krip():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    K.record_current_kernel()
+    # ESC in the interactive menu -> ("exit", None)
+    with mock.patch.object(K, "_read_key_raw", side_effect=["escape"]):
+        r = K.boot_menu(lambda l, **k: None, lambda p='': '',
+                        interactive=True, timeout=0.1)
+    assert r[0] == "exit", r
+    # hypervisor honors it: no console spawn, rc 0
+    spawned = []
+    with mock.patch.object(K, "boot_menu", return_value=("exit", None)), \
+         mock.patch.object(K, "_spawn_eshell",
+                           side_effect=lambda so=print: spawned.append(1) or 0):
+        outs = []
+        rc = K.hypervisor_entry([], lambda l, **k: outs.append(l), lambda p='': '')
+    assert rc == 0 and not spawned, (rc, spawned)
+check("escape: exits krip to the terminal, no console spawn", test_escape_exits_krip)
+
+
 print(f"\nKRIP TESTS: {passed}/{passed + failed} passed")
 sys.exit(0 if failed == 0 else 1)
