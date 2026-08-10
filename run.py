@@ -440,6 +440,16 @@ def main():
         return 1
     mode = sys.argv[1]
     args = sys.argv[2:]
+    # K-rip is the main thing: every launch re-enters through the hypervisor
+    # (unless already inside a krip sandbox, or KRIP_BYPASS=1).
+    if (mode != "krip"
+            and os.environ.get("KRIP_INNER") != "1"
+            and os.environ.get("KRIP_BYPASS") != "1"):
+        try:
+            from plugins.krip import _spawn
+            return _spawn([sys.executable] + sys.argv, name="run")
+        except Exception:
+            pass
     if mode in ("play", "player", "p"):
         return cmd_play(args)
     if mode in ("compile", "c"):
@@ -466,6 +476,9 @@ def main():
         return cmd_tempo(args)
     if mode in ("merge",):
         return cmd_merge(args)
+    if mode in ("krip", "hypervisor"):
+        from plugins.krip import hypervisor_entry
+        return hypervisor_entry(args, print, input)
     if mode in ("integrity", "hash", "sec", "security"):
         from ep_compiler.security_hash import verify, check_github, status_line
         r = verify()

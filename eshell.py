@@ -1603,6 +1603,18 @@ def main():
     import time
     import threading as _threading
 
+    # K-rip is the main thing: the console re-enters through the hypervisor
+    # (GRUB menu -> boot -> console). Skipped when already inside a krip
+    # sandbox or with KRIP_BYPASS=1.
+    if (os.environ.get("KRIP_INNER") != "1"
+            and os.environ.get("KRIP_BYPASS") != "1"):
+        try:
+            import plugins.krip as _k
+            _k.PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+            return _k.hypervisor_entry([], print, input)
+        except Exception:
+            pass
+
     # ── Core integrity — technique X first, then network/Y, every start ──
     try:
         from ep_compiler.safemode import safe_boot
@@ -1614,7 +1626,8 @@ def main():
 
     # ── K-rip boot manager (GRUB-like kernel menu) — skip with
     #    KRIP_NO_MENU=1; 'console' drops straight to this shell ──
-    if os.environ.get("KRIP_NO_MENU") != "1":
+    if (os.environ.get("KRIP_NO_MENU") != "1"
+            and os.environ.get("KRIP_INNER") != "1"):
         try:
             import plugins.krip as _krip
             _krip._last_api = None

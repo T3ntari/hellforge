@@ -229,5 +229,39 @@ except Exception:
     pass
 
 
+def test_hypervisor_entry_run():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    calls = []
+    with mock.patch.object(K, "_spawn", side_effect=lambda cmd, name="x", stream_out=print: calls.append((cmd, name)) or 0):
+        K.hypervisor_entry(["run", "echo", "hi"])
+    assert calls and calls[0][0] == ["echo", "hi"], calls
+check("hypervisor: krip run <cmd> spawns inside the sandbox", test_hypervisor_entry_run)
+
+
+def test_hypervisor_entry_console():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    calls = []
+    with mock.patch.object(K, "boot_menu", return_value=("boot", {"version": "x", "mode": "normal"})), \
+         mock.patch.object(K, "boot_entry", return_value=0), \
+         mock.patch.object(K, "_spawn_eshell", side_effect=lambda so=print: calls.append("eshell") or 0):
+        K.hypervisor_entry([])
+    assert "eshell" in calls
+check("hypervisor: krip (no args) -> menu -> console", test_hypervisor_entry_console)
+
+
+def test_hypervisor_entry_status():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    out = []
+    rc = K.hypervisor_entry(["status"], lambda l, **k: out.append(l))
+    assert rc == 0 and any("memory" in l for l in out)
+check("hypervisor: krip status", test_hypervisor_entry_status)
+
+
 print(f"\nKRIP TESTS: {passed}/{passed + failed} passed")
 sys.exit(0 if failed == 0 else 1)

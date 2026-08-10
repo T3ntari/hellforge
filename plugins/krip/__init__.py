@@ -736,6 +736,94 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
         elif key == "escape":
             stopped = True
 
+
+
+# ──────────────────────────────────────────────────────────────────────
+# K-rip is THE main thing: every launch path re-enters through here.
+#   krip                  GRUB menu -> boot kernel -> console (eshell)
+#   krip run <cmd...>     run anything inside the sandbox
+#   krip eshell|shell     the OS console inside the sandbox
+#   krip hellgate         HellGate inside the sandbox
+#   krip player <file>    the player inside the sandbox
+#   krip status|help
+# Children get KRIP_INNER=1 (no re-wrap), the GPU/engine/tensor env, the
+# memory budget, cpu affinity and project-root confinement.
+# ──────────────────────────────────────────────────────────────────────
+
+def _spawn(cmd, name="default", stream_out=print):
+    """THE krip sandbox spawn: every child of the OS runs through this."""
+    if not cmd:
+        return 1
+    base = dict(os.environ)
+    base.update(_gpu_env(_config["gpu"]))
+    base["KRIP_INNER"] = "1"
+    base["KRIP_SANDBOX"] = name
+    base["KRIP_ENGINE"] = _config["engine"]
+    base["KRIP_VULKANRT"] = "1" if _config["vulkanrt"] else "0"
+    base["KRIP_TENSOR"] = _config["tensor"]
+    stream_out(f"  [krip] sandbox '{name}': mem {_config['mem_mb']}MB, "
+               f"cpu {_config['cpu_threads']}, gpu {_config['gpu']}, "
+               f"engine {_config['engine']}")
+    try:
+        p = subprocess.Popen(cmd, cwd=PROJECT_DIR or os.getcwd(), env=base,
+                             preexec_fn=_preexec_limits(_config["mem_mb"],
+                                                        _config["cpu_threads"], 0))
+    except Exception as e:
+        stream_out(f"  [krip] failed to launch: {e}")
+        return 1
+    try:
+        return p.wait()
+    except KeyboardInterrupt:
+        p.terminate()
+        try:
+            p.wait(timeout=5)
+        except Exception:
+            p.kill()
+        return 130
+
+
+def _spawn_eshell(stream_out=print):
+    path = os.path.join(PROJECT_DIR or os.getcwd(), "eshell.py")
+    return _spawn([sys.executable, path], name="console", stream_out=stream_out)
+
+
+def hypervisor_entry(argv, stream_out=print, input_fn=input):
+    """The hypervisor entry — krip launches everything else."""
+    record_current_kernel()
+    if not argv:
+        # GRUB menu -> boot the chosen kernel -> the console
+        # (KRIP_NO_MENU=1 boots straight to the console)
+        if os.environ.get("KRIP_NO_MENU") != "1":
+            r = boot_menu(stream_out, input_fn)
+            if r[0] == "boot":
+                boot_entry(r[1], stream_out)
+        return _spawn_eshell(stream_out)
+    a = argv[0].lower()
+    if a in ("run", "exec"):
+        if len(argv) < 2:
+            stream_out("  usage: krip run <cmd...>")
+            return 1
+        return _spawn(argv[1:], name="cmd", stream_out=stream_out)
+    if a in ("eshell", "shell", "console"):
+        return _spawn_eshell(stream_out)
+    if a in ("hellgate", "gate", "hg"):
+        run_py = os.path.join(PROJECT_DIR or os.getcwd(), "run.py")
+        return _spawn([sys.executable, run_py, "hellgate"], name="hellgate",
+                      stream_out=stream_out)
+    if a in ("player", "play", "gui"):
+        run_py = os.path.join(PROJECT_DIR or os.getcwd(), "run.py")
+        return _spawn([sys.executable, run_py, "play"] + argv[1:],
+                      name="player", stream_out=stream_out)
+    if a in ("status", "info"):
+        stream_out(_cmd(["status"]))
+        return 0
+    if a in ("help", "-h", "--help"):
+        stream_out("  krip [run <cmd...>] [eshell|shell] [hellgate] "
+                   "[player <file>] [status] [help]")
+        return 0
+    stream_out(f"  unknown: {a} — try 'krip help'")
+    return 1
+
 # ── plugin entry ──────────────────────────────────────────────────────
 
 def register(api):
