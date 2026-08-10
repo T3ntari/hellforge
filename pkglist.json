@@ -108,6 +108,14 @@
     "llm": {
       "version": "1.11.0",
       "description": "LLM copilot — OpenAI/DeepSeek/Claude/Ollama, agentic edits, plugin generation"
+    },
+    "krip": {
+      "version": "1.0.0",
+      "description": "Hypervisor layer — heavy sandboxing, memory/CPU/GPU allocation, graphics engine default, VulkanRT + Tensor",
+      "author": "Tentari",
+      "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,krip,hypervisor,sandbox",
+      "url": "file://plugins/krip/__init__.py",
+      "verification": "542dd1f8c72632b95b38117466e403eaf9c09722165dd86959937cf5c5d1cf43"
     }
   },
   "_description": "Default package list for E Language by Tentari. All plugins integrity-verified via SHA-256 verification codes. Remote verification is opt-in via HF_VERIFY_URL/HF_VERIFY_TOKEN.",
