@@ -736,7 +736,7 @@ def _draw_menu(entries, sel, countdown, stream_out, new_ver=None):
                      "press u to update (nothing is lost)" + S["reset"])
     lines.append("")
     lines.append(S["bar"] + "  ↑/↓ select   Enter boot   c console   "
-                 "u update   g game   Esc exit   Ctrl+C console  " + S["reset"])
+                 "u update   Esc exit   Ctrl+C console  " + S["reset"])
     stream_out("\n".join(lines))
 
 
@@ -825,9 +825,6 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
         raw = input_fn("boot> ").strip().lower()
         if raw == "console":
             return "console", None
-        if raw == "game":
-            os.environ["KRIP_BOOT_CMD"] = "ninja"
-            return "boot", entries[sel]
         if raw == "update":
             if new_ver:
                 return "update", new_ver
@@ -877,10 +874,6 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
             sel = (sel - 1) % len(entries)
         elif key == "down":
             sel = (sel + 1) % len(entries)
-        elif key == "g":
-            os.environ["KRIP_BOOT_CMD"] = "ninja"
-            stream_out("\n  → ninja game (weather on)")
-            return "boot", entries[sel]
         elif key == "enter":
             return "boot", entries[sel]
         elif key in ("ctrl-c", "console"):
@@ -1023,9 +1016,6 @@ def console_mode(stream_out=print, input_fn=input):
             if r[0] == "boot":
                 boot_entry(r[1], stream_out)
             return 0
-        if cmd in ("game", "ninja"):
-            os.environ["KRIP_BOOT_CMD"] = "ninja"
-            return _exec_eshell(stream_out)
         if cmd in ("eshell", "shell", "os"):
             return _exec_eshell(stream_out)
         if cmd in ("mem", "cpu", "gpu", "engine", "vulkanrt", "tensor",
@@ -1079,9 +1069,6 @@ def hypervisor_entry(argv, stream_out=print, input_fn=input):
             return 1
         return console_mode(stream_out, input_fn)
     if a in ("eshell", "shell"):
-        return _exec_eshell(stream_out)
-    if a in ("game", "ninja"):
-        os.environ["KRIP_BOOT_CMD"] = "ninja"
         return _exec_eshell(stream_out)
     if a in ("hellgate", "gate", "hg"):
         run_py = os.path.join(PROJECT_DIR or os.getcwd(), "run.py")

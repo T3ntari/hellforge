@@ -118,18 +118,6 @@
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,krip,hypervisor,sandbox",
       "url": "file://plugins/krip/__init__.py",
       "verification": "c77a601853bc01585da00c62b10af6b900396136b05e76b7b247f1c7739f2081"
-    },
-    "ninja": {
-      "version": "1.0.0",
-      "description": "Ninja corridor walker — Vulkan compute ray-marched game (FSR 3.1 menu, TAA, accumulation, Lua fire)",
-      "author": "Tentari",
-      "tags": "HELLFORGE,GAME,VULKAN,NINJA,FSR,TAA",
-      "url": "file://plugins/ninja/__init__.py",
-      "update_url": "",
-      "dependencies": [
-        "vulkanizer"
-      ],
-      "verification": "ef97b45e8068088b01d051beb59c5dbb23d6dc9095ef06359010182c25aaf3db"
     }
   },
   "_description": "Default package list for E Language by Tentari. All plugins integrity-verified via SHA-256 verification codes. Remote verification is opt-in via HF_VERIFY_URL/HF_VERIFY_TOKEN.",

@@ -45,7 +45,7 @@ def register(api):
                 "Low-level Vulkan library the Ninja game engine is built on:",
                 "instance/device selection, logical device + queues, buffers,",
                 "descriptors, compute pipelines (SPIR-V), dispatch + sync.",
-                "The Ninja plugin uses this API for its entire render path.",
+                "Third-party game engines are built on top of this API.",
             ])
             gpu = inst.gpu_info
             api.add_boot_step(
