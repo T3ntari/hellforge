@@ -30,6 +30,7 @@ description = "Hypervisor layer — heavy sandboxing, memory/CPU/GPU allocation,
 
 _lock = threading.Lock()
 _sandboxes = {}       # name -> Popen
+CONFIG_FILE_NAME = "krip.json"  # at the project root — the real config file
 _config = {
     "mem_mb": 0,          # 0 = unlimited
     "cpu_threads": 0,     # 0 = all
@@ -52,6 +53,40 @@ def _cfg(api, key, default):
         return default
 
 
+def _config_path():
+    return os.path.join(PROJECT_DIR or os.getcwd(), CONFIG_FILE_NAME)
+
+
+def load_config_file():
+    """Read krip.json (the real config file). Returns {} when missing."""
+    try:
+        with open(_config_path()) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_config_file():
+    """Persist the current allocation to krip.json."""
+    data = {
+        "version": 1,
+        "mem_mb": _config["mem_mb"],
+        "cpu_threads": _config["cpu_threads"],
+        "gpu": _config["gpu"],
+        "engine": _config["engine"],
+        "vulkanrt": _config["vulkanrt"],
+        "tensor": _config["tensor"],
+        "sandboxes": {},
+    }
+    try:
+        with open(_config_path(), "w") as f:
+            json.dump(data, f, indent=2)
+        return _config_path()
+    except Exception as e:
+        return f"error: {e}"
+
+
 def _save(api):
     try:
         for k, v in _config.items():
@@ -60,9 +95,20 @@ def _save(api):
         pass
 
 
+_DEFAULTS = {"mem_mb": 0, "cpu_threads": 0, "gpu": "auto",
+             "engine": "vulkan", "vulkanrt": False, "tensor": "auto"}
+
+
 def _load(api):
+    """Initialization: built-in defaults, then krip.json (the real config
+    file) wins, then runtime-saved state."""
+    _config.update(_DEFAULTS)
+    file_cfg = load_config_file()
     for k in _config:
-        _config[k] = _cfg(api, f"krip_{k}", _config[k])
+        if k in file_cfg and file_cfg[k] is not None:
+            _config[k] = file_cfg[k]
+        else:
+            _config[k] = _cfg(api, f"krip_{k}", _config[k])
 
 
 def _apply_rlimits(mem_mb):
@@ -306,6 +352,33 @@ def _cmd(args, api=None):
                                _config["cpu_threads"], _config["gpu"])
         return "  sandbox subcommands: run | list | kill | status"
 
+    if sub == "config":
+        lines = [
+            f"  krip config file: {_config_path()}",
+            "    " + json.dumps({k: _config[k] for k in (
+                "mem_mb", "cpu_threads", "gpu", "engine",
+                "vulkanrt", "tensor")}, indent=4).replace("\n", "\n    "),
+        ]
+        return "\n".join(lines)
+
+    if sub == "save":
+        path = save_config_file()
+        return f"  krip config saved: {path}"
+
+    if sub == "reload":
+        _load(api)
+        _save(api)
+        _apply_rlimits(_config["mem_mb"])
+        _apply_affinity(_config["cpu_threads"])
+        return ("  krip config reloaded from " + _config_path() +
+                "\n" + _cmd(["status"], api))
+
+    if sub == "reset":
+        _config.update(_DEFAULTS)
+        _save(api)
+        save_config_file()
+        return "  krip config reset to defaults (saved)"
+
     if sub == "os":
         drivers = _driver_table()
         lines = [
@@ -333,7 +406,7 @@ def register(api):
     api.add_command("krip", lambda args: _cmd(args, api),
                     "K-rip hypervisor: mem/cpu/gpu/engine/vulkanrt/tensor/sandbox/os")
     drivers = _driver_table()
-    api.add_boot_step(f"K-rip: hypervisor armed "
+    api.add_boot_step(f"K-rip: hypervisor armed from {CONFIG_FILE_NAME} "
                       f"(mem {_config['mem_mb']}MB, cpu {_config['cpu_threads']}, "
                       f"gpu {_config['gpu']}, engine {_config['engine']})", "done")
     api.add_boot_step(

@@ -116,5 +116,40 @@ def test_status():
 check("status: full allocation view", test_status)
 
 
+def test_config_file_init():
+    import tempfile, json as _json
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    _json.dump({"mem_mb": 128, "cpu_threads": 4, "gpu": "0,1",
+                "engine": "opengl", "vulkanrt": True, "tensor": "off"},
+               open(os.path.join(tmp, "krip.json"), "w"))
+    api = FakeApi()
+    api.project_dir = tmp
+    K._load(api)
+    assert K._config["mem_mb"] == 128, K._config
+    assert K._config["gpu"] == "0,1"
+    assert K._config["engine"] == "opengl"
+    assert K._config["vulkanrt"] is True
+    assert K._config["tensor"] == "off"
+    K._config["mem_mb"] = 256
+    K._cmd(["save"], api)
+    K._config["mem_mb"] = 0
+    K._cmd(["reload"], api)
+    assert K._config["mem_mb"] == 256, "reload must read the saved file"
+check("config: krip.json read at init, save, reload", test_config_file_init)
+
+
+def test_config_file_missing_defaults():
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    api = FakeApi()
+    api.project_dir = tmp
+    K.PROJECT_DIR = tmp
+    K._load(api)
+    assert K._config["engine"] == "vulkan"
+    assert K._config["gpu"] == "auto"
+check("config: no krip.json -> built-in defaults", test_config_file_missing_defaults)
+
+
 print(f"\nKRIP TESTS: {passed}/{passed + failed} passed")
 sys.exit(0 if failed == 0 else 1)

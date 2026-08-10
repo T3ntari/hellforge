@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "mem_mb": 0,
+  "cpu_threads": 0,
+  "gpu": "auto",
+  "engine": "vulkan",
+  "vulkanrt": false,
+  "tensor": "auto",
+  "sandboxes": {}
+}
