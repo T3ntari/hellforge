@@ -336,5 +336,20 @@ def test_hypervisor_updates_then_boots():
 check("update: hypervisor updates, re-menus, then boots", test_hypervisor_updates_then_boots)
 
 
+def test_previous_kernel_from_tag():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    with mock.patch.object(K, "_prev_tag", return_value="v0.1.14.37-beta"):
+        K.record_current_kernel()
+        K.record_current_kernel()  # second boot: previous must persist
+    entries = K.load_kernels()
+    vers = [e["version"] for e in entries]
+    assert "0.1.14.38-beta" in vers and "0.1.14.37-beta" in vers, vers
+    cur = [e for e in entries if e.get("current")]
+    assert all(e["version"] == "0.1.14.38-beta" for e in cur)
+check("boot: previous kernel seeded from the tag before current", test_previous_kernel_from_tag)
+
+
 print(f"\nKRIP TESTS: {passed}/{passed + failed} passed")
 sys.exit(0 if failed == 0 else 1)

@@ -547,13 +547,50 @@ def _kernel_meta():
     return ver, model
 
 
+def _prev_tag(ver):
+    """The release tag immediately before ver (git tags, version-sorted)."""
+    try:
+        import subprocess as _sp
+        r = _sp.run(["git", "tag", "--sort=-version:refname"],
+                    capture_output=True, text=True, timeout=5,
+                    cwd=PROJECT_DIR or os.getcwd())
+        tags = [t.strip() for t in r.stdout.splitlines()
+                if t.strip().startswith("v")]
+        base = ver if ver.startswith("v") else "v" + ver
+        seen = False
+        for t in tags:
+            if t == base:
+                seen = True
+                continue
+            if seen:
+                return t
+    except Exception:
+        pass
+    return None
+
+
 def record_current_kernel():
     """Ensure the current version is registered (normal + safemode entries).
     If the version changed, the old current becomes a previous kernel."""
     ver, model = _kernel_meta()
     entries = load_kernels()
+    import time as _t
+    stamp = _t.strftime("%Y-%m-%d %H:%M")
+    # guarantee the true previous release is registered (from git tags), so
+    # the menu always shows current + the actual prior kernel — even when
+    # the current version was already registered on an earlier boot
+    prev = _prev_tag(ver)
+    if prev and not any(e.get("version") == prev.lstrip("v") for e in entries):
+        pv = prev.lstrip("v")
+        entries.append({"id": "ep_core", "version": pv, "mode": "normal",
+                        "tag": prev, "current": False, "when": stamp,
+                        "model": model, "detail": "HELLFORGE OS kernel — previous"})
+        entries.append({"id": "ep_core:safemode", "version": pv, "mode": "safemode",
+                        "tag": prev, "current": False, "when": stamp,
+                        "model": model, "detail": "HELLFORGE OS kernel — previous (safe)"})
     current = [e for e in entries if e.get("current")]
     if any(e.get("version") == ver and e.get("mode") == "normal" for e in current):
+        _save_kernels(entries)
         return entries
     # version changed -> demote old current to previous
     for e in entries:
@@ -561,8 +598,6 @@ def record_current_kernel():
             e["current"] = False
     # one pair per version: drop stale entries of this version
     entries = [e for e in entries if e.get("version") != ver]
-    import time as _t
-    stamp = _t.strftime("%Y-%m-%d %H:%M")
     entries.append({"id": "ep_core", "version": ver, "mode": "normal",
                     "tag": f"v{ver}" if not ver.startswith("v") else ver,
                     "current": True, "when": stamp, "model": model,
