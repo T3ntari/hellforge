@@ -115,7 +115,7 @@
       "author": "Tentari",
       "tags": "HELLFORGE,CORE-EXPANSION:REGAS,TENTARI,krip,hypervisor,sandbox",
       "url": "file://plugins/krip/__init__.py",
-      "verification": "21aee595ca98ccf8b2bc039073898d06539867eadd85ed3bd07486a5731e64f6"
+      "verification": "cb3b1dae4078ca444511e37b3149d8955cf58419012afb6bd74217782a485961"
     }
   },
   "_description": "Default package list for E Language by Tentari. All plugins integrity-verified via SHA-256 verification codes. Remote verification is opt-in via HF_VERIFY_URL/HF_VERIFY_TOKEN.",
