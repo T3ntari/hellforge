@@ -284,5 +284,57 @@ def test_escape_exits_krip():
 check("escape: exits krip to the terminal, no console spawn", test_escape_exits_krip)
 
 
+def test_menu_update_notice():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    K.record_current_kernel()
+    with mock.patch("ep_compiler.security_hash.remote_version",
+                    return_value="v9.9.9-beta"), \
+         mock.patch("ep_compiler.security_hash.local_version",
+                    return_value="v0.1.14.37-beta"):
+        outs = []
+        r = K.boot_menu(lambda l, **k: outs.append(l), lambda p='': '',
+                        interactive=False)
+        text = "\n".join(outs)
+    assert "NEW KERNEL AVAILABLE" in text and "9.9.9" in text
+    assert r[0] == "boot"
+check("update: menu shows the new-kernel notice", test_menu_update_notice)
+
+
+def test_menu_update_choice():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    K.record_current_kernel()
+    with mock.patch("ep_compiler.security_hash.remote_version",
+                    return_value="v9.9.9-beta"), \
+         mock.patch("ep_compiler.security_hash.local_version",
+                    return_value="v0.1.14.37-beta"):
+        r = K.boot_menu(lambda l, **k: None, lambda p='': 'update',
+                        interactive=False)
+    assert r == ("update", "v9.9.9-beta"), r
+check("update: 'update' input returns the update target", test_menu_update_choice)
+
+
+def test_hypervisor_updates_then_boots():
+    import tempfile, unittest.mock as mock
+    tmp = tempfile.mkdtemp()
+    K.PROJECT_DIR = tmp
+    K.record_current_kernel()
+    calls = []
+    with mock.patch.object(K, "boot_menu",
+                           side_effect=[("update", "v9.9.9-beta"),
+                                        ("boot", {"version": "x", "mode": "normal"})]), \
+         mock.patch.object(K, "_run_update",
+                           side_effect=lambda t, so=print: calls.append(("u", t)) or 0), \
+         mock.patch.object(K, "_spawn_eshell",
+                           side_effect=lambda so=print: calls.append(("e",)) or 0), \
+         mock.patch.object(K, "boot_entry", return_value=0):
+        rc = K.hypervisor_entry([], lambda l, **k: None, lambda p='': '')
+    assert rc == 0 and ("u", "v9.9.9-beta") in calls and ("e",) in calls, calls
+check("update: hypervisor updates, re-menus, then boots", test_hypervisor_updates_then_boots)
+
+
 print(f"\nKRIP TESTS: {passed}/{passed + failed} passed")
 sys.exit(0 if failed == 0 else 1)

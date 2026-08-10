@@ -1618,7 +1618,8 @@ def main():
     # ── Core integrity — technique X first, then network/Y, every start ──
     try:
         from ep_compiler.safemode import safe_boot
-        _sec_result = safe_boot(print, input)
+        _sec_result = safe_boot(print, input,
+                                ask_update=os.environ.get("KRIP_INNER") != "1")
         if _sec_result == "safemode-stay":
             print("  \033[90m(safe mode — core isolated; run /safemode commands)\033[0m")
     except Exception as e:

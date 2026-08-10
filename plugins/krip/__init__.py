@@ -656,7 +656,7 @@ def _banner():
     )
 
 
-def _draw_menu(entries, sel, countdown, stream_out):
+def _draw_menu(entries, sel, countdown, stream_out, new_ver=None):
     """Styled GRUB-like frame: banner, highlight-bar selection, footer bar."""
     S = _S
     lines = []
@@ -679,9 +679,12 @@ def _draw_menu(entries, sel, countdown, stream_out):
     if countdown is not None:
         lines.append(S["yellow"] + f"  booting {entries[sel]['id']} in "
                      f"{countdown:.2f}s — press any key to interrupt" + S["reset"])
-        lines.append("")
+    if new_ver:
+        lines.append(S["red"] + f"  NEW KERNEL AVAILABLE: {new_ver} — "
+                     "press u to update (nothing is lost)" + S["reset"])
+    lines.append("")
     lines.append(S["bar"] + "  ↑/↓ select   Enter boot   c console   "
-                 "Esc exit   Ctrl+C console  " + S["reset"])
+                 "u update   Esc exit   Ctrl+C console  " + S["reset"])
     stream_out("\n".join(lines))
 
 
@@ -750,8 +753,35 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
             sel = i
             break
 
+    # new version available? (checked once, cached for the frame)
+    new_ver = None
+    local_ver = None
+    try:
+        from ep_compiler.security_hash import remote_version, local_version
+        local_ver = local_version()
+        rv = remote_version(timeout=4)
+        if rv and rv != local_ver:
+            new_ver = rv
+    except Exception:
+        pass
+
     if not interactive:
-        _draw_menu(entries, sel, None, stream_out)
+        _draw_menu(entries, sel, None, stream_out, new_ver=new_ver)
+        stream_out("  (non-interactive — Enter to boot the default, "
+                   "'console' for console, 'update' to update, "
+                   "or an entry number)")
+        raw = input_fn("boot> ").strip().lower()
+        if raw == "console":
+            return "console", None
+        if raw == "update":
+            if new_ver:
+                return "update", new_ver
+            return "boot", entries[sel]
+        if raw.isdigit():
+            i = int(raw)
+            if 0 <= i < len(entries):
+                return "boot", entries[i]
+        return "boot", entries[sel]
         stream_out("  (non-interactive — Enter to boot the default, "
                    "'console' for console, or an entry number)")
         raw = input_fn("boot> ").strip().lower()
@@ -771,19 +801,23 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
     stopped = False
     while True:
         stream_out(clear)
-        _draw_menu(entries, sel, None if stopped else countdown, stream_out)
+        _draw_menu(entries, sel, None if stopped else countdown, stream_out,
+                   new_ver=new_ver)
         if not stopped and countdown is not None:
             key = _read_key_raw(0.25)
             if key is None:
                 countdown -= 0.25
                 if countdown <= 0:
                     stream_out(clear)
-                    _draw_menu(entries, sel, None, stream_out)
+                    _draw_menu(entries, sel, None, stream_out, new_ver=new_ver)
                     return "boot", entries[sel]
                 continue
             stopped = True
         else:
             key = _read_key_raw(None)
+        if key == "u" and new_ver:
+            stream_out(f"\n  → updating to {new_ver}...")
+            return "update", new_ver
         if key == "up":
             sel = (sel - 1) % len(entries)
         elif key == "down":
@@ -843,6 +877,38 @@ def _spawn(cmd, name="default", stream_out=print):
         return 130
 
 
+def _run_update(tag, stream_out=print):
+    """Safe update with an animated progress bar. Nothing is lost."""
+    done = threading.Event()
+
+    def animate():
+        bar = "█"
+        width = 40
+        cur = 0
+        while not done.is_set():
+            stream_out("\r  [%s] %3d%%" % (bar * (cur * width // 100) +
+                       "░" * (width - cur * width // 100), cur), end="",
+                       flush=True)
+            time.sleep(0.15)
+        stream_out("\r  [%s] %3d%%" % (bar * width, 100), flush=True)
+        stream_out("")
+
+    th = threading.Thread(target=animate, daemon=True)
+    th.start()
+    try:
+        from ep_compiler.update import safe_update
+        code = safe_update(tag, progress=lambda n: None,
+                           stream_out=stream_out)
+    except Exception as e:
+        code = 1
+        stream_out(f"\n  update error: {e}")
+    finally:
+        done.set()
+        th.join(timeout=1)
+    stream_out("")
+    return code
+
+
 def _spawn_eshell(stream_out=print):
     path = os.path.join(PROJECT_DIR or os.getcwd(), "eshell.py")
     return _spawn([sys.executable, path], name="console", stream_out=stream_out)
@@ -852,15 +918,25 @@ def hypervisor_entry(argv, stream_out=print, input_fn=input):
     """The hypervisor entry — krip launches everything else."""
     record_current_kernel()
     if not argv:
-        # GRUB menu -> boot the chosen kernel -> the console
+        # GRUB menu -> boot / update / exit -> the console
         # (KRIP_NO_MENU=1 boots straight to the console)
         if os.environ.get("KRIP_NO_MENU") != "1":
-            r = boot_menu(stream_out, input_fn)
-            if r[0] == "boot":
-                boot_entry(r[1], stream_out)
-            elif r[0] == "exit":
-                stream_out("  krip exited — back to the terminal")
-                return 0
+            for _round in range(4):  # a few update rounds, then boot
+                r = boot_menu(stream_out, input_fn)
+                if r[0] == "boot":
+                    boot_entry(r[1], stream_out)
+                    break
+                if r[0] == "exit":
+                    stream_out("  krip exited — back to the terminal")
+                    return 0
+                if r[0] == "update":
+                    rc = _run_update(r[1], stream_out)
+                    if rc != 0:
+                        stream_out("  update failed — staying on the menu")
+                    else:
+                        stream_out("  update complete — kernels refreshed")
+                    continue  # re-show the menu with the new kernel
+                break
         return _spawn_eshell(stream_out)
     a = argv[0].lower()
     if a in ("run", "exec"):
