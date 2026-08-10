@@ -710,15 +710,22 @@ def boot_menu(stream_out=print, input_fn=input, timeout=3.0, interactive=None):
                 return "boot", entries[i]
         return "boot", entries[sel]
 
+    # single-frame redraw: clear the screen before every frame so the menu
+    # updates in place like a real bootloader (no stacked copies)
+    clear = "\033[2J\033[H"
+
     countdown = timeout
     stopped = False
     while True:
+        stream_out(clear)
         _draw_menu(entries, sel, None if stopped else countdown, stream_out)
         if not stopped and countdown is not None:
             key = _read_key_raw(0.25)
             if key is None:
                 countdown -= 0.25
                 if countdown <= 0:
+                    stream_out(clear)
+                    _draw_menu(entries, sel, None, stream_out)
                     return "boot", entries[sel]
                 continue
             stopped = True
