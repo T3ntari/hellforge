@@ -1656,6 +1656,9 @@ def main():
         except Exception:
             pass
 
+    # from here on we ARE the OS: kernel config is locked
+    os.environ["KRIP_IN_OS"] = "1"
+
     # ── Project directory resolution: --project flag > HELLFORGE_PROJECT env > cwd ──
     project_dir = None
     if "--project" in sys.argv:

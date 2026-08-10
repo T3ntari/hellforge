@@ -337,6 +337,23 @@ def _cmd(args, api=None):
             lines.append(sb)
         return "\n".join(lines)
 
+    _in_os = os.environ.get("KRIP_IN_OS") == "1"
+    _KERNEL_LOCKED = ("kernel config is kernel-level — it can only be "
+                      "edited from the boot console (Ctrl+C at the boot "
+                      "menu). Plugins and shell commands cannot change it.")
+    if _in_os and sub == "edit":
+        return "  refused: " + _KERNEL_LOCKED
+    if _in_os and sub in ("mem", "cpu", "gpu", "engine", "vulkanrt",
+                          "tensor") and len(args) > 1:
+        return "  refused: " + _KERNEL_LOCKED
+    if _in_os and sub == "sandbox" and len(args) > 1:
+        return "  refused: " + _KERNEL_LOCKED
+    # bare (view-only) forms stay readable; kernel setters are locked
+    if _in_os and sub == "sandbox" and len(args) > 1 and args[1] in ("run", "kill"):
+        return "  refused: " + _KERNEL_LOCKED
+    if _in_os and sub == "config":
+        return "  kernel config view: " + _KERNEL_LOCKED
+
     if sub == "mem":
         if len(args) < 2 or not args[1].isdigit():
             return f"  usage: krip mem <mb>  (current: {_config['mem_mb']})"
@@ -894,6 +911,7 @@ def _spawn(cmd, name="default", stream_out=print):
     base = dict(os.environ)
     base.update(_gpu_env(_config["gpu"]))
     base["KRIP_INNER"] = "1"
+    base["KRIP_IN_OS"] = "1"
     base["KRIP_SANDBOX"] = name
     base["KRIP_ENGINE"] = _config["engine"]
     base["KRIP_VULKANRT"] = "1" if _config["vulkanrt"] else "0"
@@ -958,8 +976,7 @@ def _spawn_eshell(stream_out=print):
 
 def _exec_eshell(stream_out=print):
     """Become the OS console in-place: same TTY, one boot, no child
-    process. krip keeps no console surface of its own — the sandbox
-    configuration is not editable from inside the machine."""
+    process."""
     path = os.path.join(PROJECT_DIR or os.getcwd(), "eshell.py")
     os.environ["KRIP_INNER"] = "1"
     os.environ["KRIP_NO_MENU"] = "1"
@@ -969,6 +986,56 @@ def _exec_eshell(stream_out=print):
         stream_out(f"  krip: failed to enter console ({e})")
         return 1
     return 0
+
+
+def console_mode(stream_out=print, input_fn=input):
+    """The KERNEL console — pre-boot only (boot menu Ctrl+C / 'c', or
+    'krip console' at the terminal). The user edits the hypervisor config
+    here: mem / cpu / gpu / engine / renderer. Once the OS is booted this
+    surface is GONE — no plugin, no shell command can touch kernel config."""
+    B, C, D, R = "\033[1m", "\033[36m", "\033[2m", "\033[0m"
+    stream_out(f"\n  {B}KRIP KERNEL CONSOLE{R}  {D}(pre-boot — edit hypervisor"
+               f" config here; locked once the OS boots){R}")
+    stream_out(f"  {D}help | status | mem | cpu | gpu | engine | vulkanrt |"
+               f" tensor | config | edit | kernels | boot | game | eshell |"
+               f" quit{R}")
+    while True:
+        try:
+            line = input_fn("  kernel> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            stream_out("\n  back to the boot menu")
+            return 0
+        if not line:
+            continue
+        parts = line.split()
+        cmd = parts[0].lower()
+        if cmd in ("quit", "exit", "q"):
+            stream_out("  console exited — back to the terminal")
+            return 0
+        if cmd in ("help", "?"):
+            stream_out("  " + " | ".join(
+                ["help", "status", "mem", "cpu", "gpu", "engine", "vulkanrt",
+                 "tensor", "config", "edit", "kernels", "boot", "game",
+                 "eshell", "quit"]))
+            continue
+        if cmd in ("boot", "menu"):
+            r = boot_menu(stream_out, input_fn)
+            if r[0] == "boot":
+                boot_entry(r[1], stream_out)
+            return 0
+        if cmd in ("game", "ninja"):
+            os.environ["KRIP_BOOT_CMD"] = "ninja"
+            return _exec_eshell(stream_out)
+        if cmd in ("eshell", "shell", "os"):
+            return _exec_eshell(stream_out)
+        if cmd in ("mem", "cpu", "gpu", "engine", "vulkanrt", "tensor",
+                   "config", "edit", "kernels", "status", "sandbox"):
+            try:
+                stream_out(_cmd(parts))
+            except Exception as e:
+                stream_out(f"  error: {e}")
+            continue
+        stream_out(f"  {D}unknown: {cmd} — try help{R}")
 
 
 def hypervisor_entry(argv, stream_out=print, input_fn=input):
@@ -994,10 +1061,9 @@ def hypervisor_entry(argv, stream_out=print, input_fn=input):
                         stream_out("  update complete — kernels refreshed")
                     continue  # re-show the menu with the new kernel
                 if r[0] == "console":
-                    # the console IS the OS shell — become it in-place
-                    # (no sandbox re-spawn, no extra boot layer; krip itself
-                    # stays locked: no config/mutation surface from inside)
-                    return _exec_eshell(stream_out)
+                    if os.environ.get("KRIP_IN_OS") == "1":
+                        return _exec_eshell(stream_out)
+                    return console_mode(stream_out, input_fn)
                 break
         return _spawn_eshell(stream_out)
     a = argv[0].lower()
@@ -1006,7 +1072,13 @@ def hypervisor_entry(argv, stream_out=print, input_fn=input):
             stream_out("  usage: krip run <cmd...>")
             return 1
         return _spawn(argv[1:], name="cmd", stream_out=stream_out)
-    if a in ("eshell", "shell", "console"):
+    if a == "console":
+        if os.environ.get("KRIP_IN_OS") == "1":
+            stream_out("  kernel console is pre-boot only — you are inside "
+                       "the OS")
+            return 1
+        return console_mode(stream_out, input_fn)
+    if a in ("eshell", "shell"):
         return _exec_eshell(stream_out)
     if a in ("game", "ninja"):
         os.environ["KRIP_BOOT_CMD"] = "ninja"
@@ -1029,13 +1101,33 @@ def hypervisor_entry(argv, stream_out=print, input_fn=input):
     stream_out(f"  unknown: {a} — try 'krip help'")
     return 1
 
+def register_kernel(entry):
+    """Plugin API — the MAXIMUM a plugin may change: add an entry to the
+    kernel registry (id/version/mode/tag). Hypervisor config is out of
+    reach: this only affects which kernel boots."""
+    entries = load_kernels()
+    eid = entry.get("id", "ep_core")
+    ver = entry.get("version", "?")
+    entries = [e for e in entries
+               if not (e.get("id") == eid and e.get("version") == ver)]
+    entries.insert(0, entry)
+    _save_kernels(entries)
+    return True
+
+
 # ── plugin entry ──────────────────────────────────────────────────────
 
 def register(api):
     global PROJECT_DIR
     PROJECT_DIR = getattr(api, "project_dir", None) or os.getcwd()
     _load(api)
-    api.add_command("krip", lambda args: _cmd(args, api),
+    def _krip_cmd(args):
+        out = _cmd(args, api)
+        if isinstance(out, str) and out:
+            print(out if out.startswith("  ") else "  " + out)
+        return None
+
+    api.add_command("krip", _krip_cmd,
                     "K-rip hypervisor: mem/cpu/gpu/engine/vulkanrt/tensor/sandbox/os")
     record_current_kernel()
     drivers = _driver_table()
