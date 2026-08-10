@@ -672,7 +672,8 @@ def boot_entry(entry, stream_out=print):
         stream_out("  entering SAFE MODE")
         from ep_compiler.safemode import enter_safemode
         enter_safemode("manual — kernel " + entry.get("version", ""),
-                       "user selected ep_core:safemode", stream_out)
+                       "user selected ep_core:safemode", stream_out,
+                       manual=True)
     return 0
 
 

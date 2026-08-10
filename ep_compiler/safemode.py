@@ -60,13 +60,22 @@ def _run_reinstall(stream_out, progress):
     return False
 
 
-def enter_safemode(reason, detail, stream_out=print, input_fn=input):
+def enter_safemode(reason, detail, stream_out=print, input_fn=input,
+                   manual=False):
     """Run the restricted safe-mode shell. Returns True when exiting (either
-    via successful reinstall or forced exit)."""
+    via successful reinstall or forced exit).
+
+    manual=True: the user picked the safemode kernel themselves — the alarm
+    box and the 'highly risky' exit lecture are for REAL verification
+    failures only, not for a deliberate choice."""
     stream_out("")
-    stream_out("  \033[31m╔══════════════════════════════════════════════════╗\033[0m")
-    stream_out("  \033[31m║           HELLFORGE SAFE MODE                    ║\033[0m")
-    stream_out("  \033[31m╚══════════════════════════════════════════════════╝\033[0m")
+    if manual:
+        stream_out("  \033[36msafe mode\033[0m \033[2m(manually selected kernel — "
+                   "core untouched; exit with /safemode exit force)\033[0m")
+    else:
+        stream_out("  \033[31m╔══════════════════════════════════════════════════╗\033[0m")
+        stream_out("  \033[31m║           HELLFORGE SAFE MODE                    ║\033[0m")
+        stream_out("  \033[31m╚══════════════════════════════════════════════════╝\033[0m")
     stream_out(f"  reason : {reason}")
     stream_out(f"  detail : {detail}")
     stream_out("  plugins are isolated; only safe-mode commands run.")
@@ -116,6 +125,10 @@ def enter_safemode(reason, detail, stream_out=print, input_fn=input):
                 stream_out("  reinstall declined — staying in safe mode.")
             continue
         if low in ("/safemode exit force", "exit force", "force"):
+            if manual:
+                # user chose this kernel — the core is fine, no lecture
+                stream_out("  leaving safe mode.")
+                return True
             stream_out("  \033[31mWARNING: this is highly risky.\033[0m")
             stream_out("  \033[31mThe core digest does not verify — leaving safe")
             stream_out("  \033[31mmode means running with an unverified core.")
