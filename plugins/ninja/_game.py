@@ -316,17 +316,86 @@ class NinjaGame:
     # ── interactive ──
 
     def play(self, dt=1.0 / 60.0):
-        """Interactive play. Windowed (glfw + PyOpenGL) when a display and the
-        deps exist; otherwise a terminal-driven session with live status and
-        non-blocking keys (W/S fwd/back, A/D strafe, Q/E turn, Shift run,
-        M menu, Q/Esc quit)."""
+        """Interactive play. Windowed (pygame/SDL — the player's own stack)
+        when a display exists; glfw+PyOpenGL fallback; terminal session
+        otherwise (W/S fwd/back, A/D strafe, Q/E turn, Shift run, M menu,
+        Q/Esc quit)."""
         display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-        if display and _module_importable("glfw") and _module_importable("OpenGL.GL"):
-            return self._play_windowed(dt)
+        if display:
+            if _module_importable("pygame"):
+                return self._play_window_pygame(dt)
+            if _module_importable("glfw") and _module_importable("OpenGL.GL"):
+                return self._play_windowed(dt)
+            print("  Ninja: display present but no window backend "
+                  "(pip install pygame) — falling back to terminal mode")
         return self._play_terminal(dt)
 
+    def _play_window_pygame(self, dt):
+        """pygame/SDL window — opens on any machine with a display
+        (X11/Wayland via SDL2, same stack as the built-in player)."""
+        import pygame
+        pygame.init()
+        try:
+            win = pygame.display.set_mode((self.width, self.height))
+        except pygame.error as e:
+            print(f"  Ninja: window failed ({e}) — terminal mode")
+            pygame.quit()
+            return self._play_terminal(dt)
+        pygame.display.set_caption("Ninja — corridor walker (FSR 3.1)")
+        clock = pygame.time.Clock()
+        held = set()
+        print("  Ninja: windowed mode — WASD move, arrows turn, Shift run, "
+              "M menu, Esc quit, close the window to exit")
+
+        def map_keys():
+            out = {}
+            if pygame.K_w in held: out["forward"] = True
+            if pygame.K_s in held: out["back"] = True
+            if pygame.K_a in held: out["left"] = True
+            if pygame.K_d in held: out["right"] = True
+            if pygame.K_LSHIFT in held or pygame.K_RSHIFT in held:
+                out["run"] = True
+            if pygame.K_LEFT in held: out["turn_left"] = True
+            if pygame.K_RIGHT in held: out["turn_right"] = True
+            if pygame.K_UP in held: out["menu_up"] = True
+            if pygame.K_DOWN in held: out["menu_down"] = True
+            if pygame.K_RETURN in held: out["menu_right"] = True
+            if pygame.K_ESCAPE in held: out["menu_close"] = True
+            if pygame.K_m in held: out["menu_toggle"] = True
+            return out
+
+        running = True
+        try:
+            while running:
+                for ev in pygame.event.get():
+                    if ev.type == pygame.QUIT:
+                        running = False
+                    elif ev.type == pygame.KEYDOWN:
+                        held.add(ev.key)
+                        if ev.key in (pygame.K_q,):
+                            running = False
+                    elif ev.type == pygame.KEYUP:
+                        held.discard(ev.key)
+                if not running:
+                    break
+                if self._menu is not None:
+                    self._menu.tick(map_keys())
+                try:
+                    frame, state = self.frame(dt, map_keys())
+                except NinjaEngineUnavailable as e:
+                    print(f"  Ninja: {e}")
+                    return
+                surf = pygame.surfarray.make_surface(
+                    np.ascontiguousarray(frame[::-1, :, :3]))
+                win.blit(surf, (0, 0))
+                pygame.display.flip()
+                clock.tick(int(1.0 / dt))
+        finally:
+            pygame.quit()
+            self.shutdown()
+
     def _play_terminal(self, dt):
-        print(f"  Ninja: terminal mode (no display/OpenGL) — "
+        print(f"  Ninja: terminal mode (no display) — "
               f"W/S fwd/back, A/D strafe, Q/E turn, Shift run, M menu, Q quit; "
               f"in menu: WASD navigate, Enter select, Esc close")
         run = True
